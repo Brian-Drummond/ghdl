@@ -65,5 +65,7 @@ elseif ($env:BUILD_BACKEND -eq "llvm")
 	c:\msys64\usr\bin\bash.exe -c "../../configure --prefix=$GHDL_PREFIX_DIR --with-llvm-config LDFLAGS=-static" 2>&1 | Restore-NativeCommandStream | %{ "$_" }
 }
 
+head config.status
+
 cd $env:APPVEYOR_BUILD_FOLDER
 exit 0
