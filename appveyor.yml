@@ -20,15 +20,15 @@ environment:
 #    service_url: https://127.0.0.1:8090
 #
   matrix:
-#    - BUILD_MINGW: mingw32
-#      BUILD_BACKEND: mcode
+    - BUILD_MINGW: mingw32
+      BUILD_BACKEND: mcode
     - BUILD_MINGW: mingw32
       BUILD_BACKEND: llvm
 # mcode is not yet supported on Win64
 #    - BUILD_MINGW: mingw64
 #      BUILD_BACKEND: mcode
-#    - BUILD_MINGW: mingw64
-#      BUILD_BACKEND: llvm
+    - BUILD_MINGW: mingw64
+      BUILD_BACKEND: llvm
 
 # clone_folder: c:\projects\ghdl
 
@@ -77,21 +77,21 @@ test_script:
 # ==============================================================================
 # Deployment configuration
 # ==============================================================================
-deploy:
-  - provider: GitHub
-    release: GHDL-v$(appveyor_build_version)
-    description: 'Release description'
-    draft: false
-    prerelease: false
+#deploy:
+#  - provider: GitHub
+#    release: GHDL-v$(appveyor_build_version)
+#    description: 'Release description'
+#    draft: false
+#    prerelease: false
 #    on:
 #      branch: master
 #      appveyor_repo_tag: true
-    auth_token:
-      secure: 7K/sSRV3kBk/Iw/d1NGd0pAv9Qf0+lGba3UWt9RDLcIsM8binjC2ogPINilWfy46
-  - provider: Environment
-    name: GitHub Paebbels/ghdl
-    on:
-      branch: master
+#    auth_token:
+#      secure: 7K/sSRV3kBk/Iw/d1NGd0pAv9Qf0+lGba3UWt9RDLcIsM8binjC2ogPINilWfy46
+#  - provider: Environment
+#    name: GitHub Paebbels/ghdl
+#    on:
+#      branch: master
 
 
 # scripts to run before deployment
