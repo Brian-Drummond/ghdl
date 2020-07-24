@@ -110,6 +110,8 @@ package body Vhdl.Errors is
       Report_Msg (Msgid_Error, Semantic, +Loc, Msg, (1 => Arg1));
    end Error_Msg_Sem;
 
+   Relaxed_Hint_Done : Boolean := False;
+
    procedure Error_Msg_Relaxed (Origin : Report_Origin;
                                 Id : Msgid_Warnings;
                                 Msg : String;
@@ -118,7 +120,7 @@ package body Vhdl.Errors is
    is
       Level : Msgid_Type;
    begin
-      if Flag_Relaxed_Rules or Vhdl_Std = Vhdl_93c then
+      if Flag_Relaxed_Rules then
          if not Is_Warning_Enabled (Id) then
             return;
          end if;
@@ -127,6 +129,14 @@ package body Vhdl.Errors is
          Level := Msgid_Error;
       end if;
       Report_Msg (Level, Origin, +Loc, Msg, Args);
+      if not Relaxed_Hint_Done and then Level = Msgid_Error then
+         Report_Msg
+           (Msgid_Note, Origin, +Loc,
+            "(you can use -frelaxed to turn this error into a warning)");
+         --  Emit the message only once, although it applies for many error.
+         --  Maybe do it once per Id ?
+         Relaxed_Hint_Done := True;
+      end if;
    end Error_Msg_Relaxed;
 
    procedure Error_Msg_Sem_Relaxed (Loc : Iir;
@@ -216,6 +226,19 @@ package body Vhdl.Errors is
          end if;
       end Disp_Type;
 
+      function Disp_Nature (Node : Iir; Str : String) return String
+      is
+         Decl: Iir;
+      begin
+         Decl := Get_Nature_Declarator (Node);
+         if Decl = Null_Iir then
+            return "anonymous " & Str
+              & " defined at " & Disp_Location (Node);
+         else
+            return Disp_Identifier (Decl, Str);
+         end if;
+      end Disp_Nature;
+
    begin
       case Get_Kind (Node) is
          when Iir_Kind_String_Literal8 =>
@@ -231,7 +254,8 @@ package body Vhdl.Errors is
             return "physical literal";
          when Iir_Kind_Enumeration_Literal =>
             return "enumeration literal " & Image_Identifier (Node);
-         when Iir_Kind_Element_Declaration =>
+         when Iir_Kind_Element_Declaration
+           | Iir_Kind_Nature_Element_Declaration =>
             return Disp_Identifier (Node, "element");
          when Iir_Kind_Record_Element_Constraint =>
             return "record element constraint";
@@ -273,7 +297,8 @@ package body Vhdl.Errors is
          when Iir_Kind_Association_Element_By_Expression
            | Iir_Kind_Association_Element_Package
            | Iir_Kind_Association_Element_Type
-            | Iir_Kind_Association_Element_Subprogram =>
+           | Iir_Kind_Association_Element_Subprogram
+           | Iir_Kind_Association_Element_Terminal =>
             return "association element";
          when Iir_Kind_Overload_List =>
             return "overloaded name or expression";
@@ -320,7 +345,13 @@ package body Vhdl.Errors is
             return "subtype definition";
 
          when Iir_Kind_Scalar_Nature_Definition =>
-            return Image_Identifier (Get_Nature_Declarator (Node));
+            return Disp_Nature (Node, "scalar nature");
+         when Iir_Kind_Array_Nature_Definition =>
+            return Disp_Nature (Node, "array nature");
+         when Iir_Kind_Array_Subnature_Definition =>
+            return Disp_Nature (Node, "array subnature");
+         when Iir_Kind_Record_Nature_Definition =>
+            return Disp_Nature (Node, "record nature");
 
          when Iir_Kind_Choice_By_Expression =>
             return "choice by expression";
@@ -408,6 +439,8 @@ package body Vhdl.Errors is
             return ".all name";
          when Iir_Kind_Psl_Expression =>
             return "PSL instantiation";
+         when Iir_Kind_Break_Element =>
+            return "break element";
 
          when Iir_Kind_Interface_Constant_Declaration =>
             if Get_Parent (Node) = Null_Iir then
@@ -435,6 +468,10 @@ package body Vhdl.Errors is
             return Disp_Identifier (Node, "variable interface");
          when Iir_Kind_Interface_File_Declaration =>
             return Disp_Identifier (Node, "file interface");
+         when Iir_Kind_Interface_Quantity_Declaration =>
+            return Disp_Identifier (Node, "quantity interface");
+         when Iir_Kind_Interface_Terminal_Declaration =>
+            return Disp_Identifier (Node, "terminal interface");
          when Iir_Kind_Interface_Package_Declaration =>
             return Disp_Identifier (Node, "package interface");
          when Iir_Kind_Interface_Type_Declaration =>
@@ -535,6 +572,8 @@ package body Vhdl.Errors is
             return "context reference";
          when Iir_Kind_Disconnection_Specification =>
             return "disconnection specification";
+         when Iir_Kind_Step_Limit_Specification =>
+            return "step limit specification";
 
          when Iir_Kind_Slice_Name =>
             return "slice";
@@ -573,6 +612,15 @@ package body Vhdl.Errors is
 
          when Iir_Kind_Simple_Simultaneous_Statement =>
             return "simple simultaneous statement";
+         when Iir_Kind_Simultaneous_Null_Statement =>
+            return "simultaneous null statement";
+         when Iir_Kind_Simultaneous_Procedural_Statement =>
+            return "simultaneous procedural statement";
+         when Iir_Kind_Simultaneous_Case_Statement =>
+            return "simultaneous case statement";
+         when Iir_Kind_Simultaneous_If_Statement
+           | Iir_Kind_Simultaneous_Elsif =>
+            return "simultaneous if statement";
 
          when Iir_Kind_Psl_Declaration =>
             return Disp_Identifier (Node, "PSL declaration");
@@ -583,7 +631,9 @@ package body Vhdl.Errors is
             return Disp_Identifier (Node, "terminal declaration");
          when Iir_Kind_Free_Quantity_Declaration
            | Iir_Kind_Across_Quantity_Declaration
-           | Iir_Kind_Through_Quantity_Declaration =>
+           | Iir_Kind_Through_Quantity_Declaration
+           | Iir_Kind_Spectrum_Quantity_Declaration
+           | Iir_Kind_Noise_Quantity_Declaration =>
             return Disp_Identifier (Node, "quantity declaration");
 
          when Iir_Kind_Attribute_Declaration =>
@@ -598,6 +648,12 @@ package body Vhdl.Errors is
             return "attribute";
          when Iir_Kind_Base_Attribute =>
             return "'base attribute";
+         when Iir_Kind_Across_Attribute =>
+            return "'across attribute";
+         when Iir_Kind_Through_Attribute =>
+            return "'through attribute";
+         when Iir_Kind_Nature_Reference_Attribute =>
+            return "'reference attribute";
          when Iir_Kind_Length_Array_Attribute =>
             return "'length attribute";
          when Iir_Kind_Range_Array_Attribute =>
@@ -639,13 +695,31 @@ package body Vhdl.Errors is
          when Iir_Kind_High_Type_Attribute
            | Iir_Kind_High_Array_Attribute =>
             return "'high attribute";
+         when Iir_Kind_Signal_Slew_Attribute
+           | Iir_Kind_Quantity_Slew_Attribute =>
+            return "'slew attribute";
+         when Iir_Kind_Zoh_Attribute =>
+            return "'zoh attribute";
+         when Iir_Kind_Ltf_Attribute =>
+            return "'ltf attribute";
+         when Iir_Kind_Ztf_Attribute =>
+            return "'ztf attribute";
+         when Iir_Kind_Ramp_Attribute =>
+            return "'ramp attribute";
+         when Iir_Kind_Dot_Attribute =>
+            return "'dot attribute";
+         when Iir_Kind_Integ_Attribute =>
+            return "'integ attribute";
+         when Iir_Kind_Above_Attribute =>
+            return "'above attribute";
          when Iir_Kind_Transaction_Attribute =>
             return "'transaction attribute";
          when Iir_Kind_Stable_Attribute =>
             return "'stable attribute";
          when Iir_Kind_Quiet_Attribute =>
             return "'quiet attribute";
-         when Iir_Kind_Delayed_Attribute =>
+         when Iir_Kind_Delayed_Attribute
+           | Iir_Kind_Quantity_Delayed_Attribute =>
             return "'delayed attribute";
          when Iir_Kind_Driving_Attribute =>
             return "'driving attribute";
@@ -695,6 +769,9 @@ package body Vhdl.Errors is
               (Node, "concurrent selected signal assignment");
          when Iir_Kind_Concurrent_Assertion_Statement =>
             return Disp_Label (Node, "concurrent assertion");
+         when Iir_Kind_Concurrent_Break_Statement =>
+            return Disp_Label (Node, "concurrent break statement");
+
          when Iir_Kind_Psl_Assert_Directive =>
             return Disp_Label (Node, "PSL assertion");
          when Iir_Kind_Psl_Assume_Directive =>
@@ -705,6 +782,14 @@ package body Vhdl.Errors is
             return "PSL restrict";
          when Iir_Kind_Psl_Default_Clock =>
             return "PSL default clock";
+         when Iir_Kind_Psl_Prev =>
+            return "PSL prev function";
+         when Iir_Kind_Psl_Stable =>
+            return "PSL stable function";
+         when Iir_Kind_Psl_Rose =>
+            return "PSL rose function";
+         when Iir_Kind_Psl_Fell =>
+            return "PSL fell function";
 
          when Iir_Kind_If_Statement =>
             return Disp_Label (Node, "if statement");
@@ -739,6 +824,8 @@ package body Vhdl.Errors is
             return Disp_Label (Node, "assertion statement");
          when Iir_Kind_Report_Statement =>
             return Disp_Label (Node, "report statement");
+         when Iir_Kind_Break_Statement =>
+            return Disp_Label (Node, "break statement");
 
          when Iir_Kind_Block_Configuration =>
             return "block configuration";
@@ -807,6 +894,7 @@ package body Vhdl.Errors is
       use Ada.Strings.Unbounded;
       Res : Unbounded_String;
 
+      --  Cf code in evaluation for 'instance_name ?
       procedure Append_Type (Def : Iir)
       is
          use Name_Table;
@@ -1016,7 +1104,7 @@ package body Vhdl.Errors is
    begin
       case Format is
          when 'i' =>
-            Output_Identifier (Get_Identifier (N));
+            Output_Quoted_Identifier (Get_Identifier (N));
          when 'l' =>
             Output_Location (Err, Get_Location (N));
          when 'n' =>

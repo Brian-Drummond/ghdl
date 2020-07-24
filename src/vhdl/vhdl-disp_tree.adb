@@ -25,6 +25,7 @@ with Files_Map;
 with PSL.Types; use PSL.Types;
 with PSL.Dump_Tree;
 with Vhdl.Nodes_Meta;
+with Vhdl.Utils; use Vhdl.Utils;
 
 --  Do not add a use clause for iirs_utils, as it may crash for ill-formed
 --  trees, which is annoying while debugging.
@@ -328,18 +329,32 @@ package body Vhdl.Disp_Tree is
       return Files_Map.Image (Loc);
    end Image_Location_Type;
 
-   function Image_Iir_Direction (Dir : Iir_Direction) return String is
+   function Image_Direction_Type (Dir : Direction_Type) return String is
    begin
       case Dir is
-         when Iir_To =>
+         when Dir_To =>
             return "to";
-         when Iir_Downto =>
+         when Dir_Downto =>
             return "downto";
       end case;
-   end Image_Iir_Direction;
+   end Image_Direction_Type;
 
    function Image_Token_Type (Tok : Vhdl.Tokens.Token_Type) return String
      renames Vhdl.Tokens.Image;
+
+   function Image_Scalar_Size (Sz : Scalar_Size) return String is
+   begin
+      case Sz is
+         when Scalar_8 =>
+            return "8";
+         when Scalar_16 =>
+            return "16";
+         when Scalar_32 =>
+            return "32";
+         when Scalar_64 =>
+            return "64";
+      end case;
+   end Image_Scalar_Size;
 
    function Image_String8 (N : Iir) return String
    is
@@ -560,9 +575,9 @@ package body Vhdl.Disp_Tree is
                when Type_Iir_Predefined_Functions =>
                   Log_Line (Image_Iir_Predefined_Functions
                               (Get_Iir_Predefined_Functions (N, F)));
-               when Type_Iir_Direction =>
-                  Log_Line (Image_Iir_Direction
-                              (Get_Iir_Direction (N, F)));
+               when Type_Direction_Type =>
+                  Log_Line (Image_Direction_Type
+                              (Get_Direction_Type (N, F)));
                when Type_Iir_Int32 =>
                   Log_Line (Iir_Int32'Image (Get_Iir_Int32 (N, F)));
                when Type_Int32 =>
@@ -577,6 +592,8 @@ package body Vhdl.Disp_Tree is
                               (Get_File_Checksum_Id (N, F)));
                when Type_Token_Type =>
                   Log_Line (Image_Token_Type (Get_Token_Type (N, F)));
+               when Type_Scalar_Size =>
+                  Log_Line (Image_Scalar_Size (Get_Scalar_Size (N, F)));
                when Type_Name_Id =>
                   Log (Image_Name_Id (Get_Name_Id (N, F)));
                   Log (" ");

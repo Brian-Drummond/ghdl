@@ -153,7 +153,8 @@ package ORTHO_NODES is
    procedure Finish_Record_Aggr (List : in out O_Record_Aggr_List;
                                  Res : out O_Cnode);
 
-   procedure Start_Array_Aggr (List : out O_Array_Aggr_List; Atype : O_Tnode);
+   procedure Start_Array_Aggr
+     (List : out O_Array_Aggr_List; Atype : O_Tnode; Len : Unsigned_32);
    procedure New_Array_Aggr_El (List : in out O_Array_Aggr_List;
                                 Value : O_Cnode);
    procedure Finish_Array_Aggr (List : in out O_Array_Aggr_List;
@@ -306,6 +307,7 @@ package ORTHO_NODES is
    --  Allowed conversions are:
    --  FIXME: to write.
    function New_Convert_Ov (Val : O_Enode; Rtype : O_Tnode) return O_Enode;
+   function New_Convert (Val : O_Enode; Rtype : O_Tnode) return O_Enode;
 
    --  Get the address of LVALUE.
    --  ATYPE must be a type access whose designated type is the type of LVALUE.

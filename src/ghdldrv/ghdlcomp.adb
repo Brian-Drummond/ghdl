@@ -109,7 +109,7 @@ package body Ghdlcomp is
                            return Boolean;
    function Get_Short_Help (Cmd : Command_Run) return String;
 
-   procedure Perform_Action (Cmd : Command_Run;
+   procedure Perform_Action (Cmd : in out Command_Run;
                              Args : Argument_List);
 
    function Decode_Command (Cmd : Command_Run; Name : String)
@@ -128,7 +128,7 @@ package body Ghdlcomp is
    end Get_Short_Help;
 
 
-   procedure Perform_Action (Cmd : Command_Run;
+   procedure Perform_Action (Cmd : in out Command_Run;
                              Args : Argument_List)
    is
       pragma Unreferenced (Cmd);
@@ -155,7 +155,7 @@ package body Ghdlcomp is
    end Perform_Action;
 
 
-   --  Command -c xx -r
+   --  Command -c xx -r/-e
    type Command_Compile is new Command_Comp with null record;
    function Decode_Command (Cmd : Command_Compile; Name : String)
                            return Boolean;
@@ -164,7 +164,7 @@ package body Ghdlcomp is
                             Option : String;
                             Arg : String;
                             Res : out Option_State);
-   procedure Perform_Action (Cmd : Command_Compile;
+   procedure Perform_Action (Cmd : in out Command_Compile;
                              Args : Argument_List);
 
    function Decode_Command (Cmd : Command_Compile; Name : String)
@@ -213,7 +213,7 @@ package body Ghdlcomp is
       end if;
    end Compile_Analyze_Init;
 
-   procedure Compile_Analyze_File (File : String)
+   procedure Compile_Load_File (File : String)
    is
       Res : Iir_Design_File;
       Design : Iir;
@@ -232,9 +232,9 @@ package body Ghdlcomp is
          Libraries.Add_Design_Unit_Into_Library (Design);
          Design := Next_Design;
       end loop;
-   end Compile_Analyze_File;
+   end Compile_Load_File;
 
-   function Compile_Analyze_File2 (File : String) return Iir
+   function Compile_Analyze_File (File : String) return Iir
    is
       Id : constant Name_Id := Name_Table.Get_Identifier (File);
       Design_File : Iir_Design_File;
@@ -280,7 +280,7 @@ package body Ghdlcomp is
       end loop;
 
       return New_Design_File;
-   end Compile_Analyze_File2;
+   end Compile_Analyze_File;
 
    procedure Compile_Elaborate (Unit_Name : String_Access)
    is
@@ -326,7 +326,9 @@ package body Ghdlcomp is
       Flags.Flag_Elaborate := True;
 
       Config := Vhdl.Configuration.Configure (Prim_Id, Sec_Id);
-      if Config = Null_Iir then
+      if Config = Null_Iir
+        or else Errorout.Nbr_Errors > 0
+      then
          raise Compilation_Error;
       end if;
 
@@ -345,7 +347,7 @@ package body Ghdlcomp is
       end;
    end Common_Compile_Elab;
 
-   procedure Perform_Action (Cmd : Command_Compile;
+   procedure Perform_Action (Cmd : in out Command_Compile;
                              Args : Argument_List)
    is
       pragma Unreferenced (Cmd);
@@ -371,8 +373,15 @@ package body Ghdlcomp is
                   if Arg = "-r" or else Arg = "-e" then
                      Elab_Arg := I + 1;
                      exit;
+                  elsif Arg'Last > 7 and then Arg (1 .. 7) = "--work=" then
+                     Libraries.Work_Library_Name :=
+                       Libraries.Decode_Work_Option (Arg);
+                     if Libraries.Work_Library_Name = Null_Identifier then
+                        raise Compilation_Error;
+                     end if;
+                     Libraries.Load_Work_Library (True);
                   else
-                     Compile_Analyze_File (Arg);
+                     Compile_Load_File (Arg);
                   end if;
                end;
             end loop;
@@ -411,7 +420,7 @@ package body Ghdlcomp is
                            return Boolean;
    function Get_Short_Help (Cmd : Command_Analyze) return String;
 
-   procedure Perform_Action (Cmd : Command_Analyze;
+   procedure Perform_Action (Cmd : in out Command_Analyze;
                              Args : Argument_List);
 
    function Decode_Command (Cmd : Command_Analyze; Name : String)
@@ -429,7 +438,7 @@ package body Ghdlcomp is
       return "-a [OPTS] FILEs    Analyze FILEs";
    end Get_Short_Help;
 
-   procedure Perform_Action (Cmd : Command_Analyze;
+   procedure Perform_Action (Cmd : in out Command_Analyze;
                              Args : Argument_List)
    is
       pragma Unreferenced (Cmd);
@@ -443,6 +452,8 @@ package body Ghdlcomp is
          Error ("no file to analyze");
          raise Compilation_Error;
       end if;
+
+      Expect_Filenames (Args);
 
       Hooks.Compile_Init.all (True);
 
@@ -537,7 +548,7 @@ package body Ghdlcomp is
    end Perform_Action;
 
    --  Command -e
-   type Command_Elab is new Command_Lib with null record;
+   type Command_Elab is new Command_Comp with null record;
    function Decode_Command (Cmd : Command_Elab; Name : String)
                            return Boolean;
    function Get_Short_Help (Cmd : Command_Elab) return String;
@@ -546,7 +557,7 @@ package body Ghdlcomp is
                             Arg : String;
                             Res : out Option_State);
 
-   procedure Perform_Action (Cmd : Command_Elab;
+   procedure Perform_Action (Cmd : in out Command_Elab;
                              Args : Argument_List);
 
    function Decode_Command (Cmd : Command_Elab; Name : String)
@@ -571,27 +582,23 @@ package body Ghdlcomp is
    is
       pragma Assert (Option'First = 1);
    begin
-      if Option = "--expect-failure" then
-         Flag_Expect_Failure := True;
-         Res := Option_Ok;
-      elsif Option = "-o" then
+      if Option = "-o" then
          if Arg'Length = 0 then
             Res := Option_Arg_Req;
          else
             --  Silently accepted.
             Res := Option_Arg;
          end if;
-      elsif Option'Length >= 4 and then Option (1 .. 4) = "-Wl,"
-      then
+      elsif Option'Length >= 4 and then Option (1 .. 4) = "-Wl," then
          Error_Msg_Option ("option -Wl is not available when ghdl "
                              & "is not configured with gcc or llvm");
          Res := Option_Err;
       else
-         Decode_Option (Command_Lib (Cmd), Option, Arg, Res);
+         Decode_Option (Command_Comp (Cmd), Option, Arg, Res);
       end if;
    end Decode_Option;
 
-   procedure Perform_Action (Cmd : Command_Elab;
+   procedure Perform_Action (Cmd : in out Command_Elab;
                              Args : Argument_List)
    is
       pragma Unreferenced (Cmd);
@@ -625,7 +632,7 @@ package body Ghdlcomp is
    function Decode_Command (Cmd : Command_Dispconfig; Name : String)
                            return Boolean;
    function Get_Short_Help (Cmd : Command_Dispconfig) return String;
-   procedure Perform_Action (Cmd : Command_Dispconfig;
+   procedure Perform_Action (Cmd : in out Command_Dispconfig;
                              Args : Argument_List);
 
    function Decode_Command (Cmd : Command_Dispconfig; Name : String)
@@ -657,7 +664,7 @@ package body Ghdlcomp is
       end loop;
    end Disp_Config;
 
-   procedure Perform_Action (Cmd : Command_Dispconfig;
+   procedure Perform_Action (Cmd : in out Command_Dispconfig;
                              Args : Argument_List)
    is
       pragma Unreferenced (Cmd);
@@ -677,7 +684,7 @@ package body Ghdlcomp is
    function Decode_Command (Cmd : Command_Make; Name : String)
                            return Boolean;
    function Get_Short_Help (Cmd : Command_Make) return String;
-   procedure Perform_Action (Cmd : Command_Make;
+   procedure Perform_Action (Cmd : in out Command_Make;
                              Args : Argument_List);
 
    function Decode_Command (Cmd : Command_Make; Name : String)
@@ -695,7 +702,7 @@ package body Ghdlcomp is
       return "-m [OPTS] UNIT [ARCH]  Make UNIT";
    end Get_Short_Help;
 
-   procedure Perform_Action (Cmd : Command_Make; Args : Argument_List)
+   procedure Perform_Action (Cmd : in out Command_Make; Args : Argument_List)
    is
       pragma Unreferenced (Cmd);
 
@@ -799,12 +806,12 @@ package body Ghdlcomp is
          end if;
    end Perform_Action;
 
-      --  Command Gen_Makefile.
+   --  Command Gen_Makefile.
    type Command_Gen_Makefile is new Command_Lib with null record;
    function Decode_Command (Cmd : Command_Gen_Makefile; Name : String)
                            return Boolean;
    function Get_Short_Help (Cmd : Command_Gen_Makefile) return String;
-   procedure Perform_Action (Cmd : Command_Gen_Makefile;
+   procedure Perform_Action (Cmd : in out Command_Gen_Makefile;
                              Args : Argument_List);
 
    function Decode_Command (Cmd : Command_Gen_Makefile; Name : String)
@@ -830,7 +837,7 @@ package body Ghdlcomp is
       return True;
    end Is_Makeable_File;
 
-   procedure Perform_Action (Cmd : Command_Gen_Makefile;
+   procedure Perform_Action (Cmd : in out Command_Gen_Makefile;
                              Args : Argument_List)
    is
       pragma Unreferenced (Cmd);

@@ -16,17 +16,19 @@
 --  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 --  02111-1307, USA.
 
-with Libraries;
+with Name_Table; use Name_Table;
+with Str_Table;
+with Flags;
 with Errorout; use Errorout;
+with Libraries;
 with Vhdl.Errors; use Vhdl.Errors;
 with Vhdl.Std_Package;
-with Name_Table; use Name_Table;
-with Flags;
 with Vhdl.Utils; use Vhdl.Utils;
 with Vhdl.Nodes_Walk;
 with Vhdl.Sem_Scopes;
 with Vhdl.Sem_Lib; use Vhdl.Sem_Lib;
 with Vhdl.Canon;
+with Vhdl.Evaluation;
 
 package body Vhdl.Configuration is
    procedure Add_Design_Concurrent_Stmts (Parent : Iir);
@@ -39,8 +41,9 @@ package body Vhdl.Configuration is
    --  UNIT is a design unit of a configuration declaration.
    --  Fill the DESIGN_UNITS table with all design units required to build
    --  UNIT.
-   procedure Add_Design_Unit (Unit : Iir_Design_Unit; From : Iir)
+   procedure Add_Design_Unit (Unit : Iir_Design_Unit; From : Location_Type)
    is
+      Loc : constant Location_Type := Get_Location (Unit);
       List : Iir_List;
       It : List_Iterator;
       El : Iir;
@@ -73,13 +76,8 @@ package body Vhdl.Configuration is
 
       --  May be enabled to debug dependency construction.
       if False then
-         if From = Null_Iir then
-            Report_Msg (Msgid_Note, Elaboration, +Unit,
+         Report_Msg (Msgid_Note, Elaboration, +From,
                         "%n added", (1 => +Unit));
-         else
-            Report_Msg (Msgid_Note, Elaboration, +From,
-                        "%n added by %n", (+Unit, +From));
-         end if;
       end if;
 
       Lib_Unit := Get_Library_Unit (Unit);
@@ -121,12 +119,12 @@ package body Vhdl.Configuration is
          if El /= Null_Iir then
             Lib_Unit := Get_Library_Unit (El);
             if Flag_Build_File_Dependence then
-               Add_Design_Unit (El, Unit);
+               Add_Design_Unit (El, Loc);
             else
                case Get_Kind (Lib_Unit) is
                   when Iir_Kinds_Package_Declaration
                     | Iir_Kind_Context_Declaration =>
-                     Add_Design_Unit (El, Unit);
+                     Add_Design_Unit (El, Loc);
                   when others =>
                      null;
                end case;
@@ -152,7 +150,7 @@ package body Vhdl.Configuration is
             --  find all sub-configuration
             Load_Design_Unit (Unit, From);
             Lib_Unit := Get_Library_Unit (Unit);
-            Add_Design_Unit (Get_Design_Unit (Get_Entity (Lib_Unit)), Unit);
+            Add_Design_Unit (Get_Design_Unit (Get_Entity (Lib_Unit)), Loc);
             declare
                Blk : Iir_Block_Configuration;
                Prev_Configuration : Iir_Configuration_Declaration;
@@ -164,12 +162,14 @@ package body Vhdl.Configuration is
                Add_Design_Block_Configuration (Blk);
                Current_Configuration := Prev_Configuration;
                Arch := Strip_Denoting_Name (Get_Block_Specification (Blk));
-               Add_Design_Unit (Get_Design_Unit (Arch), Unit);
+               if Arch /= Null_Iir then
+                  Add_Design_Unit (Get_Design_Unit (Arch), Loc);
+               end if;
             end;
          when Iir_Kind_Architecture_Body =>
             --  Add entity
             --  find all entity/architecture/configuration instantiation
-            Add_Design_Unit (Get_Design_Unit (Get_Entity (Lib_Unit)), Unit);
+            Add_Design_Unit (Get_Design_Unit (Get_Entity (Lib_Unit)), Loc);
             Add_Design_Concurrent_Stmts (Lib_Unit);
          when Iir_Kind_Entity_Declaration
            | Iir_Kind_Package_Body
@@ -205,7 +205,9 @@ package body Vhdl.Configuration is
                      Error_Msg_Elab
                        (Lib_Unit, "body of %n was never analyzed", +Lib_Unit);
                   elsif Get_Date (Bod) < Get_Date (Unit) then
-                     Error_Msg_Elab (Bod, "%n is outdated", +Bod);
+                     --  Cannot use BOD as location, as the location may not
+                     --  exist.
+                     Error_Msg_Elab (Lib_Unit, "%n is outdated", +Bod);
                      Bod := Null_Iir;
                   end if;
                end if;
@@ -220,7 +222,7 @@ package body Vhdl.Configuration is
             end if;
             if Bod /= Null_Iir then
                Set_Package (Get_Library_Unit (Bod), Lib_Unit);
-               Add_Design_Unit (Bod, Unit);
+               Add_Design_Unit (Bod, Loc);
             end if;
          end;
       end if;
@@ -284,6 +286,7 @@ package body Vhdl.Configuration is
    is
       use Libraries;
 
+      Loc : Location_Type;
       Entity : Iir;
       Arch_Name : Iir;
       Arch : Iir;
@@ -295,6 +298,7 @@ package body Vhdl.Configuration is
       if Aspect = Null_Iir then
          return;
       end if;
+      Loc := Get_Location (Aspect);
       case Get_Kind (Aspect) is
          when Iir_Kind_Entity_Aspect_Entity =>
             --  Add the entity.
@@ -304,7 +308,7 @@ package body Vhdl.Configuration is
                return;
             end if;
             Entity := Get_Design_Unit (Entity_Lib);
-            Add_Design_Unit (Entity, Aspect);
+            Add_Design_Unit (Entity, Loc);
 
             --  Extract and add the architecture.
             Arch_Name := Get_Architecture (Aspect);
@@ -357,16 +361,16 @@ package body Vhdl.Configuration is
                   --  Recursive instantiation.
                   return;
                else
-                  Add_Design_Unit (Config, Aspect);
+                  Add_Design_Unit (Config, Loc);
                end if;
             end if;
 
             --  Otherwise, simply the architecture.
-            Add_Design_Unit (Arch, Aspect);
+            Add_Design_Unit (Arch, Loc);
 
          when Iir_Kind_Entity_Aspect_Configuration =>
             Add_Design_Unit
-              (Get_Design_Unit (Get_Configuration (Aspect)), Aspect);
+              (Get_Design_Unit (Get_Configuration (Aspect)), Loc);
          when Iir_Kind_Entity_Aspect_Open =>
             null;
          when others =>
@@ -537,6 +541,22 @@ package body Vhdl.Configuration is
       end loop;
    end Check_Binding_Indication;
 
+   function Is_In_Vendor_Library (Inst : Iir) return Boolean
+   is
+      Parent : Iir;
+   begin
+      Parent := Strip_Denoting_Name (Inst);
+      if Is_Error (Parent) then
+         return False;
+      end if;
+      loop
+         Parent := Get_Parent (Parent);
+         if Get_Kind (Parent) = Iir_Kind_Library_Declaration then
+            return Get_Vendor_Library_Flag (Parent);
+         end if;
+      end loop;
+   end Is_In_Vendor_Library;
+
    --  CONF is either a configuration specification or a component
    --   configuration.
    --  If ADD_DEFAULT is true, then the default configuration for the design
@@ -546,18 +566,22 @@ package body Vhdl.Configuration is
       Bind : constant Iir_Binding_Indication := Get_Binding_Indication (Conf);
       Aspect : Iir;
       Inst : Iir;
+      Comp : Iir;
    begin
       if Bind = Null_Iir then
          if Is_Warning_Enabled (Warnid_Binding) then
             Inst := Get_Nth_Element (Get_Instantiation_List (Conf), 0);
             Inst := Strip_Denoting_Name (Inst);
-            Report_Start_Group;
-            Warning_Msg_Elab (Warnid_Binding, Conf,
-                              "instance %i of component %i is not bound",
-                              (+Inst, +Get_Instantiated_Unit (Inst)));
-            Warning_Msg_Elab (Warnid_Binding, Current_Configuration,
-                              "(in %n)", +Current_Configuration);
-            Report_End_Group;
+            Comp := Get_Instantiated_Unit (Inst);
+            if not Is_In_Vendor_Library (Comp) then
+               Report_Start_Group;
+               Warning_Msg_Elab (Warnid_Binding, Conf,
+                                 "instance %i of component %i is not bound",
+                                 (+Inst, +Comp));
+               Warning_Msg_Elab (Warnid_Binding, Current_Configuration,
+                                 "(in %n)", +Current_Configuration);
+               Report_End_Group;
+            end if;
          end if;
          return;
       end if;
@@ -678,7 +702,7 @@ package body Vhdl.Configuration is
       Set_Configuration_Mark_Flag (Vhdl.Std_Package.Std_Standard_Unit, True);
       Set_Configuration_Done_Flag (Vhdl.Std_Package.Std_Standard_Unit, True);
 
-      Add_Design_Unit (Top, Null_Iir);
+      Add_Design_Unit (Top, Command_Line_Location);
       return Top;
    end Configure;
 
@@ -708,7 +732,7 @@ package body Vhdl.Configuration is
       end if;
       Set_Bound_Vunit_Chain (Vunit, Get_Bound_Vunit_Chain (Name));
       Set_Bound_Vunit_Chain (Name, Vunit);
-      Add_Design_Unit (Get_Design_Unit (Vunit), Vunit);
+      Add_Design_Unit (Get_Design_Unit (Vunit), Get_Location (Vunit));
    end Add_Verification_Unit;
 
    procedure Add_Verification_Units
@@ -802,11 +826,22 @@ package body Vhdl.Configuration is
       --  Check generics.
       El := Get_Generic_Chain (Entity);
       while El /= Null_Iir loop
-         if Get_Default_Value (El) = Null_Iir then
-            if not (Enable_Override and Allow_Generic_Override (El)) then
-               Error (El, "(%n has no default value)", +El);
-            end if;
-         end if;
+         case Iir_Kinds_Interface_Declaration (Get_Kind (El)) is
+            when Iir_Kinds_Interface_Object_Declaration =>
+               if Get_Default_Value (El) = Null_Iir then
+                  if not (Enable_Override and Allow_Generic_Override (El)) then
+                     Error (El, "(%n has no default value)", +El);
+                  end if;
+               end if;
+            when Iir_Kinds_Interface_Subprogram_Declaration =>
+               Error (El, "(%n is a subprogram generic)", +El);
+            when Iir_Kind_Interface_Type_Declaration =>
+               Error (El, "(%n is a type generic)", +El);
+            when Iir_Kind_Interface_Package_Declaration =>
+               Error (El, "(%n is a package generic)", +El);
+            when Iir_Kind_Interface_Terminal_Declaration =>
+               null;
+         end case;
          El := Get_Chain (El);
       end loop;
 
@@ -823,7 +858,8 @@ package body Vhdl.Configuration is
    end Check_Entity_Declaration_Top;
 
    package Top is
-      procedure Mark_Instantiated_Units (Lib : Iir_Library_Declaration);
+      procedure Mark_Instantiated_Units
+        (Lib : Iir_Library_Declaration; Loc : Location_Type);
 
       Nbr_Top_Entities : Natural;
       First_Top_Entity : Iir;
@@ -833,6 +869,8 @@ package body Vhdl.Configuration is
 
    package body Top is
       use Nodes_Walk;
+
+      Loc_Err : Location_Type;
 
       --  Add entities to the name table (so that they easily could be found).
       function Add_Entity_Cb (Design : Iir) return Walk_Status
@@ -849,9 +887,9 @@ package body Vhdl.Configuration is
          case Iir_Kinds_Library_Unit (Kind) is
             when Iir_Kind_Architecture_Body
               | Iir_Kind_Configuration_Declaration =>
-               Load_Design_Unit (Design, Null_Iir);
+               Load_Design_Unit (Design, Loc_Err);
             when Iir_Kind_Entity_Declaration =>
-               Load_Design_Unit (Design, Null_Iir);
+               Load_Design_Unit (Design, Loc_Err);
                Vhdl.Sem_Scopes.Add_Name (Get_Library_Unit (Design));
             when Iir_Kind_Package_Declaration
               | Iir_Kind_Package_Instantiation_Declaration
@@ -906,10 +944,13 @@ package body Vhdl.Configuration is
                declare
                   use Vhdl.Sem_Scopes;
                   Comp : constant Iir := Get_Named_Entity (Inst);
-                  Interp : constant Name_Interpretation_Type :=
-                    Get_Interpretation (Get_Identifier (Comp));
+                  Interp : Name_Interpretation_Type;
                   Decl : Iir;
                begin
+                  if Is_Error (Comp) then
+                     return Walk_Continue;
+                  end if;
+                  Interp := Get_Interpretation (Get_Identifier (Comp));
                   if Valid_Interpretation (Interp) then
                      Decl := Get_Declaration (Interp);
                      pragma Assert
@@ -938,6 +979,7 @@ package body Vhdl.Configuration is
       begin
          if not Flags.Flag_Elaborate_With_Outdated then
             if Get_Date (Design) < Date_Analyzed then
+               --  Skip outdated units.
                return Walk_Continue;
             end if;
          end if;
@@ -949,10 +991,8 @@ package body Vhdl.Configuration is
                   Mark_Instantiation_Cb'Access);
                pragma Assert (Status = Walk_Continue);
             when Iir_Kind_Configuration_Declaration =>
-               --  TODO
-               raise Program_Error;
-               --  Mark_Units_Of_Block_Configuration
-               --   (Get_Block_Configuration (Unit));
+               --  Just ignored.
+               null;
             when Iir_Kind_Package_Declaration
               | Iir_Kind_Package_Instantiation_Declaration
               | Iir_Kind_Package_Body
@@ -964,10 +1004,14 @@ package body Vhdl.Configuration is
          return Walk_Continue;
       end Mark_Units_Cb;
 
-      procedure Mark_Instantiated_Units (Lib : Iir_Library_Declaration)
+      procedure Mark_Instantiated_Units
+        (Lib : Iir_Library_Declaration; Loc : Location_Type)
       is
          Status : Walk_Status;
       begin
+         pragma Assert (Loc /= No_Location);
+         Loc_Err := Loc;
+
          --  Name table is used to map names to entities.
          Vhdl.Sem_Scopes.Push_Interpretations;
          Vhdl.Sem_Scopes.Open_Declarative_Region;
@@ -1020,9 +1064,10 @@ package body Vhdl.Configuration is
 
    end Top;
 
-   function Find_Top_Entity (From : Iir) return Iir is
+   function Find_Top_Entity (From : Iir; Loc : Location_Type) return Iir is
    begin
-      Top.Mark_Instantiated_Units (From);
+      --  FROM is a library or a design file.
+      Top.Mark_Instantiated_Units (From, Loc);
       Top.Find_First_Top_Entity (From);
 
       if Top.Nbr_Top_Entities = 1 then
@@ -1032,4 +1077,189 @@ package body Vhdl.Configuration is
       end if;
    end Find_Top_Entity;
 
+   type Override_Entry is record
+      Gen : Name_Id;
+      Value : String_Acc;
+   end record;
+
+   package Override_Table is new Tables
+     (Table_Component_Type => Override_Entry,
+      Table_Index_Type => Natural,
+      Table_Low_Bound => 1,
+      Table_Initial => 16);
+
+   procedure Add_Generic_Override (Id : Name_Id; Value : String) is
+   begin
+      Override_Table.Append (Override_Entry'(Gen => Id,
+                                             Value => new String'(Value)));
+   end Add_Generic_Override;
+
+   function Override_String_Generic
+     (Value : String_Acc; Formal_Type : Iir) return Iir
+   is
+      use Str_Table;
+      use Vhdl.Evaluation;
+      El_Type : constant Iir :=
+        Get_Base_Type (Get_Element_Subtype (Formal_Type));
+      F : constant Positive := Value'First;
+      Elist : Iir_Flist;
+      Res : Iir;
+      Str8 : String8_Id;
+      Ntype : Iir;
+      Len : Int32;
+   begin
+      if Get_Kind (El_Type) /= Iir_Kind_Enumeration_Type_Definition then
+         return Null_Iir;
+      end if;
+      Elist := Get_Enumeration_Literal_List (El_Type);
+
+      Str8 := Create_String8;
+      if Value'Last >= F + 2
+        and then (Value (F) = 'x' or Value (F) = 'X')
+        and then Value (F + 1) = '"'
+        and then Value (Value'Last) = '"'
+      then
+         --  Hexa string.
+         declare
+            C : Character;
+            V : Natural;
+            E0, E1 : Iir;
+            E : Iir;
+         begin
+            E0 := Find_Name_In_Flist (Elist, Get_Identifier ('0'));
+            E1 := Find_Name_In_Flist (Elist, Get_Identifier ('1'));
+            if E0 = Null_Iir or E1 = Null_Iir then
+               return Null_Iir;
+            end if;
+            Len := 0;
+            for I in F + 2 .. Value'Last - 1 loop
+               C := Value (I);
+               case C is
+                  when '0' .. '9' =>
+                     V := Character'Pos (C) - Character'Pos ('0');
+                  when 'A' .. 'F' =>
+                     V := Character'Pos (C) - Character'Pos ('A') + 10;
+                  when 'a' .. 'f' =>
+                     V := Character'Pos (C) - Character'Pos ('a') + 10;
+                  when '_' =>
+                     V := 16;
+                  when others =>
+                     Error_Msg_Elab ("incorrect character in bit string");
+                     V := 16;
+               end case;
+               if V < 16 then
+                  Len := Len + 4;
+                  for J in 1 .. 4 loop
+                     if V >= 8 then
+                        E := E1;
+                        V := V - 8;
+                     else
+                        E := E0;
+                     end if;
+                     Append_String8 (Nat8 (Get_Enum_Pos (E)));
+                     V := V * 2;
+                  end loop;
+               end if;
+            end loop;
+         end;
+      else
+         declare
+            Eid : Name_Id;
+            Elit : Iir;
+         begin
+            for I in Value'Range loop
+               Eid := Get_Identifier (Value (I));
+               Elit := Find_Name_In_Flist (Elist, Eid);
+               if Elit = Null_Iir then
+                  Error_Msg_Elab ("incorrect character %i in string", +Eid);
+                  Elit := Get_Nth_Element (Elist, 0);
+               end if;
+               Append_String8 (Nat8 (Get_Enum_Pos (Elit)));
+            end loop;
+         end;
+         Len := Value'Length;
+      end if;
+      Res := Create_Iir (Iir_Kind_String_Literal8);
+      Set_String8_Id (Res, Str8);
+      --  FIXME: check characters are in the type.
+      Set_String_Length (Res, Len);
+      Set_Expr_Staticness (Res, Locally);
+      Ntype := Create_Unidim_Array_By_Length
+        (Get_Base_Type (Formal_Type), Value'Length, Res);
+      Set_Type (Res, Ntype);
+      Set_Literal_Subtype (Res, Ntype);
+
+      return Res;
+   end Override_String_Generic;
+
+   procedure Override_Generic (Gen : Iir; Value : String_Acc)
+   is
+      use Vhdl.Evaluation;
+      Formal_Type : constant Iir := Get_Type (Gen);
+      Formal_Btype : constant Iir := Get_Base_Type (Formal_Type);
+      Res : Iir;
+   begin
+      case Get_Kind (Formal_Btype) is
+         when Iir_Kind_Integer_Type_Definition
+           | Iir_Kind_Enumeration_Type_Definition =>
+            Res := Eval_Value_Attribute (Value.all, Formal_Type, Gen);
+            if not Eval_Is_In_Bound (Res, Formal_Type) then
+               Error_Msg_Elab ("override for %n is out of bounds", +Gen);
+               return;
+            end if;
+            Set_Literal_Origin (Res, Null_Iir);
+         when Iir_Kind_Array_Type_Definition =>
+            if Is_One_Dimensional_Array_Type (Formal_Btype) then
+               Res := Override_String_Generic (Value, Formal_Type);
+            else
+               Res := Null_Iir;
+            end if;
+         when others =>
+            Res := Null_Iir;
+      end case;
+      if Res = Null_Iir then
+         Error_Msg_Elab ("unhandled override for %n", +Gen);
+         return;
+      end if;
+
+      if Get_Is_Ref (Gen) then
+         Set_Is_Ref (Gen, False);
+      else
+         if Get_Has_Identifier_List (Gen) then
+            --  Transfer ownership to the next interface.
+            Set_Is_Ref (Get_Chain (Gen), False);
+         end if;
+      end if;
+      Set_Location (Res, No_Location);
+      Set_Default_Value (Gen, Res);
+   end Override_Generic;
+
+   procedure Apply_Generic_Override (Ent : Iir)
+   is
+      Inter_Chain : constant Iir := Get_Generic_Chain (Ent);
+      Inter : Iir;
+   begin
+      for I in Override_Table.First .. Override_Table.Last loop
+         declare
+            Over : constant Override_Entry := Override_Table.Table (I);
+         begin
+            Inter := Inter_Chain;
+            while Inter /= Null_Iir loop
+               exit when Get_Identifier (Inter) = Over.Gen;
+               Inter := Get_Chain (Inter);
+            end loop;
+
+            if Inter = Null_Iir then
+               Error_Msg_Elab ("no generic %i for -g", +Over.Gen);
+            elsif Get_Kind (Inter) /= Iir_Kind_Interface_Constant_Declaration
+            then
+               Error_Msg_Elab
+                 ("generic %n cannot be overriden (not a constant)",
+                  +Over.Gen);
+            else
+               Override_Generic (Inter, Over.Value);
+            end if;
+         end;
+      end loop;
+   end Apply_Generic_Override;
 end Vhdl.Configuration;

@@ -15,18 +15,21 @@
 --  along with GHDL; see the file COPYING.  If not, write to the Free
 --  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
 --  02111-1307, USA.
+
 with Ada.Unchecked_Deallocation;
+with Ada.Characters.Handling;
 with Interfaces;
-with Vhdl.Scanner;
-with Errorout; use Errorout;
+
 with Name_Table; use Name_Table;
 with Str_Table;
+with Flags; use Flags;
+with Std_Names;
+with Errorout; use Errorout;
+with Vhdl.Scanner;
 with Vhdl.Errors; use Vhdl.Errors;
 with Vhdl.Utils; use Vhdl.Utils;
 with Vhdl.Std_Package; use Vhdl.Std_Package;
-with Flags; use Flags;
-with Std_Names;
-with Ada.Characters.Handling;
+with Vhdl.Ieee.Std_Logic_1164;
 with Grt.Fcvt;
 
 package body Vhdl.Evaluation is
@@ -35,6 +38,7 @@ package body Vhdl.Evaluation is
 
    function Eval_Enum_To_String (Lit : Iir; Orig : Iir) return Iir;
    function Eval_Integer_Image (Val : Int64; Orig : Iir) return Iir;
+   function Eval_Floating_Image (Val : Fp64; Orig : Iir) return Iir;
 
    function Eval_Scalar_Compare (Left, Right : Iir) return Compare_Type;
 
@@ -325,9 +329,9 @@ package body Vhdl.Evaluation is
 
       Pos := Eval_Pos (Left);
       case Get_Direction (A_Range) is
-         when Iir_To =>
+         when Dir_To =>
             Pos := Pos + Len - 1;
-         when Iir_Downto =>
+         when Dir_Downto =>
             Pos := Pos - Len + 1;
       end case;
       if Len > 0
@@ -388,7 +392,7 @@ package body Vhdl.Evaluation is
             Error_Kind ("create_range_subtype_by_length", A_Type);
       end case;
       Set_Location (Res, Loc);
-      Set_Base_Type (Res, Get_Base_Type (A_Type));
+      Set_Parent_Type (Res, A_Type);
       Set_Type_Staticness (Res, Locally);
 
       return Res;
@@ -486,9 +490,9 @@ package body Vhdl.Evaluation is
       Pos : constant Int64 := Eval_Pos (Expr);
    begin
       case Get_Direction (Rng) is
-         when Iir_To =>
+         when Dir_To =>
             return Iir_Index32 (Pos - Left_Pos);
-         when Iir_Downto =>
+         when Dir_Downto =>
             return Iir_Index32 (Left_Pos - Pos);
       end case;
    end Eval_Pos_In_Range;
@@ -551,7 +555,7 @@ package body Vhdl.Evaluation is
       end loop;
    end Build_Array_Choices_Vector;
 
-   function Aggregate_To_Simple_Aggregate (Aggr : Iir) return Iir
+   function Array_Aggregate_To_Simple_Aggregate (Aggr : Iir) return Iir
    is
       Aggr_Type : constant Iir := Get_Type (Aggr);
       Index_Type : constant Iir := Get_Index_Type (Aggr_Type, 0);
@@ -588,7 +592,7 @@ package body Vhdl.Evaluation is
       end if;
 
       return Build_Simple_Aggregate (List, Aggr, Aggr_Type);
-   end Aggregate_To_Simple_Aggregate;
+   end Array_Aggregate_To_Simple_Aggregate;
 
    function Eval_String_Literal (Str : Iir) return Iir is
    begin
@@ -597,7 +601,7 @@ package body Vhdl.Evaluation is
             return String_Literal8_To_Simple_Aggregate (Str);
 
          when Iir_Kind_Aggregate =>
-            return Aggregate_To_Simple_Aggregate (Str);
+            return Array_Aggregate_To_Simple_Aggregate (Str);
 
          when Iir_Kind_Simple_Aggregate =>
             return Str;
@@ -683,6 +687,8 @@ package body Vhdl.Evaluation is
             return Eval_Enum_To_String (Operand, Orig);
          when Iir_Predefined_Integer_To_String =>
             return Eval_Integer_Image (Get_Value (Operand), Orig);
+         when Iir_Predefined_Floating_To_String =>
+            return Eval_Floating_Image (Get_Fp_Value (Operand), Orig);
 
          when Iir_Predefined_Array_Char_To_String =>
             --  LRM08 5.7 String representation
@@ -1193,18 +1199,20 @@ package body Vhdl.Evaluation is
                     Get_Range_Constraint (Left_Index);
                   Ret_Type : constant Iir :=
                     Get_Return_Type (Get_Implementation (Orig));
+                  Rng_Type : constant Iir := Get_Index_Type (Ret_Type, 0);
                   A_Range : Iir;
                   Index_Type : Iir;
                begin
                   A_Range := Create_Iir (Iir_Kind_Range_Expression);
-                  Set_Type (A_Range, Get_Index_Type (Ret_Type, 0));
+                  Location_Copy (A_Range, Orig);
+                  Set_Type (A_Range, Rng_Type);
                   Set_Expr_Staticness (A_Range, Locally);
                   Set_Left_Limit (A_Range, Get_Left_Limit (Left_Range));
                   Set_Direction (A_Range, Get_Direction (Left_Range));
-                  Location_Copy (A_Range, Orig);
                   Set_Right_Limit_By_Length (A_Range, Int64 (Res_Len));
+
                   Index_Type := Create_Range_Subtype_From_Type
-                    (Left_Index, Get_Location (Orig));
+                    (Rng_Type, Get_Location (Orig));
                   Set_Range_Constraint (Index_Type, A_Range);
                   Res_Type := Create_Unidim_Array_From_Index
                     (Origin_Type, Index_Type, Orig);
@@ -1371,6 +1379,161 @@ package body Vhdl.Evaluation is
          end;
       end if;
    end Eval_Array_Compare;
+
+   function Eval_Logic_Match_Equality (L, R : Iir_Int32; Loc : Iir)
+                                      return Iir_Index32
+   is
+      use Vhdl.Ieee.Std_Logic_1164;
+      Lb, Rb : Boolean;
+   begin
+      if L = Std_Logic_D_Pos or R = Std_Logic_D_Pos then
+         Warning_Msg_Sem
+           (Warnid_Analyze_Assert, +Loc,
+            "STD_LOGIC_1164: '-' operand for matching ordering operator");
+         return Std_Logic_1_Pos;
+      end if;
+      if L = Std_Logic_U_Pos or R = Std_Logic_U_Pos then
+         return Std_Logic_U_Pos;
+      end if;
+      if L = Std_Logic_X_Pos
+        or L = Std_Logic_Z_Pos
+        or L = Std_Logic_W_Pos
+      then
+         return Std_Logic_X_Pos;
+      end if;
+      if R = Std_Logic_X_Pos
+        or R = Std_Logic_Z_Pos
+        or R = Std_Logic_W_Pos
+      then
+         return Std_Logic_X_Pos;
+      end if;
+      Lb := L = Std_Logic_1_Pos or L = Std_Logic_H_Pos;
+      Rb := R = Std_Logic_1_Pos or R = Std_Logic_H_Pos;
+      if Lb = Rb then
+         return Std_Logic_1_Pos;
+      else
+         return Std_Logic_0_Pos;
+      end if;
+   end Eval_Logic_Match_Equality;
+
+   function Eval_Equality (Left, Right : Iir) return Boolean;
+
+   --  CHOICES is a chain of choice from a record aggregate; FEL is an Flist
+   --  whose length is the number of element of the record type.
+   --  Fill FEL with the associated expressions from CHOICES, so that it is
+   --  easier to deal than the aggregate as elements are ordered.
+   procedure Fill_Flist_From_Record_Aggregate (Choices : Iir; Fel : Iir_Flist)
+   is
+      Pos : Natural;
+      Ch : Iir;
+      Expr : Iir;
+   begin
+      Pos := 0;
+      Ch := Choices;
+      while Ch /= Null_Iir loop
+         Expr := Get_Associated_Expr (Ch);
+         case Iir_Kinds_Record_Choice (Get_Kind (Ch)) is
+            when Iir_Kind_Choice_By_None =>
+               Set_Nth_Element (Fel, Pos, Expr);
+               Pos := Pos + 1;
+            when Iir_Kind_Choice_By_Name =>
+               Pos := Natural (Get_Element_Position
+                                 (Get_Named_Entity (Get_Choice_Name (Ch))));
+               Set_Nth_Element (Fel, Pos, Expr);
+            when Iir_Kind_Choice_By_Others =>
+               for I in 0 .. Get_Nbr_Elements (Fel) - 1 loop
+                  if Get_Nth_Element (Fel, I) = Null_Iir then
+                     Set_Nth_Element (Fel, I, Expr);
+                  end if;
+               end loop;
+         end case;
+         Ch := Get_Chain (Ch);
+      end loop;
+   end Fill_Flist_From_Record_Aggregate;
+
+
+   function Eval_Record_Equality (Left, Right : Iir) return Boolean
+   is
+      pragma Assert (Get_Kind (Left) = Iir_Kind_Aggregate);
+      pragma Assert (Get_Kind (Right) = Iir_Kind_Aggregate);
+      Lch, Rch : Iir;
+   begin
+      Lch := Get_Association_Choices_Chain (Left);
+      Rch := Get_Association_Choices_Chain (Right);
+
+      if Get_Kind (Lch) = Iir_Kind_Choice_By_None
+        and then Get_Kind (Rch) = Iir_Kind_Choice_By_None
+      then
+         --  All choices are positionnal.
+         while Lch /= Null_Iir loop
+            pragma Assert (Rch /= Null_Iir);
+            pragma Assert (Get_Kind (Lch) = Iir_Kind_Choice_By_None);
+            pragma Assert (Get_Kind (Rch) = Iir_Kind_Choice_By_None);
+            if not Eval_Equality (Get_Associated_Expr (Lch),
+                                  Get_Associated_Expr (Rch))
+            then
+               return False;
+            end if;
+            Lch := Get_Chain (Lch);
+            Rch := Get_Chain (Rch);
+         end loop;
+         pragma Assert (Rch = Null_Iir);
+         return True;
+      else
+         declare
+            Els : constant Iir_Flist :=
+              Get_Elements_Declaration_List (Get_Type (Left));
+            Nels : constant Natural := Get_Nbr_Elements (Els);
+            Lel, Rel : Iir_Flist;
+            Res : Boolean;
+         begin
+            Lel := Create_Iir_Flist (Nels);
+            Rel := Create_Iir_Flist (Nels);
+            Fill_Flist_From_Record_Aggregate (Lch, Lel);
+            Fill_Flist_From_Record_Aggregate (Rch, Rel);
+
+            Res := True;
+            for I in 0 .. Nels - 1 loop
+               if not Eval_Equality (Get_Nth_Element (Lel, I),
+                                     Get_Nth_Element (Rel, I))
+               then
+                  Res := False;
+                  exit;
+               end if;
+            end loop;
+
+            Destroy_Iir_Flist (Lel);
+            Destroy_Iir_Flist (Rel);
+
+            return Res;
+         end;
+      end if;
+   end Eval_Record_Equality;
+
+   function Eval_Equality (Left, Right : Iir) return Boolean
+   is
+      Ltype : constant Iir := Get_Base_Type (Get_Type (Left));
+   begin
+      pragma Assert
+        (Get_Kind (Ltype) = Get_Kind (Get_Base_Type (Get_Type (Right))));
+
+      case Get_Kind (Ltype) is
+         when Iir_Kind_Enumeration_Type_Definition =>
+            return Get_Enum_Pos (Left) = Get_Enum_Pos (Right);
+         when Iir_Kind_Physical_Type_Definition =>
+            return Get_Physical_Value (Left) = Get_Physical_Value (Right);
+         when Iir_Kind_Integer_Type_Definition =>
+            return Get_Value (Left) = Get_Value (Right);
+         when Iir_Kind_Floating_Type_Definition =>
+            return Get_Fp_Value (Left) = Get_Fp_Value (Right);
+         when Iir_Kind_Array_Type_Definition =>
+            return Eval_Array_Compare (Left, Right) = Compare_Eq;
+         when Iir_Kind_Record_Type_Definition =>
+            return Eval_Record_Equality (Left, Right);
+         when others =>
+            Error_Kind ("eval_equality", Ltype);
+      end case;
+   end Eval_Equality;
 
    --  ORIG is either a dyadic operator or a function call.
    function Eval_Dyadic_Operator (Orig : Iir; Imp : Iir; Left, Right : Iir)
@@ -1703,6 +1866,11 @@ package body Vhdl.Evaluation is
             return Build_Boolean
               (Eval_Array_Compare (Left, Right) >= Compare_Eq);
 
+         when Iir_Predefined_Record_Equality =>
+            return Build_Boolean (Eval_Record_Equality (Left, Right));
+         when Iir_Predefined_Record_Inequality =>
+            return Build_Boolean (not Eval_Record_Equality (Left, Right));
+
          when Iir_Predefined_Boolean_Not
            | Iir_Predefined_Boolean_Rising_Edge
            | Iir_Predefined_Boolean_Falling_Edge
@@ -1719,12 +1887,12 @@ package body Vhdl.Evaluation is
            | Iir_Predefined_Physical_Identity
            | Iir_Predefined_Physical_Negation
            | Iir_Predefined_Error
-           | Iir_Predefined_Record_Equality
-           | Iir_Predefined_Record_Inequality
            | Iir_Predefined_Access_Equality
            | Iir_Predefined_Access_Inequality
            | Iir_Predefined_TF_Array_Not
            | Iir_Predefined_Now_Function
+           | Iir_Predefined_Real_Now_Function
+           | Iir_Predefined_Frequency_Function
            | Iir_Predefined_Deallocate
            | Iir_Predefined_Write
            | Iir_Predefined_Read
@@ -1750,8 +1918,12 @@ package body Vhdl.Evaluation is
            | Iir_Predefined_Vector_Maximum =>
             raise Internal_Error;
 
-         when Iir_Predefined_Std_Ulogic_Match_Equality
-           | Iir_Predefined_Std_Ulogic_Match_Inequality
+         when Iir_Predefined_Std_Ulogic_Match_Equality =>
+            return Build_Enumeration
+              (Eval_Logic_Match_Equality (Get_Enum_Pos (Left),
+                                          Get_Enum_Pos (Right), Orig),
+               Orig);
+         when Iir_Predefined_Std_Ulogic_Match_Inequality
            | Iir_Predefined_Std_Ulogic_Match_Less
            | Iir_Predefined_Std_Ulogic_Match_Less_Equal
            | Iir_Predefined_Std_Ulogic_Match_Greater
@@ -2162,7 +2334,7 @@ package body Vhdl.Evaluation is
       Res := Build_Constant (Val, Conv);
       if Get_Constraint_State (Conv_Type) = Fully_Constrained then
          Set_Type (Res, Conv_Type);
-         if not Eval_Is_In_Bound (Val, Conv_Type) then
+         if not Eval_Is_In_Bound (Val, Conv_Type, True) then
             Warning_Msg_Sem (Warnid_Runtime_Error, +Conv,
                              "non matching length in type conversion");
             return Build_Overflow (Conv);
@@ -2180,7 +2352,7 @@ package body Vhdl.Evaluation is
             Index_Type := Create_Iir (Iir_Kind_Integer_Subtype_Definition);
             Location_Copy (Index_Type, Conv);
             Set_Range_Constraint (Index_Type, Rng);
-            Set_Base_Type (Index_Type, Get_Base_Type (Conv_Index_Type));
+            Set_Parent_Type (Index_Type, Conv_Index_Type);
             Set_Type_Staticness (Index_Type, Locally);
          end if;
          Res_Type := Create_Unidim_Array_From_Index
@@ -2232,13 +2404,11 @@ package body Vhdl.Evaluation is
                Error_Kind ("eval_type_conversion(3)", Conv_Type);
          end case;
       end if;
-      if not Eval_Is_In_Bound (Res, Get_Type (Conv)) then
-         if Get_Kind (Res) /= Iir_Kind_Overflow_Literal then
-            Warning_Msg_Sem (Warnid_Runtime_Error, +Conv,
-                             "result of conversion out of bounds");
-            Free_Eval_Static_Expr (Res, Conv);
-            Res := Build_Overflow (Conv);
-         end if;
+      if not Eval_Is_In_Bound (Res, Get_Type (Conv), True) then
+         Warning_Msg_Sem (Warnid_Runtime_Error, +Conv,
+                          "result of conversion out of bounds");
+         Free_Eval_Static_Expr (Res, Conv);
+         Res := Build_Overflow (Conv);
       end if;
       return Res;
    end Eval_Type_Conversion;
@@ -2414,15 +2584,21 @@ package body Vhdl.Evaluation is
                when Iir_Kind_Choice_By_None =>
                   exit when Cur_Pos = Eval_Pos (Idx);
                   case Get_Direction (Aggr_Bounds) is
-                     when Iir_To =>
+                     when Dir_To =>
                         Cur_Pos := Cur_Pos + 1;
-                     when Iir_Downto =>
+                     when Dir_Downto =>
                         Cur_Pos := Cur_Pos - 1;
                   end case;
                when Iir_Kind_Choice_By_Expression =>
                   exit when Eval_Is_Eq (Get_Choice_Expression (Assoc), Idx);
                when Iir_Kind_Choice_By_Range =>
-                  exit when Eval_Is_In_Bound (Idx, Get_Choice_Range (Assoc));
+                  declare
+                     Rng : Iir;
+                  begin
+                     Rng := Get_Choice_Range (Assoc);
+                     Rng := Eval_Static_Range (Rng);
+                     exit when Eval_Int_In_Range (Eval_Pos (Idx), Rng);
+                  end;
                when Iir_Kind_Choice_By_Others =>
                   exit;
                when others =>
@@ -2506,9 +2682,7 @@ package body Vhdl.Evaluation is
             Set_Nth_Element (Indexes_List, I, Index);
 
             --  Return overflow if out of range.
-            if Get_Kind (Index) = Iir_Kind_Overflow_Literal
-              or else not Eval_Is_In_Bound (Index, Prefix_Index)
-            then
+            if not Eval_Is_In_Bound (Index, Prefix_Index) then
                return Build_Overflow (Expr, Get_Type (Expr));
             end if;
          end loop;
@@ -2573,9 +2747,9 @@ package body Vhdl.Evaluation is
             when Iir_Kind_Choice_By_Expression =>
                Assoc_Pos := Eval_Pos (Get_Choice_Expression (Assoc));
                case Get_Direction (Aggr_Bounds) is
-                  when Iir_To =>
+                  when Dir_To =>
                      Cur_Off := Iir_Index32 (Assoc_Pos - Left_Pos);
-                  when Iir_Downto =>
+                  when Dir_Downto =>
                      Cur_Off := Iir_Index32 (Left_Pos - Assoc_Pos);
                end case;
                if Cur_Off = Off then
@@ -2595,18 +2769,18 @@ package body Vhdl.Evaluation is
                   Left := Eval_Pos (Get_Left_Limit (Rng));
                   Right := Eval_Pos (Get_Right_Limit (Rng));
                   case Get_Direction (Rng) is
-                     when Iir_To =>
+                     when Dir_To =>
                         Lo := Left;
                         Hi := Right;
-                     when Iir_Downto =>
+                     when Dir_Downto =>
                         Lo := Right;
                         Hi := Left;
                   end case;
                   case Get_Direction (Aggr_Bounds) is
-                     when Iir_To =>
+                     when Dir_To =>
                         Lo_Off := Iir_Index32 (Lo - Left_Pos);
                         Hi_Off := Iir_Index32 (Hi - Left_Pos);
-                     when Iir_Downto =>
+                     when Dir_Downto =>
                         Lo_Off := Iir_Index32 (Left_Pos - Lo);
                         Hi_Off := Iir_Index32 (Left_Pos - Hi);
                   end case;
@@ -2805,11 +2979,11 @@ package body Vhdl.Evaluation is
             begin
                Param := Get_Parameter (Expr);
                Param := Eval_Static_Expr (Param);
-               Eval_Check_Bound (Param, Get_Type (Get_Prefix (Expr)));
                Set_Parameter (Expr, Param);
 
                --  Special case for overflow.
-               if Get_Kind (Param) = Iir_Kind_Overflow_Literal then
+               if not Eval_Is_In_Bound (Param, Get_Type (Get_Prefix (Expr)))
+               then
                   return Build_Overflow (Expr);
                end if;
 
@@ -2859,7 +3033,7 @@ package body Vhdl.Evaluation is
               (Get_Low_Limit (Eval_Static_Range (Get_Prefix (Expr))));
          when Iir_Kind_Ascending_Type_Attribute =>
             return Build_Boolean
-              (Get_Direction (Eval_Static_Range (Get_Prefix (Expr))) = Iir_To);
+              (Get_Direction (Eval_Static_Range (Get_Prefix (Expr))) = Dir_To);
 
          when Iir_Kind_Length_Array_Attribute =>
             declare
@@ -2906,7 +3080,7 @@ package body Vhdl.Evaluation is
             begin
                Index := Eval_Array_Attribute (Expr);
                return Build_Boolean
-                 (Get_Direction (Get_Range_Constraint (Index)) = Iir_To);
+                 (Get_Direction (Get_Range_Constraint (Index)) = Dir_To);
             end;
 
          when Iir_Kind_Pred_Attribute =>
@@ -2929,9 +3103,9 @@ package body Vhdl.Evaluation is
             begin
                Rng := Eval_Static_Range (Prefix_Type);
                case Get_Direction (Rng) is
-                  when Iir_To =>
+                  when Dir_To =>
                      N := 1;
-                  when Iir_Downto =>
+                  when Dir_Downto =>
                      N := -1;
                end case;
                case Get_Kind (Expr) is
@@ -3147,7 +3321,9 @@ package body Vhdl.Evaluation is
             begin
                Assoc := Get_Parameter_Association_Chain (Expr);
                while Is_Valid (Assoc) loop
-                  case Iir_Kinds_Association_Element (Get_Kind (Assoc)) is
+                  case Iir_Kinds_Association_Element_Parameters
+                    (Get_Kind (Assoc))
+                  is
                      when Iir_Kind_Association_Element_By_Expression =>
                         Assoc_Expr := Get_Actual (Assoc);
                         if not Can_Eval_Value (Assoc_Expr, False) then
@@ -3227,13 +3403,13 @@ package body Vhdl.Evaluation is
       case Get_Kind (Bound) is
          when Iir_Kind_Range_Expression =>
             case Get_Direction (Bound) is
-               when Iir_To =>
+               when Dir_To =>
                   if Val < Eval_Pos (Get_Left_Limit (Bound))
                     or else Val > Eval_Pos (Get_Right_Limit (Bound))
                   then
                      return False;
                   end if;
-               when Iir_Downto =>
+               when Dir_Downto =>
                   if Val > Eval_Pos (Get_Left_Limit (Bound))
                     or else Val < Eval_Pos (Get_Right_Limit (Bound))
                   then
@@ -3265,11 +3441,11 @@ package body Vhdl.Evaluation is
                   Error_Kind ("eval_phys_in_range(1)", Get_Type (Bound));
             end case;
             case Get_Direction (Bound) is
-               when Iir_To =>
+               when Dir_To =>
                   if Val < Left or else Val > Right then
                      return False;
                   end if;
-               when Iir_Downto =>
+               when Dir_Downto =>
                   if Val > Left or else Val < Right then
                      return False;
                   end if;
@@ -3285,13 +3461,13 @@ package body Vhdl.Evaluation is
       case Get_Kind (Bound) is
          when Iir_Kind_Range_Expression =>
             case Get_Direction (Bound) is
-               when Iir_To =>
+               when Dir_To =>
                   if Val < Get_Fp_Value (Get_Left_Limit (Bound))
                     or else Val > Get_Fp_Value (Get_Right_Limit (Bound))
                   then
                      return False;
                   end if;
-               when Iir_Downto =>
+               when Dir_Downto =>
                   if Val > Get_Fp_Value (Get_Left_Limit (Bound))
                     or else Val < Get_Fp_Value (Get_Right_Limit (Bound))
                   then
@@ -3305,7 +3481,8 @@ package body Vhdl.Evaluation is
    end Eval_Fp_In_Range;
 
    --  Return FALSE if literal EXPR is not in SUB_TYPE bounds.
-   function Eval_Is_In_Bound (Expr : Iir; Sub_Type : Iir) return Boolean
+   function Eval_Is_In_Bound
+     (Expr : Iir; Sub_Type : Iir; Overflow : Boolean := False) return Boolean
    is
       Type_Range : Iir;
       Val : Iir;
@@ -3325,8 +3502,7 @@ package body Vhdl.Evaluation is
             --  Ignore errors.
             return True;
          when Iir_Kind_Overflow_Literal =>
-            --  Never within bounds
-            return False;
+            return Overflow;
          when others =>
             null;
       end case;
@@ -3454,13 +3630,10 @@ package body Vhdl.Evaluation is
 
    procedure Eval_Check_Bound (Expr : Iir; Sub_Type : Iir) is
    begin
-      if Get_Kind (Expr) = Iir_Kind_Overflow_Literal then
-         --  Nothing to check, and a message was already generated.
-         return;
-      end if;
-
-      if not Eval_Is_In_Bound (Expr, Sub_Type) then
-         Error_Msg_Sem (+Expr, "static expression violates bounds");
+      --  Note: use True not to repeat a message in case of overflow.
+      if not Eval_Is_In_Bound (Expr, Sub_Type, True) then
+         Warning_Msg_Sem (Warnid_Runtime_Error, +Expr,
+                          "static expression violates bounds");
       end if;
    end Eval_Check_Bound;
 
@@ -3490,11 +3663,11 @@ package body Vhdl.Evaluation is
                L := Eval_Pos (Get_Left_Limit (Range_Constraint));
                R := Eval_Pos (Get_Right_Limit (Range_Constraint));
                case Get_Direction (Range_Constraint) is
-                  when Iir_To =>
+                  when Dir_To =>
                      if L > R then
                         return True;
                      end if;
-                  when Iir_Downto =>
+                  when Dir_Downto =>
                      if L < R then
                         return True;
                      end if;
@@ -3510,11 +3683,11 @@ package body Vhdl.Evaluation is
                L := Get_Fp_Value (Get_Left_Limit (Range_Constraint));
                R := Get_Fp_Value (Get_Right_Limit (Range_Constraint));
                case Get_Direction (Range_Constraint) is
-                  when Iir_To =>
+                  when Dir_To =>
                      if L > R then
                         return True;
                      end if;
-                  when Iir_Downto =>
+                  when Dir_Downto =>
                      if L < R then
                         return True;
                      end if;
@@ -3536,7 +3709,8 @@ package body Vhdl.Evaluation is
    is
    begin
       if not Eval_Is_Range_In_Bound (A_Range, Sub_Type, Any_Dir) then
-         Error_Msg_Sem (+A_Range, "static range violates bounds");
+         Warning_Msg_Sem (Warnid_Runtime_Error, +A_Range,
+                          "static range violates bounds");
       end if;
    end Eval_Check_Range;
 
@@ -3550,14 +3724,14 @@ package body Vhdl.Evaluation is
       Left := Eval_Pos (Get_Left_Limit (Constraint));
       Right := Eval_Pos (Get_Right_Limit (Constraint));
       case Get_Direction (Constraint) is
-         when Iir_To =>
+         when Dir_To =>
             if Right < Left then
                --  Null range.
                return 0;
             else
                Res := Right - Left + 1;
             end if;
-         when Iir_Downto =>
+         when Dir_Downto =>
             if Left < Right then
                --  Null range
                return 0;
@@ -3589,9 +3763,9 @@ package body Vhdl.Evaluation is
       Left := Eval_Pos (Get_Left_Limit (Rng));
       Right := Eval_Pos (Get_Right_Limit (Rng));
       case Get_Direction (Rng) is
-         when Iir_To =>
+         when Dir_To =>
             return Right < Left;
-         when Iir_Downto =>
+         when Dir_Downto =>
             return Left < Right;
       end case;
    end Eval_Is_Null_Discrete_Range;
@@ -3687,10 +3861,10 @@ package body Vhdl.Evaluation is
                      Location_Copy (Res, Expr);
                      Set_Type (Res, Get_Type (Expr));
                      case Get_Direction (Expr) is
-                        when Iir_To =>
-                           Set_Direction (Res, Iir_Downto);
-                        when Iir_Downto =>
-                           Set_Direction (Res, Iir_To);
+                        when Dir_To =>
+                           Set_Direction (Res, Dir_Downto);
+                        when Dir_Downto =>
+                           Set_Direction (Res, Dir_To);
                      end case;
                      Set_Left_Limit (Res, Get_Right_Limit (Expr));
                      Set_Right_Limit (Res, Get_Left_Limit (Expr));
@@ -3918,21 +4092,34 @@ package body Vhdl.Evaluation is
 
       procedure Path_Add_Type_Name (Atype : Iir)
       is
-         Adecl : constant Iir := Get_Type_Declarator (Atype);
+         Mark : Iir;
       begin
-         Path_Add (Image (Get_Identifier (Adecl)));
+         if Get_Kind (Atype) in Iir_Kinds_Denoting_Name then
+            Mark := Atype;
+         else
+            Mark := Get_Subtype_Type_Mark (Atype);
+         end if;
+         Path_Add (Image (Get_Identifier (Mark)));
       end Path_Add_Type_Name;
 
       procedure Path_Add_Signature (Subprg : Iir)
       is
-         Chain : Iir;
+         Inter : Iir;
+         Inter_Type, Prev_Type : Iir;
       begin
          Path_Add ("[");
-         Chain := Get_Interface_Declaration_Chain (Subprg);
-         while Chain /= Null_Iir loop
-            Path_Add_Type_Name (Get_Type (Chain));
-            Chain := Get_Chain (Chain);
-            if Chain /= Null_Iir then
+         Prev_Type := Null_Iir;
+         Inter := Get_Interface_Declaration_Chain (Subprg);
+         while Inter /= Null_Iir loop
+            Inter_Type := Get_Subtype_Indication (Inter);
+            if Inter_Type = Null_Iir then
+               Inter_Type := Prev_Type;
+            end if;
+            Path_Add_Type_Name (Inter_Type);
+            Prev_Type := Inter_Type;
+
+            Inter := Get_Chain (Inter);
+            if Inter /= Null_Iir then
                Path_Add (",");
             end if;
          end loop;
@@ -3940,7 +4127,7 @@ package body Vhdl.Evaluation is
          case Get_Kind (Subprg) is
             when Iir_Kind_Function_Declaration =>
                Path_Add (" return ");
-               Path_Add_Type_Name (Get_Return_Type (Subprg));
+               Path_Add_Type_Name (Get_Return_Type_Mark (Subprg));
             when others =>
                null;
          end case;

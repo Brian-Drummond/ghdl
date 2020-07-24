@@ -168,7 +168,8 @@ package body Vhdl.Sem_Names is
               | Iir_Kind_Function_Call
               | Iir_Kind_Indexed_Name
               | Iir_Kind_Slice_Name
-              | Iir_Kind_Selected_Element =>
+              | Iir_Kind_Selected_Element
+              | Iir_Kind_Dereference =>
                Add_Element (Res_List, Get_Type (Decl));
             when others =>
                Error_Kind ("create_list_of_types", Decl);
@@ -651,6 +652,7 @@ package body Vhdl.Sem_Names is
             Index := Sem_Expression (Index, Get_Base_Type (Index_Subtype));
          end if;
          if Index /= Null_Iir then
+            Check_Read (Index);
             if Get_Expr_Staticness (Index) = Locally
               and then Get_Type_Staticness (Index_Subtype) = Locally
             then
@@ -823,7 +825,7 @@ package body Vhdl.Sem_Names is
             Set_Range_Constraint (Slice_Type, Suffix_Rng);
             Set_Is_Ref (Slice_Type, True);
             Set_Type_Staticness (Slice_Type, Staticness);
-            Set_Base_Type (Slice_Type, Get_Base_Type (Index_Type));
+            Set_Parent_Type (Slice_Type, Get_Base_Type (Index_Type));
             Set_Location (Slice_Type, Get_Location (Suffix));
 
             --  Attach the new index subtype to the array subtype.
@@ -836,7 +838,7 @@ package body Vhdl.Sem_Names is
       Set_Index_Subtype_List (Expr_Type, Index_List);
       Set_Nth_Element (Index_List, 0, Slice_Type);
       Prefix_Base_Type := Get_Base_Type (Prefix_Type);
-      Set_Base_Type (Expr_Type, Prefix_Base_Type);
+      Set_Parent_Type (Expr_Type, Prefix_Base_Type);
       Set_Signal_Type_Flag (Expr_Type,
                             Get_Signal_Type_Flag (Prefix_Base_Type));
       Set_Element_Subtype (Expr_Type, Get_Element_Subtype (Prefix_Type));
@@ -962,6 +964,7 @@ package body Vhdl.Sem_Names is
       Parent : Iir;
    begin
       if Get_Kind (Base) in Iir_Kinds_Dereference then
+         --  A dereferenced object is never static.
          return None;
       end if;
 
@@ -1038,6 +1041,11 @@ package body Vhdl.Sem_Names is
               = Iir_Kind_Function_Declaration)
          then
             Prefix := Function_Declaration_To_Call (Prefix);
+         end if;
+         if not Is_Object_Name (Prefix) then
+            Error_Msg_Sem_Relaxed
+              (Attr, Warnid_Attribute,
+               "prefix of array attribute must be an object name");
          end if;
       end if;
       Set_Prefix (Attr, Prefix);
@@ -1241,6 +1249,158 @@ package body Vhdl.Sem_Names is
       end if;
    end Finish_Sem_Signal_Attribute;
 
+   procedure Sem_Quantity_Attribute_Parameters
+     (Attr : Iir; Params : Iir_Array; Params_Type : Iir_Array; Min : Natural)
+   is
+      Param : Iir;
+   begin
+      pragma Assert (Params'First = 1);
+      pragma Assert (Params_Type'First = 1);
+      pragma Assert (Params_Type'Last = Params'Last);
+      for I in Params'Range loop
+         Param := Params (I);
+         if Param = Null_Iir then
+            if I <= Min then
+               Error_Msg_Sem
+                 (+Attr, "not enough parameters for the attribute");
+            end if;
+            return;
+         end if;
+         if Params_Type (I) = Null_Iir then
+            Error_Msg_Sem (+Attr, "too many parameters for the attribute");
+            return;
+         end if;
+
+         Param := Sem_Expression (Param, Params_Type (I));
+         if Param /= Null_Iir then
+            if Get_Expr_Staticness (Param) < Globally then
+               Error_Msg_Sem
+                 (+Param, "parameter must be a static expression");
+            end if;
+            Set_Attribute_Parameter (Attr, I, Param);
+         end if;
+      end loop;
+   end Sem_Quantity_Attribute_Parameters;
+
+   procedure Finish_Sem_Quantity_Attribute
+     (Attr_Name : Iir; Attr : Iir; Params : Iir_Array)
+   is
+      Prefix : Iir;
+      Param : Iir;
+   begin
+      Prefix := Get_Prefix (Attr_Name);
+      Set_Prefix (Attr, Prefix);
+      Free_Iir (Attr_Name);
+
+      case Get_Kind (Attr) is
+         when Iir_Kind_Quantity_Delayed_Attribute =>
+            --  AMS-LRM17 16.2.6
+            --  Q'DELAYED[(T)]
+            --  Parameter:
+            --    T: A static expression of type REAL that evaluates to a
+            --     non-negative number.  If omitted, defaults to 0.0.
+            Sem_Quantity_Attribute_Parameters
+              (Attr, Params, (1 => Real_Type_Definition,
+                              2 .. 4 => Null_Iir), 0);
+         when Iir_Kind_Above_Attribute =>
+            pragma Assert (Params'First = 1 and Params'Last = 1);
+            if Params (1) = Null_Iir then
+               Error_Msg_Sem (+Attr, "'above requires a parameter");
+            else
+               --  FIXME: AMS-LRM17 16.2.6
+               --  Any quantity appearing in the expression shall be denoted by
+               --  a static name.
+               Param := Sem_Expression (Params (1), Get_Type (Prefix));
+               if Param /= Null_Iir then
+                  Set_Parameter (Attr, Param);
+               end if;
+            end if;
+         when Iir_Kind_Ramp_Attribute
+           | Iir_Kind_Signal_Slew_Attribute
+           | Iir_Kind_Quantity_Slew_Attribute =>
+            pragma Assert (Params'First = 1 and Params'Last = 4);
+            --  AMS-LRM17 16.2.6
+            --  S'RAMP [(TRISE [, TFALL])]
+            --  Parameters:
+            --    TRISE: a static expression of a floating-point type that
+            --      evaluates to a nonnegative value.  If omitted, it
+            --      defaults to 0.
+            --    TFALL: a static expression of a floating-point type that
+            --      evaluates to a nonnegative value.  If omitted, it
+            --      defaults to the value of TRISE.
+            --
+            --  S'SLEW [(RISING_SLOP [, FALLING_SLOPE])]
+            --  Parameters:
+            --    RISING_SLOPE: a static expression of type REAL that
+            --     evaluates to a positive value.  If omitted, it defaults
+            --     to REAL'HIGH, which is interpreted as an infinite slope.
+            --    FALLING_SLOPE: a static expression of type REAL that
+            --     evaluates to a negative value.  If omitted, it defaults
+            --     to the negative of RISING_SLOPE.  The value REAL'LOW is
+            --     interpreted as a negative infinite slope.
+            --
+            --  Q'SLEW [(MAX_RISING_SLOPE [, MAX_FALLING_SLOPE])]
+            --  Parameters:
+            --    MAX_RISING_SLOPE: a static expression of type REAL that
+            --     evaluates to a positive value.  If omitted, it defaults
+            --     to REAL'HIGH, which is interpreted as an infinite slope.
+            --    MAX_FALLING_SLOPE: a static expression of type REAL that
+            --     evaluates to a negative value.  If omitted, it defaults
+            --     to the negative of MAX_RISING_SLOPE.  The value REAL'LOW
+            --     is interpreted as a negative infinite slope.
+            Sem_Quantity_Attribute_Parameters
+              (Attr, Params, (1 => Real_Type_Definition,
+                              2 => Real_Type_Definition,
+                              3 | 4 => Null_Iir), 1);
+         when Iir_Kind_Zoh_Attribute =>
+            --  AMS-LRM17 16.2.6
+            --  Q'LTF(T [, INITIAL_DELAY)
+            --  Parameters:
+            --    T: A static expression of type REAL that evaluates to a
+            --     positive value.  This is the sampling period.
+            --    INITIAL_DELAY: A static expression of type REAL that
+            --     evaluates to a non-negative value.  The first sampling will
+            --     occur after INITIAL_DELAY seconds.  If omitted, it defaults
+            --     to 0.0.
+            Sem_Quantity_Attribute_Parameters
+              (Attr, Params, (1 => Real_Type_Definition,
+                              2 => Real_Type_Definition,
+                              3 | 4 => Null_Iir), 1);
+         when Iir_Kind_Ltf_Attribute =>
+            --  AMS-LRM17 16.2.6
+            --  Q'LTF(NUM, DEN)
+            --  Parameters:
+            --    NUM: a static expression of type REAL_VECTOR that contains
+            --     the numerator coefficients.
+            --    DEN: a static expression of type REAL_VECTOR that contains
+            --     the denominator coefficients.
+            Sem_Quantity_Attribute_Parameters
+              (Attr, Params, (1 => Real_Vector_Type_Definition,
+                              2 => Real_Vector_Type_Definition,
+                              3 | 4 => Null_Iir), 2);
+         when Iir_Kind_Ztf_Attribute =>
+            --  AMS-LRM17 16.2.6
+            --  Q'ZTF(NUM, DEN, T, [, INITIAL_DELAY])
+            --  Parameters:
+            --    NUM: A static expression of type REAL_VECTOR with the
+            --     numerator coefficients.
+            --    DEN: A static expression of type REAL_VECTOR with the
+            --     denominator coefficients.
+            --    T: A static expression of type REAL that evaluates to a
+            --     positive value, which is the sampling period.
+            --    INITIAL_DELAY: A static expression of type REAL that
+            --     evaluates to a non-negative value, which is the time of the
+            --     first sampling.  If omitted, it defaults to 0.0
+            Sem_Quantity_Attribute_Parameters
+              (Attr, Params, (1 => Real_Vector_Type_Definition,
+                              2 => Real_Vector_Type_Definition,
+                              3 => Real_Type_Definition,
+                              4 => Real_Type_Definition), 3);
+         when others =>
+            Error_Kind ("finish_sem_quantity_attribute", Attr);
+      end case;
+   end Finish_Sem_Quantity_Attribute;
+
    function Is_Type_Abstract_Numeric (Atype : Iir) return Boolean is
    begin
       case Get_Kind (Atype) is
@@ -1443,7 +1603,8 @@ package body Vhdl.Sem_Names is
          return;
       end if;
       case Get_Kind (Subprg) is
-         when Iir_Kinds_Process_Statement =>
+         when Iir_Kinds_Process_Statement
+           | Iir_Kind_Simultaneous_Procedural_Statement =>
             return;
          when Iir_Kind_Procedure_Declaration =>
             --  Exit now if already known as impure.
@@ -1647,7 +1808,6 @@ package body Vhdl.Sem_Names is
             --  and generate).
             return Finish_Sem_Denoting_Name (Name, Res);
          when Iir_Kinds_Object_Declaration
-           | Iir_Kinds_Quantity_Declaration
            | Iir_Kind_Enumeration_Literal
            | Iir_Kind_Unit_Declaration
            | Iir_Kind_Psl_Endpoint_Declaration =>
@@ -1658,6 +1818,13 @@ package body Vhdl.Sem_Names is
             Sem_Check_Pure (Name_Res, Res);
             Sem_Check_All_Sensitized (Res);
             Set_Type (Name_Res, Get_Type (Res));
+            return Name_Res;
+         when Iir_Kind_Terminal_Declaration
+           | Iir_Kind_Interface_Terminal_Declaration =>
+            Name_Res := Finish_Sem_Denoting_Name (Name, Res);
+            Set_Base_Name (Name_Res, Res);
+            Set_Name_Staticness (Name_Res, Get_Name_Staticness (Res));
+            Sem_Check_Pure (Name_Res, Res);
             return Name_Res;
          when Iir_Kind_Attribute_Value =>
             pragma Assert (Get_Kind (Name) = Iir_Kind_Attribute_Name);
@@ -1673,6 +1840,8 @@ package body Vhdl.Sem_Names is
             return Name;
          when Iir_Kind_Type_Declaration
            | Iir_Kind_Subtype_Declaration
+           | Iir_Kind_Nature_Declaration
+           | Iir_Kind_Subnature_Declaration
            | Iir_Kind_Component_Declaration
            | Iir_Kind_Group_Template_Declaration
            | Iir_Kind_Group_Declaration
@@ -1745,7 +1914,9 @@ package body Vhdl.Sem_Names is
                Free_Parenthesis_Name (Name, Res);
             end if;
             return Res;
-         when Iir_Kind_Subtype_Attribute =>
+         when Iir_Kind_Across_Attribute
+            | Iir_Kind_Through_Attribute
+            | Iir_Kind_Nature_Reference_Attribute =>
             null;
          when Iir_Kinds_Signal_Value_Attribute =>
             null;
@@ -1756,8 +1927,28 @@ package body Vhdl.Sem_Names is
                Free_Parenthesis_Name (Name, Res);
             end if;
             return Res;
+         when Iir_Kind_Above_Attribute
+           | Iir_Kind_Ramp_Attribute
+           | Iir_Kind_Quantity_Slew_Attribute
+           | Iir_Kind_Signal_Slew_Attribute
+           | Iir_Kind_Zoh_Attribute
+           | Iir_Kind_Ltf_Attribute
+           | Iir_Kind_Ztf_Attribute
+           | Iir_Kind_Quantity_Delayed_Attribute =>
+            if Get_Parameter (Res) = Null_Iir then
+               --  Not finished.  Need to emit an error message.
+               Finish_Sem_Quantity_Attribute (Name, Res, (1 => Null_Iir));
+            else
+               Free_Parenthesis_Name (Name, Res);
+            end if;
+            return Res;
+         when Iir_Kind_Dot_Attribute
+            | Iir_Kind_Integ_Attribute =>
+            --  Already finished.
+            return Res;
          when Iir_Kinds_Type_Attribute
-           |  Iir_Kind_Base_Attribute =>
+            | Iir_Kind_Subtype_Attribute
+            | Iir_Kind_Base_Attribute =>
             pragma Assert (Get_Kind (Name) = Iir_Kind_Attribute_Name);
             Free_Iir (Name);
             return Res;
@@ -1807,7 +1998,10 @@ package body Vhdl.Sem_Names is
             Finish_Sem_Dereference (Res);
             Free_Iir (Name);
          when Iir_Kinds_Signal_Value_Attribute
-           | Iir_Kind_Subtype_Attribute =>
+           | Iir_Kind_Subtype_Attribute
+           | Iir_Kind_Through_Attribute
+           | Iir_Kind_Across_Attribute
+           | Iir_Kind_Nature_Reference_Attribute =>
             Sem_Name_Free_Result (Name, Res);
          when others =>
             Error_Kind ("finish_sem_name_1(2)", Res);
@@ -2071,29 +2265,34 @@ package body Vhdl.Sem_Names is
          Error_Msg_Sem (+Name, "no method %i in %n", (+Suffix, +Prot_Type));
       end Error_Protected_Item;
 
-      --  Emit an error message if unit is not found in library LIB.
-      procedure Error_Unit_Not_Found (Lib : Iir)
+      --  Check if a synopsys package can be imported.
+      procedure Check_Synopsys_Package (Lib : Iir)
       is
          use Std_Names;
       begin
-         Error_Msg_Sem (+Name, "unit %i not found in %n", (+Suffix, +Lib));
-
-         --  Give an advice for common synopsys packages.
-         if Get_Identifier (Lib) = Name_Ieee then
-            if Suffix = Name_Std_Logic_Arith
-              or else Suffix = Name_Std_Logic_Signed
-              or else Suffix = Name_Std_Logic_Unsigned
-            then
-               Error_Msg_Sem
-                 (+Name,
-                  " (use --ieee=synopsys for non-standard synopsys packages)");
-            elsif Suffix = Name_Std_Logic_Textio then
-               Error_Msg_Sem
-                 (+Name, " (use --ieee=synopsys or --std=08 for "
-                    & "this non-standard synopsys package)");
-            end if;
+         if Get_Identifier (Lib) /= Name_Ieee then
+            return;
          end if;
-      end Error_Unit_Not_Found;
+
+         case Suffix is
+            when Name_Std_Logic_Arith
+              | Name_Std_Logic_Signed
+              | Name_Std_Logic_Unsigned =>
+               --  Synopsys package.
+               null;
+            when Name_Std_Logic_Textio =>
+               if Vhdl_Std >= Vhdl_08 then
+                  --  Standard ieee package in vhdl-08
+                  return;
+               end if;
+            when others =>
+               --  Not a synopsys package.
+               return;
+         end case;
+         Error_Msg_Sem
+           (+Name, "use of synopsys package %i needs the -fsynopsys option",
+            +Suffix);
+      end Check_Synopsys_Package;
    begin
       --  Analyze prefix.
       if Soft then
@@ -2176,10 +2375,14 @@ package body Vhdl.Sem_Names is
             --  GHDL: FIXME: error message more explicit
             Res := Load_Primary_Unit (Prefix, Suffix, Name);
             if Res /= Null_Iir then
+               if not Soft and then not Flag_Synopsys then
+                  Check_Synopsys_Package (Prefix);
+               end if;
                Sem.Add_Dependence (Res);
                Res := Get_Library_Unit (Res);
             elsif not Soft then
-               Error_Unit_Not_Found (Prefix);
+               Error_Msg_Sem
+                 (+Name, "unit %i not found in %n", (+Suffix, +Prefix));
             end if;
          when Iir_Kind_Process_Statement
            | Iir_Kind_Procedure_Declaration
@@ -2305,7 +2508,47 @@ package body Vhdl.Sem_Names is
       Set_Named_Entity (Name, Res);
    end Sem_Selected_Name;
 
-   --  If ASSOC_LIST has one element, which is an expression without formal,
+   --  Extract actuals from ASSOC_CHAIN.  Report errors.
+   procedure Extract_Attribute_Parameters
+     (Assoc_Chain : Iir; Actuals : out Iir_Array)
+   is
+      Assoc : Iir;
+   begin
+      pragma Assert (Assoc_Chain /= Null_Iir);
+
+      Assoc := Assoc_Chain;
+      for I in Actuals'Range loop
+         if Assoc = Null_Iir then
+            Actuals (I) := Null_Iir;
+         else
+            --  Not 'open' association element ?
+            if Get_Kind (Assoc) /= Iir_Kind_Association_Element_By_Expression
+            then
+               Error_Msg_Sem (+Assoc, "'open' is not an attribute parameter");
+               Actuals (Actuals'First) := Null_Iir;
+               return;
+            end if;
+
+            --  Not an association (ie no formal) ?
+            if Get_Formal (Assoc) /= Null_Iir then
+               Error_Msg_Sem
+                 (+Assoc, "formal not allowed for attribute parameter");
+               Actuals (Actuals'First) := Null_Iir;
+               return;
+            end if;
+
+            Actuals (I) := Get_Actual (Assoc);
+
+            Assoc := Get_Chain (Assoc);
+         end if;
+      end loop;
+
+      if Assoc /= Null_Iir then
+         Error_Msg_Sem (+Assoc, "too many parameters for the attribute");
+      end if;
+   end Extract_Attribute_Parameters;
+
+   --  If ASSOC_ASSOC has one element, which is an expression without formal,
    --  return the actual, else return NULL_IIR.
    function Get_One_Actual (Assoc_Chain : Iir) return Iir
    is
@@ -2786,6 +3029,43 @@ package body Vhdl.Sem_Names is
             end if;
             return;
 
+         when Iir_Kind_Ramp_Attribute
+           | Iir_Kind_Quantity_Slew_Attribute
+           | Iir_Kind_Signal_Slew_Attribute
+           | Iir_Kind_Zoh_Attribute
+           | Iir_Kind_Ltf_Attribute
+           | Iir_Kind_Ztf_Attribute
+           | Iir_Kind_Quantity_Delayed_Attribute =>
+            declare
+               Params : Iir_Array (1 .. 4);
+            begin
+               --  Try to extract 2 actuals from the name association list.
+               --  Emit a message in case of error.
+               Extract_Attribute_Parameters (Assoc_Chain, Params);
+
+               if Params (1) /= Null_Iir then
+                  --  If ok, finish analysis.
+                  Finish_Sem_Quantity_Attribute (Prefix_Name, Prefix, Params);
+               else
+                  Prefix := Error_Mark;
+               end if;
+               --  The meaning of the parenthesis name is the attribute (as
+               --  the actuals have been moved to the attribute node).
+               Set_Named_Entity (Name, Prefix);
+               return;
+            end;
+
+         when Iir_Kind_Above_Attribute =>
+            if Actual /= Null_Iir then
+               Finish_Sem_Quantity_Attribute
+                 (Prefix_Name, Prefix, (1 => Actual));
+            else
+               Error_Msg_Sem (+Name, "bad attribute parameter");
+               Prefix := Error_Mark;
+            end if;
+            Set_Named_Entity (Name, Prefix);
+            return;
+
          when Iir_Kind_Procedure_Declaration
            | Iir_Kind_Interface_Procedure_Declaration =>
             Error_Msg_Sem (+Name, "cannot call %n in an expression",
@@ -2797,16 +3077,15 @@ package body Vhdl.Sem_Names is
            | Iir_Kind_Type_Conversion
            | Iir_Kind_Unit_Declaration
            | Iir_Kind_Enumeration_Literal
-           | Iir_Kind_Attribute_Declaration =>
+           | Iir_Kind_Attribute_Declaration
+           | Iir_Kinds_Library_Unit
+           | Iir_Kind_Library_Declaration =>
             Error_Msg_Sem (+Name, "%n cannot be indexed or sliced", +Prefix);
             Res := Null_Iir;
 
          when Iir_Kind_Psl_Declaration
            | Iir_Kind_Psl_Endpoint_Declaration =>
             Res := Sem_Psl.Sem_Psl_Name (Name);
-
-         when Iir_Kinds_Library_Unit =>
-            Error_Msg_Sem (+Name, "function name is a design unit");
 
          when Iir_Kind_Error =>
             --  Continue with the error.
@@ -2971,6 +3250,8 @@ package body Vhdl.Sem_Names is
          when Iir_Kinds_Object_Declaration
            | Iir_Kind_Type_Declaration
            | Iir_Kind_Subtype_Declaration
+           | Iir_Kind_Nature_Declaration
+           | Iir_Kind_Subnature_Declaration
            | Iir_Kind_Function_Declaration
            | Iir_Kind_Procedure_Declaration
            | Iir_Kind_Enumeration_Literal
@@ -3329,34 +3610,235 @@ package body Vhdl.Sem_Names is
    --  For 'Subtype
    function Sem_Subtype_Attribute (Attr : Iir_Attribute_Name) return Iir
    is
-      Prefix_Name : constant Iir := Get_Prefix (Attr);
-      Prefix : Iir;
-      Prefix_Type : Iir;
-      Res : Iir;
+      Prefix_Name : Iir;
+      Attr_Type   : Iir;
+      Res         : Iir;
    begin
-      Prefix := Get_Named_Entity (Prefix_Name);
+      Prefix_Name := Get_Prefix (Attr);
+      Prefix_Name := Finish_Sem_Name (Prefix_Name);
+      Set_Prefix (Attr, Prefix_Name);
 
       --  LRM08 16.2 Predefined attributes
       --  Prefix: Any prefix O that is appropriate for an object, or an alias
       --  thereof
-      if Get_Kind (Prefix) not in Iir_Kinds_Object_Declaration then
+      if (Get_Kind (Get_Base_Name (Prefix_Name))
+          not in Iir_Kinds_Object_Declaration)
+      then
          Error_Msg_Sem (+Attr, "prefix must denote an object");
          return Error_Mark;
       end if;
 
-      Prefix_Type := Get_Type (Prefix);
+      --  The type defined by 'subtype is always constrained.  Create
+      --  a subtype if it is not.
+      Attr_Type := Get_Type (Prefix_Name);
+      if False and not Is_Fully_Constrained_Type (Attr_Type) then
+         Attr_Type := Sem_Types.Build_Constrained_Subtype (Attr_Type, Attr);
+      end if;
 
       Res := Create_Iir (Iir_Kind_Subtype_Attribute);
       Location_Copy (Res, Attr);
-      Set_Prefix (Res, Prefix);
-      Set_Type (Res, Prefix_Type);
+      Set_Prefix (Res, Prefix_Name);
+      Set_Type (Res, Attr_Type);
 
-      Set_Base_Name (Res, Get_Base_Name (Prefix_Name));
-      Set_Name_Staticness (Res, Get_Name_Staticness (Prefix));
-      Set_Type_Staticness (Res, Get_Type_Staticness (Prefix_Type));
+      Set_Base_Name (Res, Res);
+      Set_Name_Staticness (Res, Get_Name_Staticness (Prefix_Name));
+      Set_Type_Staticness (Res, Get_Type_Staticness (Attr_Type));
 
       return Res;
    end Sem_Subtype_Attribute;
+
+   --  For 'Across or 'Through
+   function Sem_Nature_Type_Attribute (Attr : Iir_Attribute_Name) return Iir
+   is
+      Prefix_Name : constant Iir := Get_Prefix (Attr);
+      Prefix : Iir;
+      Prefix_Nature : Iir;
+      Res : Iir;
+      Attr_Type : Iir;
+   begin
+      Prefix := Get_Named_Entity (Prefix_Name);
+
+      --  LRM08 16.2 Predefined attributes
+      --  Prefix: Any nature or subnature N.
+      case Get_Kind (Prefix) is
+         when Iir_Kind_Nature_Declaration
+           | Iir_Kind_Subnature_Declaration =>
+            null;
+         when others =>
+            Error_Msg_Sem (+Attr, "prefix must denote a nature");
+            return Error_Mark;
+      end case;
+
+      Prefix_Nature := Get_Nature (Prefix);
+
+      case Get_Identifier (Attr) is
+         when Std_Names.Name_Across =>
+            Res := Create_Iir (Iir_Kind_Across_Attribute);
+            Attr_Type := Get_Across_Type (Prefix_Nature);
+         when Std_Names.Name_Through =>
+            Res := Create_Iir (Iir_Kind_Through_Attribute);
+            Attr_Type := Get_Across_Type (Prefix_Nature);
+         when others =>
+            raise Internal_Error;
+      end case;
+      pragma Assert (Attr_Type /= Null_Iir);
+
+      Location_Copy (Res, Attr);
+      Set_Prefix (Res, Prefix);
+      Set_Type (Res, Attr_Type);
+
+      Set_Base_Name (Res, Get_Base_Name (Prefix_Name));
+      Set_Name_Staticness (Res, Get_Name_Staticness (Prefix_Name));
+      Set_Type_Staticness (Res, Get_Type_Staticness (Attr_Type));
+
+      return Res;
+   end Sem_Nature_Type_Attribute;
+
+   --  For 'Reference
+   function Sem_Nature_Reference_Attribute (Attr : Iir_Attribute_Name)
+                                           return Iir
+   is
+      Prefix_Name : constant Iir := Get_Prefix (Attr);
+      Prefix : Iir;
+      Res : Iir;
+   begin
+      Prefix := Get_Named_Entity (Prefix_Name);
+
+      --  AMS-LRM17 16.2.6 Predefined analog attributes
+      --  Prefix: Any nature of subnature N.
+      case Get_Kind (Prefix) is
+         when Iir_Kind_Nature_Declaration
+           | Iir_Kind_Subnature_Declaration =>
+            null;
+         when others =>
+            Error_Msg_Sem (+Attr, "prefix must denote a nature");
+            return Error_Mark;
+      end case;
+
+      Res := Create_Iir (Iir_Kind_Nature_Reference_Attribute);
+      Location_Copy (Res, Attr);
+      Set_Prefix (Res, Prefix);
+      Set_Nature (Res, Get_Nature (Prefix));
+
+      Set_Base_Name (Res, Get_Base_Name (Prefix_Name));
+      Set_Name_Staticness (Res, Get_Name_Staticness (Prefix_Name));
+
+      return Res;
+   end Sem_Nature_Reference_Attribute;
+
+   function Sem_Quantity_Attribute (Attr : Iir_Attribute_Name) return Iir
+   is
+      use Std_Names;
+      Name_Prefix : constant Iir := Get_Prefix (Attr);
+      Prefix: Iir;
+      Res : Iir;
+      Res_Type : Iir;
+   begin
+      Prefix := Get_Named_Entity (Name_Prefix);
+      Prefix := Finish_Sem_Name_1 (Name_Prefix, Prefix);
+      if not Is_Quantity_Name (Prefix) then
+         Error_Msg_Sem
+           (+Attr, "prefix of %i attribute must denote a quantity", +Attr);
+      end if;
+
+      Res_Type := Get_Type (Prefix);
+      case Get_Identifier (Attr) is
+         when Name_Above =>
+            Res := Create_Iir (Iir_Kind_Above_Attribute);
+            Res_Type := Boolean_Type_Definition;
+         when Name_Dot =>
+            Res := Create_Iir (Iir_Kind_Dot_Attribute);
+         when Name_Integ =>
+            Res := Create_Iir (Iir_Kind_Integ_Attribute);
+         when Name_Zoh =>
+            Res := Create_Iir (Iir_Kind_Zoh_Attribute);
+         when Name_Ltf =>
+            Res := Create_Iir (Iir_Kind_Ltf_Attribute);
+         when Name_Ztf =>
+            Res := Create_Iir (Iir_Kind_Ztf_Attribute);
+         when Name_Delayed =>
+            Res := Create_Iir (Iir_Kind_Quantity_Delayed_Attribute);
+         when others =>
+            --  Not yet implemented attribute, or really an internal error.
+            raise Internal_Error;
+      end case;
+
+      Location_Copy (Res, Attr);
+      Set_Prefix (Res, Prefix);
+      Set_Type (Res, Res_Type);
+
+      --  AMS-LRM17 16.2.6 Predefined analog an mixed-signal attributes
+      --  Prefix: Any quantity denoted by the static name Q.
+      if Get_Name_Staticness (Prefix) < Globally then
+         Error_Msg_Sem
+           (+Res, "prefix of %i attribute must be a static name", +Res);
+      end if;
+
+      --  According to LRM 7.4, signal attributes are not static expressions
+      --  since the prefix (a signal) is not a static expression.
+      Set_Expr_Staticness (Res, None);
+
+      --  AMS-LRM17 8.1 Names
+      --  A name is said to be a static name if and only if one of the
+      --  following conditions holds:
+      --  [...]
+      --  -  The name is an attribute whose prefix is a static quantity name
+      --     and whose suffix is one of the predefined attributes 'ABOVE, 'DOT,
+      --     'INTEG, 'DELAYED, 'SLEW, 'LTF, 'ZOH, or 'ZTF.
+      Set_Name_Staticness (Res, Globally);
+
+      return Res;
+   end Sem_Quantity_Attribute;
+
+   function Sem_Slew_Attribute (Attr : Iir_Attribute_Name) return Iir
+   is
+      Prefix_Name : constant Iir := Get_Prefix (Attr);
+      Prefix: Iir;
+      Res : Iir;
+      Res_Type : Iir;
+   begin
+      Prefix := Get_Named_Entity (Prefix_Name);
+      if Is_Quantity_Name (Prefix) then
+         Res := Create_Iir (Iir_Kind_Quantity_Slew_Attribute);
+      elsif Is_Signal_Name (Prefix) then
+         Res := Create_Iir (Iir_Kind_Signal_Slew_Attribute);
+      else
+         Error_Msg_Sem
+           (+Attr,
+            "prefix of 'slew must denote a quantity or a signal", +Attr);
+         return Error_Mark;
+      end if;
+
+      --  AMS-VHDL17 16.2.6
+      --  Prefix: Any signal denoted by the static name S whose scalar
+      --    subelements are of a floating-point type.
+      --
+      --  GHDL: not necessary when the prefix is a quantity.
+      Res_Type := Get_Type (Prefix);
+      if not Sem_Types.Is_Nature_Type (Res_Type) then
+         Error_Msg_Sem (+Attr, "prefix of 'slew must be of nature type");
+      end if;
+
+      if Get_Name_Staticness (Prefix) < Globally then
+         Error_Msg_Sem (+Attr, "prefix of 'slew must be a static name");
+      end if;
+
+      Set_Type (Res, Res_Type);
+      Location_Copy (Res, Attr);
+      Set_Prefix (Res, Prefix);
+      Set_Expr_Staticness (Res, None);
+
+      --  AMS-LRM17 8.1 Names
+      --  A name is said to be a static name if and only if one of the
+      --  following conditions holds:
+      --  [...]
+      --  -  The name is an attribute whose prefix is a static quantity name
+      --     and whose suffix is one of the predefined attributes 'ABOVE, 'DOT,
+      --     'INTEG, 'DELAYED, 'SLEW, 'LTF, 'ZOH, or 'ZTF.
+      Set_Name_Staticness (Res, Globally);
+
+      return Res;
+   end Sem_Slew_Attribute;
 
    function Sem_Signal_Signal_Attribute
      (Attr : Iir_Attribute_Name; Kind : Iir_Kind)
@@ -3403,12 +3885,20 @@ package body Vhdl.Sem_Names is
    function Sem_Signal_Attribute (Attr : Iir_Attribute_Name) return Iir
    is
       use Std_Names;
+      Id : constant Name_Id := Get_Identifier (Attr);
       Prefix: Iir;
       Res : Iir;
       Base : Iir;
    begin
       Prefix := Get_Named_Entity (Get_Prefix (Attr));
       Base := Get_Object_Prefix (Prefix);
+      if AMS_Vhdl
+        and then Id = Name_Delayed
+        and then Is_Quantity_Name (Base)
+      then
+         return Sem_Quantity_Attribute (Attr);
+      end if;
+
       case Get_Kind (Base) is
          when Iir_Kind_Signal_Declaration
            | Iir_Kind_Interface_Signal_Declaration
@@ -3420,7 +3910,7 @@ package body Vhdl.Sem_Names is
               (+Attr, "prefix of %i attribute must denote a signal", +Attr);
             return Error_Mark;
       end case;
-      case Get_Identifier (Attr) is
+      case Id is
          when Name_Stable =>
             Res := Sem_Signal_Signal_Attribute
               (Attr, Iir_Kind_Stable_Attribute);
@@ -3456,6 +3946,9 @@ package body Vhdl.Sem_Names is
             Res := Create_Iir (Iir_Kind_Driving_Attribute);
             Set_Type (Res, Boolean_Type_Definition);
             --  FIXME: check restrictions.
+         when Name_Ramp =>
+            Res := Create_Iir (Iir_Kind_Ramp_Attribute);
+            Set_Type (Res, Get_Type (Prefix));
          when others =>
             --  Not yet implemented attribute, or really an internal error.
             raise Internal_Error;
@@ -3533,6 +4026,8 @@ package body Vhdl.Sem_Names is
                   Error_Msg_Sem
                     (+Attr, "bad prefix for 'driving or 'driving_value");
             end case;
+         when Iir_Kind_Ramp_Attribute =>
+            null;
          when others =>
             null;
       end case;
@@ -3549,9 +4044,7 @@ package body Vhdl.Sem_Names is
       --     and whose suffix is one of the predefined attributes 'DELAYED,
       --     'STABLE, 'QUIET or 'TRANSACTION.
       --  According to LRM 6.1, attributes are not static names.
-      if Flags.Vhdl_Std = Vhdl_93c or Flag_Relaxed_Rules
-        or Flags.Vhdl_Std >= Vhdl_02
-      then
+      if Flag_Relaxed_Rules or Flags.Vhdl_Std >= Vhdl_02 then
          case Get_Kind (Res) is
             when Iir_Kind_Stable_Attribute
               | Iir_Kind_Quiet_Attribute
@@ -3818,6 +4311,47 @@ package body Vhdl.Sem_Names is
                Res := Sem_User_Attribute (Attr);
             end if;
 
+         when Name_Across
+           | Name_Through =>
+            if Flags.AMS_Vhdl then
+               Res := Sem_Nature_Type_Attribute (Attr);
+            else
+               Res := Sem_User_Attribute (Attr);
+            end if;
+
+         when Name_Reference =>
+            if Flags.AMS_Vhdl then
+               Res := Sem_Nature_Reference_Attribute (Attr);
+            else
+               Res := Sem_User_Attribute (Attr);
+            end if;
+
+         when Name_Above
+           | Name_Dot
+           | Name_Integ
+           | Name_Zoh
+           | Name_Ltf
+           | Name_Ztf =>
+            if Flags.AMS_Vhdl then
+               Res := Sem_Quantity_Attribute (Attr);
+            else
+               Res := Sem_User_Attribute (Attr);
+            end if;
+
+         when Name_Ramp =>
+            if Flags.AMS_Vhdl then
+               Res := Sem_Signal_Attribute (Attr);
+            else
+               Res := Sem_User_Attribute (Attr);
+            end if;
+
+         when Name_Slew =>
+            if Flags.AMS_Vhdl then
+               Res := Sem_Slew_Attribute (Attr);
+            else
+               Res := Sem_User_Attribute (Attr);
+            end if;
+
          when others =>
             Res := Sem_User_Attribute (Attr);
       end case;
@@ -4021,7 +4555,10 @@ package body Vhdl.Sem_Names is
       Set_Named_Entity (Name, Expr);
       if Expr = Null_Iir then
          Error_Msg_Sem (+Name, "%n cannot be used as expression", +Name);
-         return Create_Error_Expr (Name, A_Type);
+         --  Note: this creates a loop.
+         Res := Create_Error_Expr (Name, A_Type);
+         Set_Named_Entity (Name, Res);
+         return Res;
       end if;
 
       if not Is_Overload_List (Expr) then
@@ -4182,7 +4719,17 @@ package body Vhdl.Sem_Names is
             --  FIXME: exclude range and reverse_range.
             return Eval_Expr_If_Static (Res);
          when Iir_Kinds_Signal_Attribute
-           | Iir_Kinds_Signal_Value_Attribute =>
+           | Iir_Kinds_Signal_Value_Attribute
+           | Iir_Kind_Above_Attribute
+           | Iir_Kind_Dot_Attribute
+           | Iir_Kind_Integ_Attribute
+           | Iir_Kind_Ramp_Attribute
+           | Iir_Kind_Zoh_Attribute
+           | Iir_Kind_Ltf_Attribute
+           | Iir_Kind_Ztf_Attribute
+           | Iir_Kind_Signal_Slew_Attribute
+           | Iir_Kind_Quantity_Slew_Attribute
+           | Iir_Kind_Quantity_Delayed_Attribute =>
             --  Never static
             return Res;
          when Iir_Kinds_Type_Attribute
@@ -4262,7 +4809,9 @@ package body Vhdl.Sem_Names is
             end case;
          when Iir_Kind_Subtype_Attribute
            | Iir_Kind_Element_Attribute
-           | Iir_Kind_Base_Attribute =>
+           | Iir_Kind_Base_Attribute
+           | Iir_Kind_Across_Attribute
+           | Iir_Kind_Through_Attribute =>
             return Get_Type (Name);
          when Iir_Kinds_Expression_Attribute =>
             Error_Msg_Sem (+Name, "%n is not a valid type mark", +Name);
@@ -4290,19 +4839,22 @@ package body Vhdl.Sem_Names is
             --  A message must have been displayed.
             return Name;
          when Iir_Kind_Overload_List =>
-            Error_Overload (Res);
+            Error_Overload (Name);
             Set_Named_Entity (Name, Create_Error_Name (Name));
             return Name;
          when Iir_Kinds_Concurrent_Statement
            | Iir_Kinds_Sequential_Statement
            | Iir_Kind_Type_Declaration
            | Iir_Kind_Subtype_Declaration
+           | Iir_Kind_Nature_Declaration
+           | Iir_Kind_Subnature_Declaration
            | Iir_Kind_Enumeration_Literal
            | Iir_Kind_Unit_Declaration
            | Iir_Kind_Group_Template_Declaration
            | Iir_Kind_Group_Declaration
            | Iir_Kind_Attribute_Declaration
            | Iir_Kinds_Object_Declaration
+           | Iir_Kind_Terminal_Declaration
            | Iir_Kind_Entity_Declaration
            | Iir_Kind_Configuration_Declaration
            | Iir_Kind_Package_Declaration
@@ -4355,15 +4907,28 @@ package body Vhdl.Sem_Names is
    function Sem_Terminal_Name (Name : Iir) return Iir
    is
       Res : Iir;
-      Ent : Iir;
    begin
-      Res := Sem_Denoting_Name (Name);
-      Ent := Get_Named_Entity (Res);
-      if Get_Kind (Ent) /= Iir_Kind_Terminal_Declaration then
-         Error_Class_Match (Name, "terminal");
-         Set_Named_Entity (Res, Create_Error_Name (Name));
-      end if;
-      return Res;
+      Sem_Name (Name);
+      Res := Get_Named_Entity (Name);
+
+      case Get_Kind (Res) is
+         when Iir_Kind_Error =>
+            --  A message must have been displayed.
+            return Name;
+         when Iir_Kind_Overload_List =>
+            Error_Overload (Res);
+            Set_Named_Entity (Name, Create_Error_Name (Name));
+            return Name;
+         when Iir_Kind_Terminal_Declaration
+           | Iir_Kind_Interface_Terminal_Declaration
+           | Iir_Kind_Nature_Reference_Attribute =>
+            Res := Finish_Sem_Name (Name, Res);
+            return Res;
+         when others =>
+            Error_Class_Match (Name, "terminal");
+            Set_Named_Entity (Name, Create_Error_Name (Name));
+            return Name;
+      end case;
    end Sem_Terminal_Name;
 
    procedure Error_Class_Match (Name : Iir; Class_Name : String)

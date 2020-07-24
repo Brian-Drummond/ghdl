@@ -122,7 +122,7 @@ package body Vhdl.Sem is
          Entity := Load_Primary_Unit
            (Library, Get_Identifier (Name), Library_Unit);
          if Entity = Null_Iir then
-            Error_Msg_Sem (+Library_Unit, "entity %n was not analysed", +Name);
+            Error_Msg_Sem (+Name, "entity %n was not analysed", +Name);
             return Null_Iir;
          end if;
          Entity := Get_Library_Unit (Entity);
@@ -516,17 +516,99 @@ package body Vhdl.Sem is
       return Res;
    end Sem_Insert_Anonymous_Signal;
 
+   procedure Sem_Signal_Port_Association
+     (Assoc : Iir; Formal : Iir; Formal_Base : Iir)
+   is
+      Actual : Iir;
+      Prefix : Iir;
+      Object : Iir;
+   begin
+      if Get_Kind (Assoc) = Iir_Kind_Association_Element_By_Expression then
+         Actual := Get_Actual (Assoc);
+         --  There has been an error, exit from the loop.
+         if Actual = Null_Iir then
+            return;
+         end if;
+         Object := Name_To_Object (Actual);
+         if Is_Valid (Object) and then Is_Signal_Object (Object) then
+            --  Port or signal.
+            Set_Collapse_Signal_Flag
+              (Assoc, Can_Collapse_Signals (Assoc, Formal));
+            if Get_Name_Staticness (Object) < Globally then
+               Error_Msg_Sem (+Actual, "actual must be a static name");
+            end if;
+            Check_Port_Association_Bounds_Restrictions
+              (Formal, Actual, Assoc);
+            Prefix := Get_Object_Prefix (Object);
+            case Get_Kind (Prefix) is
+               when Iir_Kind_Interface_Signal_Declaration =>
+                  declare
+                     P : Boolean;
+                     pragma Unreferenced (P);
+                  begin
+                     P := Check_Port_Association_Mode_Restrictions
+                       (Formal_Base, Prefix, Assoc);
+                  end;
+               when Iir_Kind_Signal_Declaration =>
+                  Set_Use_Flag (Prefix, True);
+               when others =>
+                  --  FIXME: attributes ?
+                  null;
+            end case;
+         else
+            --  Expression.
+            Set_Collapse_Signal_Flag (Assoc, False);
+
+            pragma Assert (Is_Null (Get_Actual_Conversion (Assoc)));
+            if Flags.Vhdl_Std >= Vhdl_93 then
+               --  LRM93 1.1.1.2 Ports
+               --  Moreover, the ports of a block may be associated
+               --  with an expression, in order to provide these ports
+               --  with constant driving values; such ports must be
+               --  of mode in.
+               if Get_Mode (Formal_Base) /= Iir_In_Mode then
+                  Error_Msg_Sem
+                    (+Assoc, "only 'in' ports may be associated with "
+                       & "expression");
+               end if;
+
+               --  Is it possible to have a globally static name that is
+               --  not readable ?
+               Check_Read (Actual);
+
+               --  LRM93 1.1.1.2 Ports
+               --  The actual, if an expression, must be a globally
+               --  static expression.
+               if Get_Expr_Staticness (Actual) < Globally then
+                  if Flags.Vhdl_Std >= Vhdl_08 then
+                     --  LRM08 6.5.6.3 Port clauses
+                     Actual := Sem_Insert_Anonymous_Signal (Formal, Actual);
+                     Set_Actual (Assoc, Actual);
+                     Set_Collapse_Signal_Flag (Assoc, True);
+                  else
+                     Error_Msg_Sem
+                       (+Actual,
+                        "actual expression must be globally static");
+                  end if;
+               end if;
+            else
+               Error_Msg_Sem
+                 (+Assoc,
+                  "cannot associate ports with expression in vhdl87");
+            end if;
+         end if;
+      end if;
+   end Sem_Signal_Port_Association;
+
    --  INTER_PARENT contains ports interfaces;
    --  ASSOC_PARENT constains ports map aspects.
    procedure Sem_Port_Association_Chain
      (Inter_Parent : Iir; Assoc_Parent : Iir)
    is
       Assoc : Iir;
-      Actual : Iir;
-      Prefix : Iir;
-      Object : Iir;
       Match : Compatibility_Level;
       Assoc_Chain : Iir;
+      Inter_Chain : Iir;
       Miss : Missing_Type;
       Inter : Iir;
       Formal : Iir;
@@ -558,13 +640,23 @@ package body Vhdl.Sem is
 
       --  The ports
       Assoc_Chain := Get_Port_Map_Aspect_Chain (Assoc_Parent);
+      Inter_Chain := Get_Port_Chain (Inter_Parent);
+
+      if AMS_Vhdl then
+         --  Mutate terminal associations, so that their formals are not
+         --  analyzed as an expression.
+         Assoc_Chain :=
+           Extract_Non_Object_Association (Assoc_Chain, Inter_Chain);
+      end if;
+
       if not Sem_Actual_Of_Association_Chain (Assoc_Chain) then
          return;
       end if;
-      Sem_Association_Chain (Get_Port_Chain (Inter_Parent), Assoc_Chain,
+      Sem_Association_Chain (Inter_Chain, Assoc_Chain,
                              True, Miss, Assoc_Parent, Match);
       Set_Port_Map_Aspect_Chain (Assoc_Parent, Assoc_Chain);
       if Match = Not_Compatible then
+         --  TODO: mark actual as used to avoid warnings.
          return;
       end if;
 
@@ -584,79 +676,13 @@ package body Vhdl.Sem is
          Formal := Get_Association_Formal (Assoc, Inter);
          Formal_Base := Get_Interface_Of_Formal (Formal);
 
-         if Get_Kind (Assoc) = Iir_Kind_Association_Element_By_Expression then
-            Actual := Get_Actual (Assoc);
-            --  There has been an error, exit from the loop.
-            exit when Actual = Null_Iir;
-            Object := Name_To_Object (Actual);
-            if Is_Valid (Object) and then Is_Signal_Object (Object) then
-               --  Port or signal.
-               Set_Collapse_Signal_Flag
-                 (Assoc, Can_Collapse_Signals (Assoc, Formal));
-               if Get_Name_Staticness (Object) < Globally then
-                  Error_Msg_Sem (+Actual, "actual must be a static name");
-               end if;
-               Check_Port_Association_Bounds_Restrictions
-                 (Formal, Actual, Assoc);
-               Prefix := Get_Object_Prefix (Object);
-               case Get_Kind (Prefix) is
-                  when Iir_Kind_Interface_Signal_Declaration =>
-                     declare
-                        P : Boolean;
-                        pragma Unreferenced (P);
-                     begin
-                        P := Check_Port_Association_Mode_Restrictions
-                          (Formal_Base, Prefix, Assoc);
-                     end;
-                  when Iir_Kind_Signal_Declaration =>
-                     Set_Use_Flag (Prefix, True);
-                  when others =>
-                     --  FIXME: attributes ?
-                     null;
-               end case;
-            else
-               --  Expression.
-               Set_Collapse_Signal_Flag (Assoc, False);
+         case Get_Kind (Formal_Base) is
+            when Iir_Kind_Interface_Signal_Declaration =>
+               Sem_Signal_Port_Association (Assoc, Formal, Formal_Base);
+            when others =>
+               null;
+         end case;
 
-               pragma Assert (Is_Null (Get_Actual_Conversion (Assoc)));
-               if Flags.Vhdl_Std >= Vhdl_93c then
-                  --  LRM93 1.1.1.2 Ports
-                  --  Moreover, the ports of a block may be associated
-                  --  with an expression, in order to provide these ports
-                  --  with constant driving values; such ports must be
-                  --  of mode in.
-                  if Get_Mode (Formal_Base) /= Iir_In_Mode then
-                     Error_Msg_Sem
-                       (+Assoc, "only 'in' ports may be associated with "
-                          & "expression");
-                  end if;
-
-                  --  Is it possible to have a globally static name that is
-                  --  not readable ?
-                  Check_Read (Actual);
-
-                  --  LRM93 1.1.1.2 Ports
-                  --  The actual, if an expression, must be a globally
-                  --  static expression.
-                  if Get_Expr_Staticness (Actual) < Globally then
-                     if Flags.Vhdl_Std >= Vhdl_08 then
-                        --  LRM08 6.5.6.3 Port clauses
-                        Actual := Sem_Insert_Anonymous_Signal (Formal, Actual);
-                        Set_Actual (Assoc, Actual);
-                        Set_Collapse_Signal_Flag (Assoc, True);
-                     else
-                        Error_Msg_Sem
-                          (+Actual,
-                           "actual expression must be globally static");
-                     end if;
-                  end if;
-               else
-                  Error_Msg_Sem
-                    (+Assoc,
-                     "cannot associate ports with expression in vhdl87");
-               end if;
-            end if;
-         end if;
          Next_Association_Interface (Assoc, Inter);
       end loop;
    end Sem_Port_Association_Chain;
@@ -1214,7 +1240,7 @@ package body Vhdl.Sem is
       Binding : Iir;
       Entity : Iir_Design_Unit;
       Comp : Iir_Component_Declaration;
-      Primary_Entity_Aspect : Iir;
+      Primary_Binding : Iir;
    begin
       --  LRM 10.1 Declarative Region
       --  11. A component configuration.
@@ -1242,7 +1268,7 @@ package body Vhdl.Sem is
       end if;
       --  FIXME: this is wrong (all declarations should be considered).
       Sem_Component_Specification
-        (Configured_Block, Conf, Primary_Entity_Aspect);
+        (Configured_Block, Conf, Primary_Binding);
 
       Comp := Get_Named_Entity (Get_Component_Name (Conf));
       if Get_Kind (Comp) /= Iir_Kind_Component_Declaration then
@@ -1264,9 +1290,9 @@ package body Vhdl.Sem is
       Sem_Scopes.Add_Component_Declarations (Comp);
       Binding := Get_Binding_Indication (Conf);
       if Binding /= Null_Iir then
-         Sem_Binding_Indication (Binding, Conf, Primary_Entity_Aspect);
+         Sem_Binding_Indication (Binding, Conf, Primary_Binding);
 
-         if Primary_Entity_Aspect /= Null_Iir then
+         if Primary_Binding /= Null_Iir then
             --  LRM93 5.2.1  Binding Indication
             --  It is an error if a formal port appears in the port map aspect
             --  of the incremental binding indication and it is a formal
@@ -1274,7 +1300,7 @@ package body Vhdl.Sem is
             --  of the primary binding indications.
             Check_Incremental_Binding (Configured_Block, Conf);
          end if;
-      elsif Primary_Entity_Aspect = Null_Iir then
+      elsif Primary_Binding = Null_Iir then
          --  LRM93 5.2.1
          --  If the generic map aspect or port map aspect of a primary binding
          --  indication is not present, then the default rules as described
@@ -1584,6 +1610,16 @@ package body Vhdl.Sem is
            | Iir_Kind_Right_Type_Attribute
            | Iir_Kind_Ascending_Type_Attribute =>
             return Are_Trees_Equal (Get_Prefix (Left), Get_Prefix (Right));
+
+         when Iir_Kind_Length_Array_Attribute
+            | Iir_Kind_Left_Array_Attribute
+            | Iir_Kind_Right_Array_Attribute
+            | Iir_Kind_Low_Array_Attribute
+            | Iir_Kind_High_Array_Attribute
+            | Iir_Kind_Ascending_Array_Attribute =>
+            return Are_Trees_Equal (Get_Prefix (Left), Get_Prefix (Right))
+              and then
+              Are_Trees_Equal (Get_Parameter (Left), Get_Parameter (Right));
 
          when Iir_Kind_String_Literal8 =>
             if Get_Bit_String_Base (Left) /= Get_Bit_String_Base (Right) then
@@ -2697,7 +2733,8 @@ package body Vhdl.Sem is
       Inter := Get_Generic_Chain (Header);
       while Is_Valid (Inter) loop
          case Iir_Kinds_Interface_Declaration (Get_Kind (Inter)) is
-            when Iir_Kinds_Interface_Object_Declaration =>
+            when Iir_Kinds_Interface_Object_Declaration
+              | Iir_Kind_Interface_Terminal_Declaration =>
                null;
             when Iir_Kind_Interface_Type_Declaration =>
                return True;
@@ -3114,6 +3151,14 @@ package body Vhdl.Sem is
          Set_Library_Declaration (Decl, Lib);
          Sem_Scopes.Add_Name (Lib, Ident, False);
          Set_Visible_Flag (Lib, True);
+
+         --  Override the location of the library.  Even if the library is
+         --  not really declared by the library clause (it is almost pre-
+         --  declared), it improves error messages.
+         --  Note: library clauses of dependences will overwrite the location,
+         --   defeating the purpose of it.
+         Location_Copy (Lib, Decl);
+
          Xref_Ref (Decl, Lib);
       end if;
    end Sem_Library_Clause;
@@ -3341,6 +3386,12 @@ package body Vhdl.Sem is
       Sem_Scopes.Add_Name (Libraries.Std_Library, Std_Names.Name_Std, False);
       Sem_Scopes.Add_Name (Library, Std_Names.Name_Work, False);
       Sem_Scopes.Use_All_Names (Standard_Package);
+
+      --  Use pre-defined locations for STD and WORK library (as they may
+      --  be later overriden).
+      Set_Location (Libraries.Std_Library, Libraries.Library_Location);
+      Set_Location (Library, Libraries.Library_Location);
+
       if Get_Dependence_List (Design_Unit) = Null_Iir_List then
          Set_Dependence_List (Design_Unit, Create_Iir_List);
       end if;

@@ -25,6 +25,7 @@
 with Interfaces; use Interfaces;
 with Grt.Strings; use Grt.Strings;
 with Grt.Errors; use Grt.Errors;
+with Grt.Severity; use Grt.Severity;
 with Grt.Stdio; use Grt.Stdio;
 with Grt.Astdio;
 with Grt.Hooks;
@@ -70,8 +71,10 @@ package body Grt.Options is
       P (" --help, -h        disp this help");
       P (" --assert-level=LEVEL   stop simulation if assert at LEVEL");
       P ("       LEVEL is note,warning,error,failure,none");
+      P (" --backtrace-severity=LEVEL  display a backtrace for assertions");
       P (" --ieee-asserts=POLICY  enable or disable asserts from IEEE");
-      P ("       POLICY is enable,disable,disable-at-0");
+      P ("       POLICY is enable, disable, disable-at-0");
+      P (" --asserts=POLICY  enable or disable asserts");
       P (" --stop-time=X     stop the simulation at time X");
       P ("       X is expressed as a time value, without spaces: 1ns, ps...");
       P (" --stop-delta=X    stop the simulation cycle after X delta");
@@ -190,6 +193,43 @@ package body Grt.Options is
       return Std_Time (Time);
    end Parse_Time;
 
+   function Parse_Severity (Opt_Name : String; Arg : String) return Integer is
+   begin
+      if Arg = "note" then
+         return Note_Severity;
+      elsif Arg = "warning" then
+         return Warning_Severity;
+      elsif Arg = "error" then
+         return Error_Severity;
+      elsif Arg = "failure" then
+         return Failure_Severity;
+      elsif Arg = "none" then
+         return 4;
+      else
+         Error_S ("bad argument for ");
+         Diag_C (Opt_Name);
+         Error_E (" option, try --help");
+         return -1;
+      end if;
+   end Parse_Severity;
+
+   function Parse_Policy (Opt_Name : String; Arg : String)
+                          return Assert_Handling is
+   begin
+      if Arg = "disable" then
+         return Disable_Asserts;
+      elsif Arg = "enable" then
+         return Enable_Asserts;
+      elsif Arg = "disable-at-0" then
+         return Disable_Asserts_At_Time_0;
+      else
+         Error_S ("bad argument for ");
+         Diag_C (Opt_Name);
+         Error_E (" option, try --help");
+         return Enable_Asserts;
+      end if;
+   end Parse_Policy;
+
    procedure Decode_Option
      (Option : String; Status : out Decode_Option_Status)
    is
@@ -264,29 +304,29 @@ package body Grt.Options is
             end if;
          end;
       elsif Len > 15 and then Option (1 .. 15) = "--assert-level=" then
-         if Option (16 .. Len) = "note" then
-            Severity_Level := Note_Severity;
-         elsif Option (16 .. Len) = "warning" then
-            Severity_Level := Warning_Severity;
-         elsif Option (16 .. Len) = "error" then
-            Severity_Level := Error_Severity;
-         elsif Option (16 .. Len) = "failure" then
-            Severity_Level := Failure_Severity;
-         elsif Option (16 .. Len) = "none" then
-            Severity_Level := 4;
-         else
-            Error ("bad argument for --assert-level option, try --help");
-         end if;
+         declare
+            Level : Integer;
+         begin
+            Level := Parse_Severity ("--assert-level", Option (16 .. Len));
+            if Level >= 0 then
+               Severity_Level := Level;
+            end if;
+         end;
+      elsif Len > 21 and then Option (1 .. 21) = "--backtrace-severity=" then
+         declare
+            Level : Integer;
+         begin
+            Level := Parse_Severity
+              ("--backtrace-severity", Option (22 .. Len));
+            if Level >= 0 then
+               Backtrace_Severity := Level;
+            end if;
+         end;
       elsif Len > 15 and then Option (1 .. 15) = "--ieee-asserts=" then
-         if Option (16 .. Len) = "disable" then
-            Ieee_Asserts := Disable_Asserts;
-         elsif Option (16 .. Len) = "enable" then
-            Ieee_Asserts := Enable_Asserts;
-         elsif Option (16 .. Len) = "disable-at-0" then
-            Ieee_Asserts := Disable_Asserts_At_Time_0;
-         else
-            Error ("bad argument for --ieee-asserts option, try --help");
-         end if;
+         Ieee_Asserts := Parse_Policy ("--ieee-asserts", Option (16 .. Len));
+      elsif Len > 10 and then Option (1 .. 10) = "--asserts=" then
+         Asserts_Policy := Parse_Policy ("--asserts", Option (11 .. Len));
+         Ieee_Asserts := Asserts_Policy;
       elsif Option = "--expect-failure" then
          Expect_Failure := True;
       elsif Len >= 13 and then Option (1 .. 13) = "--stack-size=" then
@@ -305,7 +345,7 @@ package body Grt.Options is
                Diag_C (Option);
                Error_E ("'");
             else
-               Lib.Max_Stack_Allocation := Ghdl_Index_Type (Val * 1024);
+               Max_Stack_Allocation := Ghdl_Index_Type (Val * 1024);
             end if;
          end;
       elsif Len >= 11 and then Option (1 .. 11) = "--activity=" then

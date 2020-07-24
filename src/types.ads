@@ -44,6 +44,16 @@ package Types is
    type Fp64 is new Interfaces.IEEE_Float_64;
    type Fp32 is new Interfaces.IEEE_Float_32;
 
+   --  The verilog logic type (when used in a vector).
+   --  Coding of 01zx:
+   --  For 0 and 1, ZX is 0, VAL is the bit value.
+   --  For z: ZX is 1, VAL is 0.
+   --  For x: ZX is 1, VAL is 1.
+   type Logic_32 is record
+      Val : Uns32;  --  AKA aval
+      Zx  : Uns32;  --  AKA bval
+   end record;
+
    --  Useful types.
    type String_Acc is access String;
    type String_Cst is access constant String;
@@ -170,4 +180,12 @@ package Types is
 
    --  Result of a comparaison of two numeric values.
    type Order_Type is (Less, Equal, Greater);
+
+   --  Direction for a range.  Used by many HDLs!
+   type Direction_Type is (Dir_To, Dir_Downto);
+
+   --  Modular type for the size.  We don't use Storage_Offset in order to
+   --  make alignment computation efficient (knowing that alignment is a
+   --  power of two).
+   type Size_Type is mod System.Memory_Size;
 end Types;

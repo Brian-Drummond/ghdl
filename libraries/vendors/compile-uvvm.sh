@@ -57,7 +57,9 @@ fi
 uvvm_pkgs="uvvm_util
  uvvm_vvc_framework"
 
-uvvm_vips="bitvis_vip_sbi
+uvvm_vips="
+ bitvis_vip_scoreboard
+ bitvis_vip_sbi
  bitvis_vip_avalon_mm
  bitvis_vip_axilite
  bitvis_vip_axistream
@@ -65,9 +67,8 @@ uvvm_vips="bitvis_vip_sbi
  bitvis_vip_i2c
  bitvis_vip_spi
  bitvis_vip_uart
-
+ bitvis_vip_wishbone
  bitvis_vip_clock_generator
- bitvis_vip_scoreboard
 "
 
 # command line argument processing
@@ -134,6 +135,10 @@ while [[ $# > 0 ]]; do
 		;;
 		--uvvm-vip-uart)
 		COMPILE_vip_uart=TRUE
+		NO_COMMAND=0
+		;;
+		--uvvm-vip-wishbone)
+		COMPILE_vip_wishbone=TRUE
 		NO_COMMAND=0
 		;;
 		--uvvm-vip-clock_generator)
@@ -216,6 +221,7 @@ if [ "$HELP" == "TRUE" ]; then
 	echo "     --uvvm-vip-sbi"
 	echo "     --uvvm-vip-spi"
 	echo "     --uvvm-vip-uart"
+	echo "     --uvvm-vip-wishbone"
 	echo "     --uvvm-vip-clock_generator"
 	echo "     --uvvm-vip-scoreboard"
 	echo ""
@@ -274,8 +280,8 @@ SetupGRCat
 GHDL_OPTIONS=(-fexplicit -frelaxed-rules --no-vital-checks --warn-binding --mb-comments)
 
 # create a set of GHDL parameters
-GHDL_PARAMS=(${GHDL_OPTIONS[@]})
-GHDL_PARAMS+=(--std=08 -P$DestinationDirectory)
+GHDL_PARAMS=(--std=08 -P$DestinationDirectory)
+GHDL_PARAMS+=(${GHDL_OPTIONS[@]})
 
 # Cleanup directory
 # ==============================================================================

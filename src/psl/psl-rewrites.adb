@@ -103,12 +103,15 @@ package body PSL.Rewrites is
             Set_Boolean (N, Rewrite_Boolean (Get_Boolean (N)));
             return N;
          when N_And_Bool
-           | N_Or_Bool
-           | N_Imp_Bool =>
+            | N_Or_Bool
+            | N_Imp_Bool
+            | N_Equiv_Bool =>
             Set_Left (N, Rewrite_Boolean (Get_Left (N)));
             Set_Right (N, Rewrite_Boolean (Get_Right (N)));
             return N;
          when N_HDL_Expr =>
+            return Get_HDL_Hash (N);
+         when N_HDL_Bool =>
             return N;
          when others =>
             Error_Kind ("rewrite_boolean", N);
@@ -586,6 +589,9 @@ package body PSL.Rewrites is
          when N_Property_Instance =>
             Rewrite_Instance (N);
             return N;
+         when N_Paren_Prop =>
+            --  Note: discard it.
+            return Rewrite_Property (Get_Property (N));
          when others =>
             Error_Kind ("rewrite_property", N);
       end case;

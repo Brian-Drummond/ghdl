@@ -1,5 +1,7 @@
 #!/bin/sh
 
+cd $(dirname $0)
+
 # Stop in case of error
 set -e
 
@@ -36,6 +38,12 @@ gstart () {
 gend () {
   :
 }
+gblock () {
+  gstart "$1"
+    shift
+    $@
+  gend
+}
 
 [ -n "$CI" ] && {
   echo "INFO: set 'gstart' and 'gend' for CI"
@@ -54,70 +62,30 @@ gend () {
 
 #---
 
-cd $(dirname $0)
+if [ -z "$TARGET" ]; then
+  printf "${ANSI_RED}Undefined TARGET!$ANSI_NOCOLOR"
+  exit 1
+fi
+cd "$TARGET"
 
-build () {
-  gstart 'Install common build dependencies'
-    pacman -S --noconfirm base-devel git
-  gend
+# The command 'git describe' (used for version) needs the history. Get it.
+# But the following command fails if the repository is complete.
+gblock "Fetch --unshallow" git fetch --unshallow || true
 
-  if [ -z "$TARGET" ]; then
-    printf "${ANSI_RED}Undefined TARGET!$ANSI_NOCOLOR"
-    exit 1
-  fi
-  cd "$TARGET"
-
-  MINGW_INSTALLS="$(echo "$MINGW_INSTALLS" | tr '[:upper:]' '[:lower:]')"
-
-  case "$MINGW_INSTALLS" in
-    mingw32)
-      TARBALL_ARCH="i686"
-    ;;
-    mingw64)
-      TARBALL_ARCH="x86_64"
-
-      # FIXME: specific versions of these packages should be installed automatically by makepkg-mingw.
-      # E.g.: mingw-w64-x86_64-llvm-8.0.1-3 mingw-w64-x86_64-clang-8.0.1-3 mingw-w64-x86_64-z3-4.8.5-1
-      # However, specifying the version produces 'error: target not found:'
-      gstart "Install build dependencies"
-        pacman -S --noconfirm mingw-w64-x86_64-llvm mingw-w64-x86_64-clang mingw-w64-x86_64-z3
-      gend
-    ;;
-    *)
-      echo "Unknown MING_INSTALLS=${MINGW_INSTALLS}!"
-      exit 1
-  esac
-  gstart 'Install toolchain'
-    pacman -S --noconfirm mingw-w64-${TARBALL_ARCH}-toolchain
-  gend
-
-  gstart 'Build package'
-    dos2unix PKGBUILD
-    makepkg-mingw -sCLfc --noconfirm --noprogressbar
-  gend
-
-  ls -la
-
-  gstart 'Install package'
-    pacman --noconfirm -U "mingw-w64-${TARBALL_ARCH}-ghdl-${TARGET}-ci"-*-any.pkg.tar.xz
-  gend
-}
-
-test () {
-  gstart 'Environment'
-    env | grep MSYSTEM
-    env | grep MINGW
-  gend
-
-  export PATH=$PATH:"$(cd $(dirname $(which ghdl))/../lib; pwd)"
-  GHDL=ghdl ../../testsuite/testsuite.sh
-}
-
-case "$1" in
-  -t)
-    test
+case "$MINGW_INSTALLS" in
+  *32)
+    TARBALL_ARCH="i686"
+  ;;
+  *64)
+    TARBALL_ARCH="x86_64"
   ;;
   *)
-    build
-  ;;
+    printf "${ANSI_RED}Unknown MINGW_INSTALLS=${MINGW_INSTALLS}!$ANSI_NOCOLOR"
+    exit 1
 esac
+
+gblock 'Install toolchain' pacman -S --noconfirm --needed base-devel mingw-w64-${TARBALL_ARCH}-toolchain
+gblock 'Build package' makepkg-mingw --noconfirm --noprogressbar -sCLf --noarchive
+gblock 'Archive package' makepkg-mingw --noconfirm --noprogressbar -R
+gblock 'List artifacts' ls -la
+gblock 'Install package' pacman --noconfirm -U "mingw-w64-${TARBALL_ARCH}-ghdl-${TARGET}-ci"-*-any.pkg.tar.zst

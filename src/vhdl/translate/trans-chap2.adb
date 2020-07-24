@@ -114,6 +114,8 @@ package body Trans.Chap2 is
                Mech := Pass_By_Address;
             end if;
             Info.Interface_Mechanism (Mode_Value) := Mech;
+         when Iir_Kind_Interface_Quantity_Declaration =>
+            raise Internal_Error;
       end case;
    end Translate_Interface_Mechanism;
 
@@ -146,7 +148,7 @@ package body Trans.Chap2 is
       --  Translate interface types.
       Inter := Get_Interface_Declaration_Chain (Spec);
       while Inter /= Null_Iir loop
-         Chap3.Translate_Object_Subtype (Inter);
+         Chap3.Translate_Object_Subtype_Indication (Inter);
          Inter := Get_Chain (Inter);
       end loop;
 
@@ -209,7 +211,7 @@ package body Trans.Chap2 is
       --  Translate interface types.
       Inter := Get_Interface_Declaration_Chain (Spec);
       while Inter /= Null_Iir loop
-         Chap3.Elab_Object_Subtype (Get_Type (Inter));
+         Chap3.Elab_Object_Subtype_Indication (Inter);
          Inter := Get_Chain (Inter);
       end loop;
    end Elab_Subprogram_Interfaces;
@@ -1297,17 +1299,20 @@ package body Trans.Chap2 is
                  Instantiate_Var (Src.Package_Instance_Body_Var),
                Package_Instance_Elab_Subprg =>
                  Src.Package_Instance_Elab_Subprg,
-               Package_Instance_Spec_Scope =>
-                 Instantiate_Var_Scope (Src.Package_Instance_Spec_Scope),
+               Package_Instance_Spec_Scope => Null_Var_Scope,
                Package_Instance_Body_Scope =>
                  Instantiate_Var_Scope (Src.Package_Instance_Body_Scope));
-            Push_Instantiate_Var_Scope
-              (Dest.Package_Instance_Spec_Scope'Access,
-               Src.Package_Instance_Spec_Scope'Access);
+            --  The body scope needs to be instantiated before instantiating
+            --  the spec scope, as the spec scope is a field of the body
+            --  scope.
             Push_Instantiate_Var_Scope
               (Dest.Package_Instance_Body_Scope'Access,
                Src.Package_Instance_Body_Scope'Access);
-
+            Dest.Package_Instance_Spec_Scope :=
+              Instantiate_Var_Scope (Src.Package_Instance_Spec_Scope);
+            Push_Instantiate_Var_Scope
+              (Dest.Package_Instance_Spec_Scope'Access,
+               Src.Package_Instance_Spec_Scope'Access);
          when Kind_Field =>
             Dest.all := (Kind => Kind_Field,
                          Mark => False,
@@ -1356,10 +1361,12 @@ package body Trans.Chap2 is
                   null;
             end case;
          when Kind_Package_Instance =>
-            Pop_Instantiate_Var_Scope
-              (Info.Package_Instance_Body_Scope'Access);
+            --  The order is important: it must be the reverse order of the
+            --  push.
             Pop_Instantiate_Var_Scope
               (Info.Package_Instance_Spec_Scope'Access);
+            Pop_Instantiate_Var_Scope
+              (Info.Package_Instance_Body_Scope'Access);
          when others =>
             null;
       end case;
@@ -1464,11 +1471,12 @@ package body Trans.Chap2 is
                   | Type_Iir_Pure_State
                   | Type_Iir_Delay_Mechanism
                   | Type_Iir_Predefined_Functions
-                  | Type_Iir_Direction
+                  | Type_Direction_Type
                   | Type_Iir_Int32
                   | Type_Int32
                   | Type_Fp64
                   | Type_Token_Type
+                  | Type_Scalar_Size
                   | Type_Name_Id =>
                   null;
             end case;

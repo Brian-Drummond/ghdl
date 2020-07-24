@@ -21,15 +21,18 @@
 with Vhdl.Nodes; use Vhdl.Nodes;
 
 with Synth.Context; use Synth.Context;
+with Synth.Flags; use Synth.Flags;
 
 package Synth.Insts is
-   procedure Init;
-   procedure Synth_All_Instances;
-
+   --  Create the declaration of the top entity.
    procedure Synth_Top_Entity (Global_Instance : Synth_Instance_Acc;
                                Arch : Node;
                                Config : Node;
+                               Encoding : Name_Encoding;
                                Inst : out Synth_Instance_Acc);
+
+   --  Synthesize the top entity and all the sub-modules.
+   procedure Synth_All_Instances;
 
    --  Apply block configuration CFG to BLK.
    --  Must be done before synthesis of BLK.

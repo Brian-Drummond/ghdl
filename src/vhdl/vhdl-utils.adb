@@ -19,6 +19,7 @@
 with Name_Table;
 with Str_Table;
 with Std_Names; use Std_Names;
+with Flags;
 with Vhdl.Std_Package;
 with Vhdl.Errors; use Vhdl.Errors;
 with PSL.Nodes;
@@ -33,6 +34,34 @@ package body Vhdl.Utils is
    begin
       return Get_Kind (N) = Iir_Kind_Overflow_Literal;
    end Is_Overflow_Literal;
+
+   function Strip_Literal_Origin (N : Iir) return Iir
+   is
+      Orig : Iir;
+   begin
+      if N = Null_Iir then
+         return N;
+      end if;
+      case Get_Kind (N) is
+         when Iir_Kind_String_Literal8
+           |  Iir_Kind_Integer_Literal
+           |  Iir_Kind_Floating_Point_Literal
+           |  Iir_Kind_Physical_Int_Literal
+           |  Iir_Kind_Physical_Fp_Literal
+           |  Iir_Kind_Simple_Aggregate
+           |  Iir_Kind_Overflow_Literal
+           |  Iir_Kind_Enumeration_Literal
+           |  Iir_Kind_Aggregate =>
+            Orig := Get_Literal_Origin (N);
+            if Orig /= Null_Iir then
+               return Orig;
+            else
+               return N;
+            end if;
+         when others =>
+            return N;
+      end case;
+   end Strip_Literal_Origin;
 
    function List_To_Flist (L : Iir_List) return Iir_Flist
    is
@@ -211,20 +240,11 @@ package body Vhdl.Utils is
       Adecl := Name;
       loop
          case Get_Kind (Adecl) is
-            when Iir_Kind_Variable_Declaration
-              | Iir_Kind_Interface_Variable_Declaration
-              | Iir_Kind_Constant_Declaration
-              | Iir_Kind_Interface_Constant_Declaration
-              | Iir_Kind_Signal_Declaration
-              | Iir_Kind_Guard_Signal_Declaration
-              | Iir_Kind_Interface_Signal_Declaration
-              | Iir_Kind_File_Declaration
-              | Iir_Kind_Interface_File_Declaration
-              | Iir_Kind_Iterator_Declaration
-              | Iir_Kind_Through_Quantity_Declaration
-              | Iir_Kind_Across_Quantity_Declaration
-              | Iir_Kind_Free_Quantity_Declaration
+            when Iir_Kinds_Non_Alias_Object_Declaration
+              | Iir_Kinds_Quantity_Declaration
               | Iir_Kind_Terminal_Declaration
+              | Iir_Kind_Interface_Quantity_Declaration
+              | Iir_Kind_Interface_Terminal_Declaration
               | Iir_Kind_Interface_Type_Declaration
               | Iir_Kind_Interface_Package_Declaration
               | Iir_Kind_Interface_Function_Declaration
@@ -265,7 +285,7 @@ package body Vhdl.Utils is
               | Iir_Kind_Psl_Expression
               | Iir_Kinds_Concurrent_Statement
               | Iir_Kinds_Sequential_Statement
-              | Iir_Kind_Simple_Simultaneous_Statement =>
+              | Iir_Kinds_Simultaneous_Statement =>
                return Adecl;
             when Iir_Kind_Simple_Name
               | Iir_Kind_Selected_Name =>
@@ -273,75 +293,78 @@ package body Vhdl.Utils is
             when Iir_Kind_Attribute_Name =>
                return Get_Named_Entity (Adecl);
             when Iir_Kind_Error
-              | Iir_Kind_Unused
-              | Iir_Kind_Parenthesis_Name
-              | Iir_Kind_Conditional_Expression
-              | Iir_Kind_Character_Literal
-              | Iir_Kind_Operator_Symbol
-              | Iir_Kind_Design_File
-              | Iir_Kind_Design_Unit
-              | Iir_Kind_Library_Clause
-              | Iir_Kind_Use_Clause
-              | Iir_Kind_Context_Reference
-              | Iir_Kind_Library_Declaration
-              | Iir_Kinds_Library_Unit
-              | Iir_Kind_Component_Declaration
-              | Iir_Kind_Function_Declaration
-              | Iir_Kind_Procedure_Declaration
-              | Iir_Kind_Attribute_Declaration
-              | Iir_Kind_Nature_Declaration
-              | Iir_Kind_Subnature_Declaration
-              | Iir_Kinds_Type_Declaration
-              | Iir_Kinds_Type_And_Subtype_Definition
-              | Iir_Kind_Wildcard_Type_Definition
-              | Iir_Kind_Subtype_Definition
-              | Iir_Kind_Scalar_Nature_Definition
-              | Iir_Kind_Group_Template_Declaration
-              | Iir_Kind_Group_Declaration
-              | Iir_Kind_Anonymous_Signal_Declaration
-              | Iir_Kind_Signal_Attribute_Declaration
-              | Iir_Kind_Unaffected_Waveform
-              | Iir_Kind_Waveform_Element
-              | Iir_Kind_Conditional_Waveform
-              | Iir_Kind_Binding_Indication
-              | Iir_Kind_Component_Configuration
-              | Iir_Kind_Block_Configuration
-              | Iir_Kind_Attribute_Specification
-              | Iir_Kind_Disconnection_Specification
-              | Iir_Kind_Configuration_Specification
-              | Iir_Kind_Non_Object_Alias_Declaration
-              | Iir_Kinds_Subprogram_Body
-              | Iir_Kind_Protected_Type_Body
-              | Iir_Kind_Generate_Statement_Body
-              | Iir_Kind_Procedure_Call
-              | Iir_Kind_Aggregate_Info
-              | Iir_Kind_Entity_Class
-              | Iir_Kind_Signature
-              | Iir_Kind_Reference_Name
-              | Iir_Kind_Package_Header
-              | Iir_Kind_Block_Header
-              | Iir_Kinds_Association_Element
-              | Iir_Kind_Association_Element_Package
-              | Iir_Kind_Association_Element_Type
-              | Iir_Kind_Association_Element_Subprogram
-              | Iir_Kinds_Choice
-              | Iir_Kinds_Entity_Aspect
-              | Iir_Kind_Psl_Hierarchical_Name
-              | Iir_Kind_If_Generate_Else_Clause
-              | Iir_Kind_Elsif
-              | Iir_Kind_Record_Element_Constraint
-              | Iir_Kind_Array_Element_Resolution
-              | Iir_Kind_Record_Resolution
-              | Iir_Kind_Record_Element_Resolution
-              | Iir_Kind_Element_Declaration
-              | Iir_Kind_Psl_Endpoint_Declaration
-              | Iir_Kind_Psl_Declaration
-              | Iir_Kind_Package_Pathname
-              | Iir_Kind_Absolute_Pathname
-              | Iir_Kind_Relative_Pathname
-              | Iir_Kind_Pathname_Element
-              | Iir_Kind_Range_Expression
-              | Iir_Kind_Overload_List =>
+               | Iir_Kind_Unused
+               | Iir_Kind_Parenthesis_Name
+               | Iir_Kind_Conditional_Expression
+               | Iir_Kind_Character_Literal
+               | Iir_Kind_Operator_Symbol
+               | Iir_Kind_Design_File
+               | Iir_Kind_Design_Unit
+               | Iir_Kind_Library_Clause
+               | Iir_Kind_Use_Clause
+               | Iir_Kind_Context_Reference
+               | Iir_Kind_Library_Declaration
+               | Iir_Kinds_Library_Unit
+               | Iir_Kind_Component_Declaration
+               | Iir_Kind_Function_Declaration
+               | Iir_Kind_Procedure_Declaration
+               | Iir_Kind_Attribute_Declaration
+               | Iir_Kind_Nature_Declaration
+               | Iir_Kind_Subnature_Declaration
+               | Iir_Kinds_Type_Declaration
+               | Iir_Kinds_Type_And_Subtype_Definition
+               | Iir_Kinds_Nature_Definition
+               | Iir_Kinds_Subnature_Definition
+               | Iir_Kind_Wildcard_Type_Definition
+               | Iir_Kind_Subtype_Definition
+               | Iir_Kind_Group_Template_Declaration
+               | Iir_Kind_Group_Declaration
+               | Iir_Kind_Anonymous_Signal_Declaration
+               | Iir_Kind_Signal_Attribute_Declaration
+               | Iir_Kind_Unaffected_Waveform
+               | Iir_Kind_Waveform_Element
+               | Iir_Kind_Conditional_Waveform
+               | Iir_Kind_Binding_Indication
+               | Iir_Kind_Component_Configuration
+               | Iir_Kind_Block_Configuration
+               | Iir_Kinds_Specification
+               | Iir_Kind_Non_Object_Alias_Declaration
+               | Iir_Kinds_Subprogram_Body
+               | Iir_Kind_Protected_Type_Body
+               | Iir_Kind_Generate_Statement_Body
+               | Iir_Kind_Procedure_Call
+               | Iir_Kind_Aggregate_Info
+               | Iir_Kind_Entity_Class
+               | Iir_Kind_Signature
+               | Iir_Kind_Break_Element
+               | Iir_Kind_Reference_Name
+               | Iir_Kind_Package_Header
+               | Iir_Kind_Block_Header
+               | Iir_Kinds_Association_Element
+               | Iir_Kinds_Choice
+               | Iir_Kinds_Entity_Aspect
+               | Iir_Kind_Psl_Hierarchical_Name
+               | Iir_Kind_Psl_Prev
+               | Iir_Kind_Psl_Stable
+               | Iir_Kind_Psl_Rose
+               | Iir_Kind_Psl_Fell
+               | Iir_Kind_If_Generate_Else_Clause
+               | Iir_Kind_Elsif
+               | Iir_Kind_Simultaneous_Elsif
+               | Iir_Kind_Record_Element_Constraint
+               | Iir_Kind_Array_Element_Resolution
+               | Iir_Kind_Record_Resolution
+               | Iir_Kind_Record_Element_Resolution
+               | Iir_Kind_Element_Declaration
+               | Iir_Kind_Nature_Element_Declaration
+               | Iir_Kind_Psl_Endpoint_Declaration
+               | Iir_Kind_Psl_Declaration
+               | Iir_Kind_Package_Pathname
+               | Iir_Kind_Absolute_Pathname
+               | Iir_Kind_Relative_Pathname
+               | Iir_Kind_Pathname_Element
+               | Iir_Kind_Range_Expression
+               | Iir_Kind_Overload_List =>
                return Adecl;
          end case;
       end loop;
@@ -365,7 +388,10 @@ package body Vhdl.Utils is
            | Iir_Kind_Variable_Declaration
            | Iir_Kind_File_Declaration
            | Iir_Kind_Constant_Declaration
-           | Iir_Kind_Anonymous_Signal_Declaration =>
+           | Iir_Kind_Anonymous_Signal_Declaration
+           | Iir_Kind_Free_Quantity_Declaration
+           | Iir_Kind_Across_Quantity_Declaration
+           | Iir_Kind_Through_Quantity_Declaration =>
             return Name;
 
          --  A loop of generate parameter.
@@ -380,7 +406,8 @@ package body Vhdl.Utils is
          when Iir_Kind_Interface_Constant_Declaration
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
-           | Iir_Kind_Interface_File_Declaration =>
+           | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration =>
             return Name;
 
          --  An implicit signak GUARD defined by the guard expression of a
@@ -399,6 +426,10 @@ package body Vhdl.Utils is
          when Iir_Kind_Slice_Name
            | Iir_Kind_Indexed_Name
            | Iir_Kind_Selected_Element =>
+            if Name_To_Object (Get_Prefix (Name)) = Null_Iir then
+               --  The prefix may not be an object.
+               return Null_Iir;
+            end if;
             return Name;
 
          --  An object designated by a value of an access type
@@ -422,6 +453,20 @@ package body Vhdl.Utils is
          when Iir_Kinds_External_Name =>
             return Name;
 
+         --  AMS-LRM17 6.4 Objects
+         --  An implicit signal defined by any of the predefined attributes
+         --  'above, [...]
+         when Iir_Kind_Above_Attribute =>
+            return Name;
+
+         --  AMS-LRM17 6.4 Objects
+         --  An implicit quantity defined by any of the predefined attributes
+         --  'DOT, 'INTEG, 'DELAYED, 'ZOH, 'LTF, 'ZTF, 'REFERENCE,
+         --  'CONTRIBUTION, 'RAMP, and 'SLEW.
+         when Iir_Kind_Dot_Attribute
+           | Iir_Kind_Integ_Attribute =>
+            return Name;
+
          when others =>
             return Null_Iir;
       end case;
@@ -437,6 +482,11 @@ package body Vhdl.Utils is
          when Iir_Kind_Simple_Name
            | Iir_Kind_Selected_Name =>
             return Name_To_Value (Get_Named_Entity (Name));
+         when Iir_Kind_Indexed_Name
+           | Iir_Kind_Selected_Element
+           | Iir_Kind_Slice_Name =>
+            --  Already a value.
+            return Name;
          when others =>
             return Name_To_Object (Name);
       end case;
@@ -474,6 +524,37 @@ package body Vhdl.Utils is
             return False;
       end case;
    end Is_Signal_Object;
+
+   function Is_Quantity_Object (Name : Iir) return Boolean
+   is
+      Adecl: Iir;
+   begin
+      Adecl := Get_Object_Prefix (Name, True);
+      case Get_Kind (Adecl) is
+         when Iir_Kinds_Quantity_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
+           | Iir_Kind_Integ_Attribute
+           | Iir_Kind_Dot_Attribute =>
+            return True;
+         when Iir_Kind_Object_Alias_Declaration =>
+            --  Must have been handled by Get_Object_Prefix.
+            raise Internal_Error;
+         when others =>
+            return False;
+      end case;
+   end Is_Quantity_Object;
+
+   function Is_Quantity_Name (Expr : Iir) return Boolean
+   is
+      Obj : Iir;
+   begin
+      Obj := Name_To_Object (Expr);
+      if Obj /= Null_Iir then
+         return Is_Quantity_Object (Obj);
+      else
+         return False;
+      end if;
+   end Is_Quantity_Name;
 
    function Get_Interface_Of_Formal (Formal : Iir) return Iir
    is
@@ -718,7 +799,7 @@ package body Vhdl.Utils is
       Range_Expr := Create_Iir (Iir_Kind_Range_Expression);
       Location_Copy (Range_Expr, Def);
       Set_Type (Range_Expr, Def);
-      Set_Direction (Range_Expr, Iir_To);
+      Set_Direction (Range_Expr, Dir_To);
       if List_Len >= 1 then
          Set_Left_Limit
            (Range_Expr, Get_Nth_Element (Literal_List, 0));
@@ -911,16 +992,108 @@ package body Vhdl.Utils is
       end if;
    end Clear_Seen_Flag;
 
+   function Get_Base_Type (Atype : Iir) return Iir
+   is
+      Res : Iir;
+   begin
+      Res := Atype;
+      loop
+         case Get_Kind (Res) is
+            when Iir_Kind_Access_Type_Definition
+               | Iir_Kind_Integer_Type_Definition
+               | Iir_Kind_Floating_Type_Definition
+               | Iir_Kind_Enumeration_Type_Definition
+               | Iir_Kind_Physical_Type_Definition
+               | Iir_Kind_Array_Type_Definition
+               | Iir_Kind_Record_Type_Definition
+               | Iir_Kind_Protected_Type_Declaration
+               | Iir_Kind_File_Type_Definition
+               | Iir_Kind_Incomplete_Type_Definition
+               | Iir_Kind_Interface_Type_Definition
+               | Iir_Kind_Wildcard_Type_Definition
+               | Iir_Kind_Error =>
+               return Res;
+            when Iir_Kind_Access_Subtype_Definition
+               | Iir_Kind_Integer_Subtype_Definition
+               | Iir_Kind_Floating_Subtype_Definition
+               | Iir_Kind_Enumeration_Subtype_Definition
+               | Iir_Kind_Physical_Subtype_Definition
+               | Iir_Kind_Array_Subtype_Definition
+               | Iir_Kind_Record_Subtype_Definition =>
+               Res := Get_Parent_Type (Res);
+            when others =>
+               Error_Kind ("get_base_type", Res);
+         end case;
+      end loop;
+   end Get_Base_Type;
+
    function Is_Anonymous_Type_Definition (Def : Iir) return Boolean is
    begin
       return Get_Type_Declarator (Def) = Null_Iir;
    end Is_Anonymous_Type_Definition;
+
+   function Is_Anonymous_Nature_Definition (Def : Iir) return Boolean is
+   begin
+      return Get_Nature_Declarator (Def) = Null_Iir;
+   end Is_Anonymous_Nature_Definition;
 
    function Is_Fully_Constrained_Type (Def : Iir) return Boolean is
    begin
       return Get_Kind (Def) not in Iir_Kinds_Composite_Type_Definition
         or else Get_Constraint_State (Def) = Fully_Constrained;
    end Is_Fully_Constrained_Type;
+
+   function Is_Object_Fully_Constrained (Decl : Iir) return Boolean is
+   begin
+      --  That's true if the object type is constrained.
+      if Is_Fully_Constrained_Type (Get_Type (Decl)) then
+         return True;
+      end if;
+
+      --  That's also true if the object is declared with a subtype attribute.
+      if Get_Kind (Get_Subtype_Indication (Decl)) = Iir_Kind_Subtype_Attribute
+      then
+         return True;
+      end if;
+
+      --  Otherwise this is false.
+      return False;
+   end Is_Object_Fully_Constrained;
+
+   function Is_Object_Name_Fully_Constrained (Obj : Iir) return Boolean
+   is
+      Base : Iir;
+   begin
+      --  That's true if the object type is constrained.
+      if Flags.Flag_Relaxed_Rules
+        or else Is_Fully_Constrained_Type (Get_Type (Obj))
+      then
+         return True;
+      end if;
+
+      --  That's also true if the object is declared with a subtype attribute.
+      Base := Get_Base_Name (Obj);
+      case Get_Kind (Base) is
+         when Iir_Kind_Variable_Declaration
+            | Iir_Kind_Signal_Declaration
+            | Iir_Kind_Interface_Variable_Declaration
+            | Iir_Kind_Interface_Signal_Declaration
+            | Iir_Kind_Object_Alias_Declaration =>
+            if (Get_Kind (Get_Subtype_Indication (Base))
+                = Iir_Kind_Subtype_Attribute)
+            then
+               return True;
+            end if;
+         when Iir_Kind_Dereference
+            | Iir_Kind_Implicit_Dereference =>
+            null;
+         when others =>
+            Error_Kind ("is_object_name_fully_constrained", Base);
+      end case;
+
+      --  Otherwise this is false.
+      return False;
+   end Is_Object_Name_Fully_Constrained;
 
    function Strip_Denoting_Name (Name : Iir) return Iir is
    begin
@@ -990,20 +1163,25 @@ package body Vhdl.Utils is
    is
       Ent : Iir;
    begin
-      if Get_Kind (Name) in Iir_Kinds_Denoting_Name then
-         Ent := Get_Named_Entity (Name);
-         case Get_Kind (Ent) is
-            when Iir_Kind_Type_Declaration =>
-               return Get_Type_Definition (Ent);
-            when Iir_Kind_Subtype_Declaration
-              | Iir_Kind_Base_Attribute =>
-               return Get_Type (Ent);
-            when others =>
-               return Null_Iir;
-         end case;
-      else
-         return Null_Iir;
-      end if;
+      case Get_Kind (Name) is
+         when Iir_Kinds_Denoting_Name
+           | Iir_Kind_Attribute_Name =>
+            Ent := Get_Named_Entity (Name);
+            case Get_Kind (Ent) is
+               when Iir_Kind_Type_Declaration =>
+                  return Get_Type_Definition (Ent);
+               when Iir_Kind_Subtype_Declaration
+                 | Iir_Kind_Base_Attribute
+                 | Iir_Kind_Subtype_Attribute =>
+                  return Get_Type (Ent);
+               when others =>
+                  return Null_Iir;
+            end case;
+         when Iir_Kind_Subtype_Attribute =>
+            return Get_Type (Ent);
+         when others =>
+            return Null_Iir;
+      end case;
    end Is_Type_Name;
 
    function Get_Type_Of_Subtype_Indication (Ind : Iir) return Iir is
@@ -1013,7 +1191,9 @@ package body Vhdl.Utils is
             return Get_Type (Ind);
          when Iir_Kinds_Subtype_Definition =>
             return Ind;
-         when Iir_Kind_Subtype_Attribute =>
+         when Iir_Kind_Subtype_Attribute
+           | Iir_Kind_Across_Attribute
+           | Iir_Kind_Through_Attribute =>
             return Get_Type (Ind);
          when Iir_Kind_Error =>
             return Ind;
@@ -1021,6 +1201,19 @@ package body Vhdl.Utils is
             Error_Kind ("get_type_of_subtype_indication", Ind);
       end case;
    end Get_Type_Of_Subtype_Indication;
+
+   function Get_Nature_Of_Subnature_Indication (Ind : Iir) return Iir is
+   begin
+      case Get_Kind (Ind) is
+         when Iir_Kinds_Denoting_Name =>
+            --  Name of a nature.
+            return Get_Nature (Get_Named_Entity (Ind));
+         when Iir_Kind_Array_Subnature_Definition =>
+            return Ind;
+         when others =>
+            Error_Kind ("get_nature_of_subnature_indication", Ind);
+      end case;
+   end Get_Nature_Of_Subnature_Indication;
 
    function Get_Index_Type (Indexes : Iir_Flist; Idx : Natural) return Iir
    is
@@ -1335,8 +1528,7 @@ package body Vhdl.Utils is
    end Get_Entity_Identifier_Of_Architecture;
 
    function Is_Component_Instantiation
-     (Inst : Iir_Component_Instantiation_Statement)
-     return Boolean is
+     (Inst : Iir_Component_Instantiation_Statement) return Boolean is
    begin
       case Get_Kind (Get_Instantiated_Unit (Inst)) is
          when Iir_Kinds_Denoting_Name =>
@@ -1350,8 +1542,7 @@ package body Vhdl.Utils is
    end Is_Component_Instantiation;
 
    function Is_Entity_Instantiation
-     (Inst : Iir_Component_Instantiation_Statement)
-     return Boolean is
+     (Inst : Iir_Component_Instantiation_Statement) return Boolean is
    begin
       case Get_Kind (Get_Instantiated_Unit (Inst)) is
          when Iir_Kinds_Denoting_Name =>
@@ -1386,10 +1577,10 @@ package body Vhdl.Utils is
    is
    begin
       case Get_Direction (Arange) is
-         when Iir_To =>
+         when Dir_To =>
             Low := Get_Left_Limit (Arange);
             High := Get_Right_Limit (Arange);
-         when Iir_Downto =>
+         when Dir_Downto =>
             High := Get_Left_Limit (Arange);
             Low := Get_Right_Limit (Arange);
       end case;
@@ -1398,9 +1589,9 @@ package body Vhdl.Utils is
    function Get_Low_Limit (Arange : Iir_Range_Expression) return Iir is
    begin
       case Get_Direction (Arange) is
-         when Iir_To =>
+         when Dir_To =>
             return Get_Left_Limit (Arange);
-         when Iir_Downto =>
+         when Dir_Downto =>
             return Get_Right_Limit (Arange);
       end case;
    end Get_Low_Limit;
@@ -1408,9 +1599,9 @@ package body Vhdl.Utils is
    function Get_High_Limit (Arange : Iir_Range_Expression) return Iir is
    begin
       case Get_Direction (Arange) is
-         when Iir_To =>
+         when Dir_To =>
             return Get_Right_Limit (Arange);
-         when Iir_Downto =>
+         when Dir_Downto =>
             return Get_Left_Limit (Arange);
       end case;
    end Get_High_Limit;
@@ -1458,7 +1649,7 @@ package body Vhdl.Utils is
    begin
       Res := Create_Iir (Iir_Kind_Array_Subtype_Definition);
       Set_Location (Res, Loc);
-      Set_Base_Type (Res, Base_Type);
+      Set_Parent_Type (Res, Base_Type);
       Set_Element_Subtype (Res, El_Type);
       if Get_Kind (Arr_Type) = Iir_Kind_Array_Subtype_Definition then
          Set_Resolution_Indication (Res, Get_Resolution_Indication (Arr_Type));
@@ -1538,7 +1729,6 @@ package body Vhdl.Utils is
    begin
       Res := Create_Error (Orig);
       --Set_Expr_Staticness (Res, Locally);
-      Set_Base_Type (Res, Res);
       Set_Type_Declarator (Res, Null_Iir);
       Set_Resolved_Flag (Res, True);
       Set_Signal_Type_Flag (Res, True);
@@ -1633,6 +1823,137 @@ package body Vhdl.Utils is
    begin
       return K = K1 or K = K2;
    end Kind_In;
+
+   procedure Set_Attribute_Parameter
+     (Attr : Iir; N : Parameter_Index; Param : Iir) is
+   begin
+      case N is
+         when 1 =>
+            Set_Parameter (Attr, Param);
+         when 2 =>
+            Set_Parameter_2 (Attr, Param);
+         when 3 =>
+            Set_Parameter_3 (Attr, Param);
+         when 4 =>
+            Set_Parameter_4 (Attr, Param);
+      end case;
+   end Set_Attribute_Parameter;
+
+   function Get_Attribute_Parameter
+     (Attr : Iir; N : Parameter_Index) return Iir is
+   begin
+      case N is
+         when 1 =>
+            return Get_Parameter (Attr);
+         when 2 =>
+            return Get_Parameter_2 (Attr);
+         when 3 =>
+            return Get_Parameter_3 (Attr);
+         when 4 =>
+            return Get_Parameter_4 (Attr);
+      end case;
+   end Get_Attribute_Parameter;
+
+   function Get_File_Signature_Length (Def : Iir) return Natural is
+   begin
+      case Get_Kind (Def) is
+         when Iir_Kinds_Scalar_Type_And_Subtype_Definition =>
+            return 1;
+         when Iir_Kind_Array_Type_Definition
+           | Iir_Kind_Array_Subtype_Definition =>
+            return 2
+              + Get_File_Signature_Length (Get_Element_Subtype (Def));
+         when Iir_Kind_Record_Type_Definition
+           | Iir_Kind_Record_Subtype_Definition =>
+            declare
+               List : constant Iir_Flist :=
+                 Get_Elements_Declaration_List (Get_Base_Type (Def));
+               El : Iir;
+               Res : Natural;
+            begin
+               Res := 2;
+               for I in Flist_First .. Flist_Last (List) loop
+                  El := Get_Nth_Element (List, I);
+                  Res := Res + Get_File_Signature_Length (Get_Type (El));
+               end loop;
+               return Res;
+            end;
+         when others =>
+            Error_Kind ("get_file_signature_length", Def);
+      end case;
+   end Get_File_Signature_Length;
+
+   procedure Get_File_Signature (Def : Iir;
+                                 Res : in out String;
+                                 Off : in out Natural)
+   is
+      Base_Type : constant Iir := Get_Base_Type (Def);
+   begin
+      case Get_Kind (Base_Type) is
+         when Iir_Kind_Integer_Type_Definition =>
+            case Get_Scalar_Size (Base_Type) is
+               when Scalar_32 =>
+                  Res (Off) := 'i';
+               when Scalar_64 =>
+                  Res (Off) := 'I';
+               when others =>
+                  raise Internal_Error;
+            end case;
+            Off := Off + 1;
+         when Iir_Kind_Physical_Type_Definition =>
+            case Get_Scalar_Size (Base_Type) is
+               when Scalar_32 =>
+                  Res (Off) := 'p';
+               when Scalar_64 =>
+                  Res (Off) := 'P';
+               when others =>
+                  raise Internal_Error;
+            end case;
+            Off := Off + 1;
+         when Iir_Kind_Floating_Type_Definition =>
+            Res (Off) := 'F';
+            Off := Off + 1;
+         when Iir_Kind_Enumeration_Type_Definition =>
+            if Base_Type = Std_Package.Boolean_Type_Definition then
+               Res (Off) := 'b';
+            else
+               case Get_Scalar_Size (Base_Type) is
+                  when Scalar_8 =>
+                     Res (Off) := 'e';
+                  when Scalar_32 =>
+                     Res (Off) := 'E';
+                  when others =>
+                     raise Internal_Error;
+               end case;
+            end if;
+            Off := Off + 1;
+         when Iir_Kind_Array_Type_Definition
+           | Iir_Kind_Array_Subtype_Definition =>
+            Res (Off) := '[';
+            Off := Off + 1;
+            Get_File_Signature (Get_Element_Subtype (Def), Res, Off);
+            Res (Off) := ']';
+            Off := Off + 1;
+         when Iir_Kind_Record_Type_Definition
+           | Iir_Kind_Record_Subtype_Definition =>
+            declare
+               List : constant Iir_Flist :=
+                 Get_Elements_Declaration_List (Get_Base_Type (Def));
+               El : Iir;
+            begin
+               Res (Off) := '<';
+               Off := Off + 1;
+               for I in Flist_First .. Flist_Last (List) loop
+                  El := Get_Nth_Element (List, I);
+                  Get_File_Signature (Get_Type (El), Res, Off);
+               end loop;
+               Res (Off) := '>';
+               Off := Off + 1;
+            end;
+         when others =>
+            Error_Kind ("get_file_signature", Def);
+      end case;
+   end Get_File_Signature;
 
    function Get_HDL_Node (N : PSL_Node) return Iir is
    begin

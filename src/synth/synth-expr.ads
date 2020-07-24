@@ -22,29 +22,42 @@ with Ada.Unchecked_Deallocation;
 
 with Types; use Types;
 
+with PSL.Types;
+with Vhdl.Nodes; use Vhdl.Nodes;
+
 with Netlists; use Netlists;
-with Netlists.Utils; use Netlists.Utils;
+with Netlists.Builders; use Netlists.Builders;
 
 with Synth.Source;
+with Synth.Objtypes; use Synth.Objtypes;
 with Synth.Values; use Synth.Values;
 with Synth.Context; use Synth.Context;
-with Vhdl.Nodes; use Vhdl.Nodes;
 
 package Synth.Expr is
    --  Perform a subtype conversion.  Check constraints.
-   function Synth_Subtype_Conversion (Val : Value_Acc;
+   function Synth_Subtype_Conversion (Ctxt : Context_Acc;
+                                      Vt : Valtyp;
                                       Dtype : Type_Acc;
                                       Bounds : Boolean;
                                       Loc : Source.Syn_Src)
-                                     return Value_Acc;
+                                     return Valtyp;
 
-   function Get_Static_Discrete (V : Value_Acc) return Int64;
+   --  For a static value V, return the value.
+   function Get_Static_Discrete (V : Valtyp) return Int64;
+
+   --  Return the memory (as a memtyp) of static value V.
+   function Get_Value_Memtyp (V : Valtyp) return Memtyp;
+
+   --  Return True only if discrete value V is known to be positive or 0.
+   --  False means either not positive or unknown.
+   function Is_Positive (V : Valtyp) return Boolean;
 
    --  Return the bounds of a one dimensional array/vector type and the
    --  width of the element.
    procedure Get_Onedimensional_Array_Bounds
      (Typ : Type_Acc; Bnd : out Bound_Type; El_Typ : out Type_Acc);
 
+   --  Create an array subtype from bound BND.
    function Create_Onedimensional_Array_Subtype
      (Btyp : Type_Acc; Bnd : Bound_Type) return Type_Acc;
 
@@ -59,32 +72,38 @@ package Synth.Expr is
    function Synth_Clock_Edge
      (Syn_Inst : Synth_Instance_Acc; Left, Right : Node) return Net;
 
-   function Bit_Extract (Val : Value_Acc; Off : Uns32; Loc : Node)
-                        return Value_Acc;
+   procedure Concat_Array
+     (Ctxt : Context_Acc; Arr : in out Net_Array; N : out Net);
 
-   function Concat_Array (Arr : Net_Array_Acc) return Net;
+   --  Synthesize EXPR.  The expression must be self-constrained.
+   --  If EN is not No_Net, the execution is controlled by EN.  This is used
+   --  for assertions and checks.
+   function Synth_Expression
+     (Syn_Inst : Synth_Instance_Acc; Expr : Node) return Valtyp;
 
-   function Synth_Expression_With_Type
-     (Syn_Inst : Synth_Instance_Acc; Expr : Node; Expr_Type : Type_Acc)
-     return Value_Acc;
-
-   function Synth_Expression (Syn_Inst : Synth_Instance_Acc; Expr : Node)
-                             return Value_Acc;
+   --  Same as Synth_Expression, but the expression may be constrained by
+   --  EXPR_TYPE.
+   function Synth_Expression_With_Type (Syn_Inst : Synth_Instance_Acc;
+                                        Expr : Node;
+                                        Expr_Type : Type_Acc) return Valtyp;
 
    --  Use base type of EXPR to synthesize EXPR.  Useful when the type of
    --  EXPR is defined by itself or a range.
-   function Synth_Expression_With_Basetype
-     (Syn_Inst : Synth_Instance_Acc; Expr : Node) return Value_Acc;
+   function Synth_Expression_With_Basetype (Syn_Inst : Synth_Instance_Acc;
+                                            Expr : Node) return Valtyp;
+
+   function Synth_PSL_Expression
+     (Syn_Inst : Synth_Instance_Acc; Expr : PSL.Types.PSL_Node) return Net;
 
    function Synth_Bounds_From_Range (Syn_Inst : Synth_Instance_Acc;
                                      Atype : Node) return Bound_Type;
 
    function Synth_Array_Bounds (Syn_Inst : Synth_Instance_Acc;
                                 Atype : Node;
-                                Dim : Natural) return Bound_Type;
+                                Dim : Dim_Type) return Bound_Type;
 
    function Synth_Discrete_Range_Expression
-     (L : Int64; R : Int64; Dir : Iir_Direction) return Discrete_Range_Type;
+     (L : Int64; R : Int64; Dir : Direction_Type) return Discrete_Range_Type;
    function Synth_Discrete_Range_Expression
      (Syn_Inst : Synth_Instance_Acc; Rng : Node) return Discrete_Range_Type;
    function Synth_Float_Range_Expression
@@ -92,17 +111,15 @@ package Synth.Expr is
 
    procedure Synth_Discrete_Range (Syn_Inst : Synth_Instance_Acc;
                                    Bound : Node;
-                                   Rng : out Discrete_Range_Type;
-                                   W : out Width);
+                                   Rng : out Discrete_Range_Type);
 
    procedure Synth_Slice_Suffix (Syn_Inst : Synth_Instance_Acc;
                                  Name : Node;
                                  Pfx_Bnd : Bound_Type;
-                                 El_Wd : Width;
+                                 El_Typ : Type_Acc;
                                  Res_Bnd : out Bound_Type;
                                  Inp : out Net;
-                                 Off : out Uns32;
-                                 Wd : out Width);
+                                 Off : out Value_Offsets);
 
    --  If VOFF is No_Net then OFF is valid, if VOFF is not No_Net then
    --  OFF is 0.
@@ -110,15 +127,14 @@ package Synth.Expr is
                                  Name : Node;
                                  Pfx_Type : Type_Acc;
                                  Voff : out Net;
-                                 Off : out Uns32;
-                                 W : out Width);
+                                 Off : out Value_Offsets);
+
+   --  Return the type of EXPR (an object) without evaluating it (except when
+   --  needed, like bounds of a slice).
+   function Synth_Type_Of_Object (Syn_Inst : Synth_Instance_Acc; Expr : Node)
+                                 return Type_Acc;
 
    --  Conversion to logic vector.
-
-   type Logic_32 is record
-      Val : Uns32;  --  AKA aval
-      Zx  : Uns32;  --  AKA bval
-   end record;
 
    type Digit_Index is new Natural;
    type Logvec_Array is array (Digit_Index range <>) of Logic_32;
@@ -127,8 +143,12 @@ package Synth.Expr is
    procedure Free_Logvec_Array is new Ada.Unchecked_Deallocation
      (Logvec_Array, Logvec_Array_Acc);
 
-   procedure Value2logvec (Val : Value_Acc;
+   --  Convert W bits from OFF of VAL to a Logvec_Array.
+   --  OFF and W are offset and width in bit representation.
+   procedure Value2logvec (Val : Memtyp;
+                           Off : Uns32;
+                           W : Width;
                            Vec : in out Logvec_Array;
-                           Off : in out Uns32;
+                           Vec_Off : in out Uns32;
                            Has_Zx : in out Boolean);
 end Synth.Expr;

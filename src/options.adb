@@ -18,6 +18,7 @@
 
 with Simple_IO;
 with Errorout; use Errorout;
+with Types; use Types;
 with Libraries;
 with Std_Names;
 with PSL.Nodes;
@@ -35,7 +36,7 @@ package body Options is
    begin
       Std_Names.Std_Names_Initialize;
       Libraries.Init_Paths;
-      PSL.Nodes.Init;
+      PSL.Nodes.Init (Libraries.Library_Location);
       PSL.Dump_Tree.Dump_Hdl_Node := Vhdl.Disp_Tree.Disp_Tree_For_Psl'Access;
       Vhdl.Errors.Initialize;
    end Initialize;
@@ -88,6 +89,8 @@ package body Options is
       pragma Assert (Opt'First = 1);
    begin
       if Opt'Last > 5 and then Opt (1 .. 6) = "--std=" then
+         Flag_Relaxed_Rules := False;
+         Flag_Relaxed_Files87 := False;
          if Opt'Length = 8 then
             if Opt (7 .. 8) = "87" then
                Vhdl_Std := Vhdl_87;
@@ -104,7 +107,9 @@ package body Options is
                return Option_Err;
             end if;
          elsif Opt'Length = 9 and then Opt (7 .. 9) = "93c" then
-            Vhdl_Std := Vhdl_93c;
+            Vhdl_Std := Vhdl_93;
+            Flag_Relaxed_Rules := True;
+            Flag_Relaxed_Files87 := True;
          else
             Error_Msg_Option ("unknown language standard");
             return Option_Err;
@@ -138,7 +143,8 @@ package body Options is
       elsif Opt'Length > 2 and then Opt (1 .. 2) = "-W" then
          return Option_Warning (Opt (3 .. Opt'Last), True);
       elsif Opt'Length > 7 and then Opt (1 .. 7) = "--work=" then
-         if not Libraries.Decode_Work_Option (Opt) then
+         Libraries.Work_Library_Name := Libraries.Decode_Work_Option (Opt);
+         if Libraries.Work_Library_Name = Null_Identifier then
             return Option_Err;
          end if;
       elsif Opt = "-C" or else Opt = "--mb-comments" then
@@ -174,12 +180,22 @@ package body Options is
                Error_Msg_Option ("numeric value expected after -ftabstop=");
                return Option_Err;
          end;
+      elsif Opt'Length > 13 and then Opt (1 .. 13) = "-fmax-errors=" then
+         begin
+            Max_Nbr_Errors := Natural'Value (Opt (14 .. Opt'Last));
+         exception
+            when Constraint_Error =>
+               Error_Msg_Option ("numeric value expected after -fmax-errors=");
+               return Option_Err;
+         end;
       elsif Opt = "--bootstrap" then
          Bootstrap := True;
       elsif Opt = "-fexplicit" then
          Flag_Explicit := True;
       elsif Opt = "-frelaxed-rules" or else Opt = "-frelaxed" then
          Flag_Relaxed_Rules := True;
+      elsif Opt = "-fsynopsys" then
+         Flag_Synopsys := True;
       elsif Opt = "--syn-binding" then
          Flag_Syn_Binding := True;
       elsif Opt = "--no-vital-checks" then

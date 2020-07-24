@@ -27,7 +27,6 @@ with Trans.Chap7;
 with Trans.Chap14;
 with Trans_Decls; use Trans_Decls;
 with Trans.Helpers2; use Trans.Helpers2;
-with Translation;
 
 package body Trans.Chap3 is
    use Trans.Helpers;
@@ -332,45 +331,21 @@ package body Trans.Chap3 is
    --  Integer  --
    ---------------
 
-   --  Return the number of bits (32 or 64) required to represent the
-   --  (integer or physical) type definition DEF.
-   type Type_Precision is (Precision_32, Precision_64);
-   function Get_Type_Precision (Def : Iir) return Type_Precision
-   is
-      St     : constant Iir :=
-        Get_Subtype_Definition (Get_Type_Declarator (Def));
-      L, H   : Iir;
-      Lv, Hv : Int64;
-      subtype Int64_32 is Int64 range -(2 ** 31) .. 2 ** 31 - 1;
-   begin
-      Get_Low_High_Limit (Get_Range_Constraint (St), L, H);
-      Lv := Get_Value (L);
-      Hv := Get_Value (H);
-      if Lv in Int64_32 and then Hv in Int64_32 then
-         return Precision_32;
-      else
-         if Translation.Flag_Only_32b then
-            Error_Msg_Sem
-              (+St, "range of %n is too large", +Get_Type_Declarator (St));
-            return Precision_32;
-         end if;
-         return Precision_64;
-      end if;
-   end Get_Type_Precision;
-
    procedure Translate_Integer_Type (Def : Iir_Integer_Type_Definition)
    is
       Info : constant Type_Info_Acc := Get_Info (Def);
    begin
-      case Get_Type_Precision (Def) is
-         when Precision_32 =>
+      case Get_Scalar_Size (Def) is
+         when Scalar_32 =>
             Info.Ortho_Type (Mode_Value) := New_Signed_Type (32);
             Info.Type_Mode := Type_Mode_I32;
             Info.B.Align := Align_32;
-         when Precision_64 =>
+         when Scalar_64 =>
             Info.Ortho_Type (Mode_Value) := New_Signed_Type (64);
             Info.Type_Mode := Type_Mode_I64;
             Info.B.Align := Align_64;
+         when others =>
+            raise Internal_Error;
       end case;
       --  Integers are always in their ranges.
       Info.S.Nocheck_Low := True;
@@ -406,15 +381,17 @@ package body Trans.Chap3 is
    is
       Info : constant Type_Info_Acc := Get_Info (Def);
    begin
-      case Get_Type_Precision (Def) is
-         when Precision_32 =>
+      case Get_Scalar_Size (Def) is
+         when Scalar_32 =>
             Info.Ortho_Type (Mode_Value) := New_Signed_Type (32);
             Info.Type_Mode := Type_Mode_P32;
             Info.B.Align := Align_32;
-         when Precision_64 =>
+         when Scalar_64 =>
             Info.Ortho_Type (Mode_Value) := New_Signed_Type (64);
             Info.Type_Mode := Type_Mode_P64;
             Info.B.Align := Align_64;
+         when others =>
+            raise Internal_Error;
       end case;
       --  Physical types are always in their ranges.
       Info.S.Nocheck_Low := True;
@@ -452,74 +429,6 @@ package body Trans.Chap3 is
       Info.Type_Mode := Type_Mode_File;
       Info.B.Align := Align_32;
    end Translate_File_Type;
-
-   function Get_File_Signature_Length (Def : Iir) return Natural is
-   begin
-      case Get_Kind (Def) is
-         when Iir_Kinds_Scalar_Type_And_Subtype_Definition =>
-            return 1;
-         when Iir_Kind_Array_Type_Definition
-            | Iir_Kind_Array_Subtype_Definition =>
-            return 2
-              + Get_File_Signature_Length (Get_Element_Subtype (Def));
-         when Iir_Kind_Record_Type_Definition
-            | Iir_Kind_Record_Subtype_Definition =>
-            declare
-               List : constant Iir_Flist :=
-                 Get_Elements_Declaration_List (Get_Base_Type (Def));
-               El   : Iir;
-               Res  : Natural;
-            begin
-               Res := 2;
-               for I in Flist_First .. Flist_Last (List) loop
-                  El := Get_Nth_Element (List, I);
-                  Res := Res + Get_File_Signature_Length (Get_Type (El));
-               end loop;
-               return Res;
-            end;
-         when others =>
-            Error_Kind ("get_file_signature_length", Def);
-      end case;
-   end Get_File_Signature_Length;
-
-   procedure Get_File_Signature (Def : Iir;
-                                 Res : in out String;
-                                 Off : in out Natural)
-   is
-      Scalar_Map : constant array (Type_Mode_Scalar) of Character
-        := "beEiIpPF";
-   begin
-      case Get_Kind (Def) is
-         when Iir_Kinds_Scalar_Type_And_Subtype_Definition =>
-            Res (Off) := Scalar_Map (Get_Info (Def).Type_Mode);
-            Off := Off + 1;
-         when Iir_Kind_Array_Type_Definition
-            | Iir_Kind_Array_Subtype_Definition =>
-            Res (Off) := '[';
-            Off := Off + 1;
-            Get_File_Signature (Get_Element_Subtype (Def), Res, Off);
-            Res (Off) := ']';
-            Off := Off + 1;
-         when Iir_Kind_Record_Type_Definition
-            | Iir_Kind_Record_Subtype_Definition =>
-            declare
-               List : constant Iir_Flist :=
-                 Get_Elements_Declaration_List (Get_Base_Type (Def));
-               El   : Iir;
-            begin
-               Res (Off) := '<';
-               Off := Off + 1;
-               for I in Flist_First .. Flist_Last (List) loop
-                  El := Get_Nth_Element (List, I);
-                  Get_File_Signature (Get_Type (El), Res, Off);
-               end loop;
-               Res (Off) := '>';
-               Off := Off + 1;
-            end;
-         when others =>
-            Error_Kind ("get_file_signature", Def);
-      end case;
-   end Get_File_Signature;
 
    procedure Create_File_Type_Var (Def : Iir_File_Type_Definition)
    is
@@ -768,12 +677,18 @@ package body Trans.Chap3 is
                --  Element.
                if Tinfo.B.Bounds_El /= O_Fnode_Null then
                   --  TODO: should be directly elaborated in place.
-                  El_Tinfo := Get_Info (Get_Element_Subtype (Def));
-                  Gen_Memcpy
-                    (M2Addr (Array_Bounds_To_Element_Layout (Targ, Def)),
-                     M2Addr (Get_Composite_Type_Layout (El_Tinfo)),
-                     New_Lit (New_Sizeof (El_Tinfo.B.Layout_Type,
-                                          Ghdl_Index_Type)));
+                  if False then
+                     El_Tinfo := Get_Info (Get_Element_Subtype (Def));
+                     Gen_Memcpy
+                       (M2Addr (Array_Bounds_To_Element_Layout (Targ, Def)),
+                        M2Addr (Get_Composite_Type_Layout (El_Tinfo)),
+                        New_Lit (New_Sizeof (El_Tinfo.B.Layout_Type,
+                                             Ghdl_Index_Type)));
+                  else
+                     Elab_Composite_Subtype_Layout
+                       (Get_Element_Subtype (Def),
+                        Array_Bounds_To_Element_Layout (Targ, Def));
+                  end if;
                end if;
             end;
 
@@ -950,6 +865,9 @@ package body Trans.Chap3 is
          --  Declare the types.
          Finish_Unbounded_Type_Base (Info);
       else
+         --  The element type is not static (like an array sub-type with
+         --  bounds that were computed).  So an array cannot be created in
+         --  ortho.
          if El_Tinfo.Type_Mode in Type_Mode_Arrays then
             Info.B.Base_Type := El_Tinfo.B.Base_Ptr_Type;
             Info.B.Base_Ptr_Type := El_Tinfo.B.Base_Ptr_Type;
@@ -1051,7 +969,7 @@ package body Trans.Chap3 is
       end loop;
    end Create_Array_For_Array_Subtype;
 
-   procedure Translate_Array_Subtype_Definition
+   procedure Translate_Bounded_Array_Subtype_Definition
      (Def : Iir_Array_Subtype_Definition; Parent_Type : Iir)
    is
       El_Type   : constant Iir := Get_Element_Subtype (Def);
@@ -1109,7 +1027,7 @@ package body Trans.Chap3 is
             New_Type_Decl (Id, Info.Ortho_Type (I));
          end loop;
       end if;
-   end Translate_Array_Subtype_Definition;
+   end Translate_Bounded_Array_Subtype_Definition;
 
    procedure Translate_Array_Subtype_Definition_Constrained_Element
      (Def : Iir_Array_Subtype_Definition; Parent_Type : Iir)
@@ -1177,6 +1095,44 @@ package body Trans.Chap3 is
         (Info.B.Builder (Kind).Builder_Instance);
       Finish_Subprogram_Body;
    end Create_Array_Type_Builder;
+
+   procedure Translate_Array_Subtype_Definition
+     (Def : Iir; Parent_Type : Iir; With_Vars : Boolean)
+   is
+      El_Type : constant Iir := Get_Element_Subtype (Def);
+      Parent_El_Type : constant Iir := Get_Element_Subtype (Parent_Type);
+      Mark : Id_Mark_Type;
+   begin
+      --  Handle element subtype.
+      if El_Type /= Parent_El_Type then
+         --  TODO: do not create vars for element subtype, but use
+         --  the layout field of the array vars.
+         Push_Identifier_Prefix (Mark, "ET");
+         Translate_Subtype_Definition (El_Type, Parent_El_Type, With_Vars);
+         Pop_Identifier_Prefix (Mark);
+      end if;
+
+      if Get_Constraint_State (Def) = Fully_Constrained then
+         Translate_Bounded_Array_Subtype_Definition (Def, Parent_Type);
+         if With_Vars then
+            Create_Composite_Subtype_Layout_Var (Def, False);
+         end if;
+      elsif Is_Fully_Constrained_Type (El_Type)
+        and then not Is_Fully_Constrained_Type (Parent_El_Type)
+        and then Is_Static_Type (Get_Info (El_Type))
+      then
+         --  The array subtype is not constrained, but the element
+         --  subtype was just contrained.  Create an array for
+         --  ortho, if the element subtype is static.
+         Translate_Array_Subtype_Definition_Constrained_Element
+           (Def, Parent_Type);
+      else
+         --  An unconstrained array subtype.  Use same infos as base
+         --  type.
+         Free_Info (Def);
+         Set_Info (Def, Get_Info (Parent_Type));
+      end if;
+   end Translate_Array_Subtype_Definition;
 
    --------------
    --  record  --
@@ -1332,20 +1288,22 @@ package body Trans.Chap3 is
 
    procedure Translate_Record_Subtype (Def : Iir; With_Vars : Boolean)
    is
-      Base_Type  : constant Iir := Get_Base_Type (Def);
-      Base_Info  : constant Type_Info_Acc := Get_Info (Base_Type);
-      Info       : constant Type_Info_Acc := Get_Info (Def);
-      El_List    : constant Iir_Flist := Get_Elements_Declaration_List (Def);
-      Type_Mark  : constant Iir := Get_Subtype_Type_Mark (Def);
-      El_Blist   : constant Iir_Flist :=
+      Base_Type   : constant Iir := Get_Base_Type (Def);
+      Base_Info   : constant Type_Info_Acc := Get_Info (Base_Type);
+      Info        : constant Type_Info_Acc := Get_Info (Def);
+      El_List     : constant Iir_Flist := Get_Elements_Declaration_List (Def);
+      Type_Mark   : constant Iir := Get_Subtype_Type_Mark (Def);
+      El_Blist    : constant Iir_Flist :=
         Get_Elements_Declaration_List (Base_Type);
-      El_Tm_List : Iir_Flist;
-      El, B_El   : Iir_Element_Declaration;
-      El_Type    : Iir;
-      El_Btype   : Iir;
+      Parent_Type : Iir;
+      Parent_Info : Type_Info_Acc;
+      El_Tm_List  : Iir_Flist;
+      El, B_El    : Iir_Element_Declaration;
+      El_Type     : Iir;
+      El_Btype    : Iir;
 
       Has_New_Constraints : Boolean;
-      Has_Boxed_Elements : Boolean;
+      Has_Boxed_Elements  : Boolean;
 
       Rec        : O_Element_List;
       Field_Info : Ortho_Info_Acc;
@@ -1354,20 +1312,24 @@ package body Trans.Chap3 is
 
       Mark : Id_Mark_Type;
    begin
-      --  Translate the newly constrained elements.
       if Is_Valid (Type_Mark) then
-         --  Type_mark may be null for anonymous subtype.
-         El_Tm_List := Get_Elements_Declaration_List
-           (Get_Type (Get_Named_Entity (Type_Mark)));
+         Parent_Type := Get_Type (Get_Named_Entity (Type_Mark));
       else
-         El_Tm_List := El_Blist;
+         --  Type_mark may be null for anonymous subtype, like ones created
+         --  for an aggregate.
+         Parent_Type := Get_Base_Type (Def);
       end if;
+      El_Tm_List := Get_Elements_Declaration_List (Parent_Type);
+      Parent_Info := Get_Info (Parent_Type);
+
+      --  Translate the newly constrained elements.
       Has_New_Constraints := False;
       Has_Boxed_Elements := False;
       for I in Flist_First .. Flist_Last (El_List) loop
          El := Get_Nth_Element (El_List, I);
          El_Type := Get_Type (El);
          El_Btype := Get_Type (Get_Nth_Element (El_Tm_List, I));
+         --  Constrained can only be added.
          if Is_Fully_Constrained_Type (El_Type)
            and then not Is_Fully_Constrained_Type (El_Btype)
          then
@@ -1381,8 +1343,8 @@ package body Trans.Chap3 is
          end if;
       end loop;
 
-      --  By default, use the same representation as the base type.
-      Info.all := Base_Info.all;
+      --  By default, use the same representation as the parent type.
+      Info.all := Parent_Info.all;
       --  Info.S := Ortho_Info_Subtype_Record_Init;
       --  However, it is a different subtype which has its own rti.
       Info.Type_Rti := O_Dnode_Null;
@@ -1731,8 +1693,10 @@ package body Trans.Chap3 is
                if Get_Info (El) /= null then
                   Chap2.Translate_Subprogram_Declaration (El);
                end if;
+            when Iir_Kind_Attribute_Specification =>
+               null;
             when others =>
-               Error_Kind ("translate_protected_type_subprograms", El);
+               Error_Kind ("translate_protected_type_subprograms_spec", El);
          end case;
          El := Get_Chain (El);
       end loop;
@@ -2045,13 +2009,13 @@ package body Trans.Chap3 is
             end;
          when Type_Mode_I32 =>
             declare
-               V : Iir_Int32;
+               V : Int64;
             begin
-               V := Iir_Int32 (Get_Value (Lit));
+               V := Get_Value (Lit);
                if Is_Hi then
-                  return V = Iir_Int32'Last;
+                  return V = Int64 (Iir_Int32'Last);
                else
-                  return V = Iir_Int32'First;
+                  return V = Int64 (Iir_Int32'First);
                end if;
             end;
          when Type_Mode_P32 =>
@@ -2409,43 +2373,7 @@ package body Trans.Chap3 is
             end if;
 
          when Iir_Kind_Array_Subtype_Definition =>
-            declare
-               El_Type : constant Iir := Get_Element_Subtype (Def);
-               Parent_El_Type : constant Iir :=
-                 Get_Element_Subtype (Parent_Type);
-               Mark : Id_Mark_Type;
-            begin
-               --  Handle element subtype.
-               if El_Type /= Parent_El_Type then
-                  --  TODO: do not create vars for element subtype, but use
-                  --  the layout field of the array vars.
-                  Push_Identifier_Prefix (Mark, "ET");
-                  Translate_Subtype_Definition
-                    (El_Type, Parent_El_Type, With_Vars);
-                  Pop_Identifier_Prefix (Mark);
-               end if;
-
-               if Get_Constraint_State (Def) = Fully_Constrained then
-                  Translate_Array_Subtype_Definition (Def, Parent_Type);
-                  if With_Vars then
-                     Create_Composite_Subtype_Layout_Var (Def, False);
-                  end if;
-               elsif Is_Fully_Constrained_Type (El_Type)
-                 and then not Is_Fully_Constrained_Type (Parent_El_Type)
-                 and then Is_Static_Type (Get_Info (El_Type))
-               then
-                  --  The array subtype is not constrained, but the element
-                  --  subtype was just contrained.  Create an array for
-                  --  ortho, if the element subtype is static.
-                  Translate_Array_Subtype_Definition_Constrained_Element
-                    (Def, Parent_Type);
-               else
-                  --  An unconstrained array subtype.  Use same infos as base
-                  --  type.
-                  Free_Info (Def);
-                  Set_Info (Def, Get_Info (Parent_Type));
-               end if;
-            end;
+            Translate_Array_Subtype_Definition (Def, Parent_Type, With_Vars);
 
          when Iir_Kind_Record_Subtype_Definition =>
             Translate_Record_Subtype (Def, With_Vars);
@@ -2543,6 +2471,7 @@ package body Trans.Chap3 is
 
    procedure Elab_Type_Definition_Depend is new Handle_Anonymous_Subtypes
      (Handle_A_Subtype => Elab_Type_Definition);
+
    procedure Elab_Type_Definition (Def : Iir) is
    begin
       case Get_Kind (Def) is
@@ -2606,40 +2535,72 @@ package body Trans.Chap3 is
       Pop_Identifier_Prefix (Mark);
    end Translate_Anonymous_Subtype_Definition;
 
-   procedure Translate_Object_Subtype (Decl      : Iir;
-                                       With_Vars : Boolean := True)
+   procedure Translate_Object_Subtype_Definition
+     (Decl : Iir; Def : Iir; With_Vars : Boolean := True)
    is
-      Def : constant Iir := Get_Type (Decl);
       Parent_Type : Iir;
       Mark  : Id_Mark_Type;
       Mark2 : Id_Mark_Type;
    begin
-      if Is_Anonymous_Type_Definition (Def) then
-         Push_Identifier_Prefix (Mark, Get_Identifier (Decl));
-         Push_Identifier_Prefix (Mark2, "OT");
-         Parent_Type := Get_Subtype_Type_Mark (Def);
-         if Parent_Type /= Null_Iir then
-            Parent_Type := Get_Type (Get_Named_Entity (Parent_Type));
-         else
-            Parent_Type := Get_Base_Type (Def);
-            --  Parent_Type should be integer_type_definition for iterators,
-            --  or the subtype indication for constant (in the case the
-            --  default value constrains the subtype indication), or an
-            --  object alias, or anywhere because of 'Subtype applied on one
-            --  of the above object...
-         end if;
-         Chap3.Translate_Subtype_Definition (Def, Parent_Type, With_Vars);
-         Pop_Identifier_Prefix (Mark2);
-         Pop_Identifier_Prefix (Mark);
-      end if;
-   end Translate_Object_Subtype;
+      Push_Identifier_Prefix (Mark, Get_Identifier (Decl));
+      Push_Identifier_Prefix (Mark2, "OT");
+      Parent_Type := Get_Parent_Type (Def);
+      Chap3.Translate_Subtype_Definition (Def, Parent_Type, With_Vars);
+      Pop_Identifier_Prefix (Mark2);
+      Pop_Identifier_Prefix (Mark);
+   end Translate_Object_Subtype_Definition;
 
-   procedure Elab_Object_Subtype (Def : Iir) is
+   procedure Translate_Object_Subtype_Indication (Decl      : Iir;
+                                                  With_Vars : Boolean := True)
+   is
+      Def : constant Iir := Get_Type (Decl);
    begin
-      if Is_Anonymous_Type_Definition (Def) then
-         Elab_Type_Definition (Def);
+      --  Note about subtype_indication and type in a declaration:
+      --  1) The subtype_indication is present only on the first declared
+      --     object when there is a list of identifiers.  This could be
+      --     changed by making the subtype_indication Maybe_Ref.
+      --  2) Constants may have a type that is different from the subtype
+      --     indication, when the subtype indication is not fully constrained.
+      --     TODO: explain why!
+      --  3) An object alias always have a type but may have no subtype
+      --     indication.  Maybe this should be handled separately.
+      --  4) An anonymous_signal_declaration has no subtype indication.
+      --  5) It is not possible to translate the type when the subtype
+      --     indication is a subtype_attribute.  So this is an exception
+      --     TODO: if there is a list of identifiers.
+
+      if not Is_Anonymous_Type_Definition (Def) then
+         --  The type refers to a declared type, so already handled.
+         return;
       end if;
-   end Elab_Object_Subtype;
+
+      Translate_Object_Subtype_Definition (Decl, Def, With_Vars);
+   end Translate_Object_Subtype_Indication;
+
+   procedure Elab_Object_Subtype_Indication (Decl : Iir)
+   is
+      Def : constant Iir := Get_Type (Decl);
+   begin
+      if not Is_Anonymous_Type_Definition (Def) then
+         --  The type refers to a declared type, so already handled.
+         return;
+      end if;
+
+      declare
+         Ind : constant Iir := Get_Subtype_Indication (Decl);
+      begin
+         if Ind /= Null_Iir
+           and then Get_Kind (Ind) = Iir_Kind_Subtype_Attribute
+         then
+            if Is_Fully_Constrained_Type (Get_Type (Get_Prefix (Ind))) then
+               return;
+            end if;
+            raise Internal_Error;
+         else
+            Elab_Type_Definition (Def);
+         end if;
+      end;
+   end Elab_Object_Subtype_Indication;
 
    procedure Elab_Type_Declaration (Decl : Iir) is
    begin
@@ -2651,7 +2612,7 @@ package body Trans.Chap3 is
       Elab_Type_Definition (Get_Type (Decl));
    end Elab_Subtype_Declaration;
 
-   function Get_Thin_Array_Length (Atype : Iir) return O_Cnode
+   function Get_Static_Array_Length (Atype : Iir) return Int64
    is
       Indexes_List : constant Iir_Flist := Get_Index_Subtype_List (Atype);
       Nbr_Dim      : constant Natural := Get_Nbr_Elements (Indexes_List);
@@ -2665,7 +2626,13 @@ package body Trans.Chap3 is
          Rng := Get_Range_Constraint (Index);
          Val := Val * Eval_Discrete_Range_Length (Rng);
       end loop;
-      return New_Unsigned_Literal (Ghdl_Index_Type, Unsigned_64 (Val));
+      return Val;
+      --  return New_Unsigned_Literal (Ghdl_Index_Type, Unsigned_64 (Val));
+   end Get_Static_Array_Length;
+
+   function Get_Thin_Array_Length (Atype : Iir) return O_Cnode is
+   begin
+      return New_Index_Lit (Unsigned_64 (Get_Static_Array_Length (Atype)));
    end Get_Thin_Array_Length;
 
    function Bounds_To_Range (B : Mnode; Atype : Iir; Dim : Positive)
@@ -2775,7 +2742,7 @@ package body Trans.Chap3 is
                  (New_Selected_Element (M2Lv (Obj),
                                         Info.B.Bounds_Field (Kind)),
                   Info,
-                  Mode_Value,
+                  Kind,
                   Info.B.Bounds_Type,
                   Info.B.Bounds_Ptr_Type);
             end;
@@ -3006,20 +2973,37 @@ package body Trans.Chap3 is
       end if;
    end Index_Base;
 
+   function Convert_Array_Base (Arr : Mnode) return Mnode
+   is
+      Type_Info : constant Type_Info_Acc := Get_Type_Info (Arr);
+      Mode : constant Object_Kind_Type := Get_Object_Kind (Arr);
+   begin
+      if Type_Info.Ortho_Ptr_Type (Mode) /= Type_Info.B.Base_Ptr_Type (Mode)
+      then
+         return E2M
+           (New_Convert_Ov (M2E (Arr), Type_Info.B.Base_Ptr_Type (Mode)),
+            Type_Info, Mode);
+      else
+         return Arr;
+      end if;
+   end Convert_Array_Base;
+
    function Index_Array (Arr : Mnode; Atype : Iir; Index : O_Enode)
                         return Mnode
    is
       El_Type  : constant Iir := Get_Element_Subtype (Atype);
       El_Tinfo : constant Type_Info_Acc := Get_Info (El_Type);
       Kind     : constant Object_Kind_Type := Get_Object_Kind (Arr);
+      Base     : Mnode;
    begin
+      Base := Get_Composite_Base (Arr);
       --  For indexing, we need to consider the size of elements.
       case Type_Mode_Valid (El_Tinfo.Type_Mode) is
          when Type_Mode_Unbounded_Array
            | Type_Mode_Unbounded_Record =>
             return E2M
               (Add_Pointer
-                 (M2E (Get_Composite_Base (Arr)),
+                 (M2E (Base),
                   New_Dyadic_Op
                     (ON_Mul_Ov,
                      Index,
@@ -3031,14 +3015,13 @@ package body Trans.Chap3 is
                El_Tinfo.B.Base_Ptr_Type (Kind));
          when Type_Mode_Complex_Array
            | Type_Mode_Complex_Record =>
-            return Reindex_Complex_Array
-              (Get_Composite_Base (Arr), Atype, Index, El_Tinfo);
+            return Reindex_Complex_Array (Base, Atype, Index, El_Tinfo);
          when Type_Mode_Thin
            | Type_Mode_Static_Array
            | Type_Mode_Static_Record =>
-            return Lv2M
-              (New_Indexed_Element (M2Lv (Get_Composite_Base (Arr)), Index),
-               El_Tinfo, Kind);
+            Base := Convert_Array_Base (Base);
+            return Lv2M (New_Indexed_Element (M2Lv (Base), Index),
+                         El_Tinfo, Kind);
          when Type_Mode_Protected =>
             raise Internal_Error;
       end case;
@@ -3334,9 +3317,9 @@ package body Trans.Chap3 is
          --  Constraint is a range expression, therefore, direction is
          --  known.
          case Get_Direction (Constr) is
-            when Iir_To =>
+            when Dir_To =>
                return Gen_Compare_To;
-            when Iir_Downto =>
+            when Dir_Downto =>
                return Gen_Compare_Downto;
          end case;
       end if;
@@ -3577,7 +3560,11 @@ package body Trans.Chap3 is
                  Get_Elements_Declaration_List (R_Type);
                Cond : O_Enode;
                Sub_Cond : O_Enode;
+               L_Bounds1 : Mnode;
+               R_Bounds1 : Mnode;
             begin
+               L_Bounds1 := Stabilize (L_Bounds);
+               R_Bounds1 := Stabilize (R_Bounds);
                Cond := O_Enode_Null;
                for I in Flist_First .. Flist_Last (L_El_List) loop
                   declare
@@ -3589,9 +3576,9 @@ package body Trans.Chap3 is
                      if Types_Match (L_El_Type, R_El_Type) = Unknown then
                         Sub_Cond := Check_Match_Cond
                           (L_El_Type,
-                           Record_Bounds_To_Element_Bounds (L_Bounds, L_El),
+                           Record_Bounds_To_Element_Bounds (L_Bounds1, L_El),
                            R_El_Type,
-                           Record_Bounds_To_Element_Bounds (R_Bounds, R_El));
+                           Record_Bounds_To_Element_Bounds (R_Bounds1, R_El));
                         if Cond = O_Enode_Null then
                            Cond := Sub_Cond;
                         else
@@ -3624,7 +3611,7 @@ package body Trans.Chap3 is
          when Unknown =>
             Res := Check_Match_Cond (L_Type, Get_Composite_Bounds (L_Node),
                                      R_Type, Get_Composite_Bounds (R_Node));
-            Chap6.Check_Bound_Error (Res, Loc, 0);
+            Chap6.Check_Bound_Error (Res, Loc);
       end case;
    end Check_Composite_Match;
 
@@ -3774,18 +3761,16 @@ package body Trans.Chap3 is
          New_Lit (Chap7.Translate_Static_Range_Dir (Range_Constr)));
 
       case Get_Direction (Range_Constr) is
-         when Iir_To =>
+         when Dir_To =>
             Op := ON_Add_Ov;
-         when Iir_Downto =>
+         when Dir_Downto =>
             Op := ON_Sub_Ov;
       end case;
 
-      Start_If_Stmt
-        (If_Blk,
-         New_Compare_Op (ON_Eq,
-           New_Obj_Value (Length),
-           New_Lit (Ghdl_Index_0),
-           Ghdl_Bool_Type));
+      Start_If_Stmt (If_Blk, New_Compare_Op (ON_Eq,
+                                             New_Obj_Value (Length),
+                                             New_Lit (Ghdl_Index_0),
+                                             Ghdl_Bool_Type));
       --  Null range.
       New_Assign_Stmt
         (M2Lv (Range_To_Left (Res_Range)),

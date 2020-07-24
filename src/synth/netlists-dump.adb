@@ -124,6 +124,13 @@ package body Netlists.Dump is
             Put ("invalid");
          when Param_Uns32 =>
             Put_Uns32 (Get_Param_Uns32 (Inst, Idx));
+         when Param_Pval_Vector
+            | Param_Pval_String
+            | Param_Pval_Integer
+            | Param_Pval_Real
+            | Param_Pval_Time_Ps
+            | Param_Pval_Boolean =>
+            Put ("generic");
       end case;
    end Dump_Parameter;
 
@@ -221,6 +228,8 @@ package body Netlists.Dump is
             Put ("input");
          when Port_Out =>
             Put ("output");
+         when Port_Inout =>
+            raise Internal_Error;
       end case;
       Put (' ');
       Dump_Name (Desc.Name);
@@ -254,6 +263,18 @@ package body Netlists.Dump is
                Put ("invalid");
             when Param_Uns32 =>
                Put ("uns32");
+            when Param_Pval_Vector =>
+               Put ("pval.vector");
+            when Param_Pval_String =>
+               Put ("pval.string");
+            when Param_Pval_Integer =>
+               Put ("pval.integer");
+            when Param_Pval_Real =>
+               Put ("pval.real");
+            when Param_Pval_Time_Ps =>
+               Put ("pval.time.ps");
+            when Param_Pval_Boolean =>
+               Put ("pval.boolean");
          end case;
          New_Line;
       end loop;
@@ -351,15 +372,16 @@ package body Netlists.Dump is
          Disp_Net_Name (N);
 
          W := Get_Width (N);
-         if W /= 1 then
-            Put ('[');
-            Put_Uns32 (W);
-            Put (']');
-         end if;
-
          if Flag_Disp_Id then
             Put_Net_Width (N);
+         else
+            if W /= 1 then
+               Put ('[');
+               Put_Uns32 (W);
+               Put (']');
+            end if;
          end if;
+
       end if;
    end Dump_Net_Name_And_Width;
 
@@ -448,7 +470,11 @@ package body Netlists.Dump is
                   Put_Width (W);
                   Put ("'uh");
                   V := Get_Param_Uns32 (Inst, 0);
-                  I := (Natural (W) + 3) / 4;
+                  if W >= 32 then
+                     I := 8;
+                  else
+                     I := (Natural (W) + 3) / 4;
+                  end if;
                   while I > 0 loop
                      I := I - 1;
                      Put (Xdigits (Shift_Right (V, I * 4) and 15));
@@ -532,6 +558,11 @@ package body Netlists.Dump is
                   if Desc.Name /= No_Sname then
                      Put ('.');
                      Dump_Name (Desc.Name);
+                     if Flag_Disp_Id then
+                        Put ("{p");
+                        Put_Trim (Input'Image (I));
+                        Put ('}');
+                     end if;
                      Put (": ");
                   end if;
                end if;

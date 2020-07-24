@@ -376,7 +376,8 @@ package body Trans.Chap9 is
       use PSL.Nodes;
    begin
       case Get_Kind (Expr) is
-         when N_HDL_Expr =>
+         when N_HDL_Bool
+           | N_HDL_Expr =>
             declare
                E     : constant Iir := Get_HDL_Node (Expr);
                Rtype : constant Iir := Get_Base_Type (Get_Type (E));
@@ -893,7 +894,7 @@ package body Trans.Chap9 is
    begin
       Push_Identifier_Prefix (Mark, Get_Identifier (Stmt));
 
-      Chap3.Translate_Object_Subtype (Param, True);
+      Chap3.Translate_Object_Subtype_Indication (Param, True);
 
       Info := Add_Info (Bod, Kind_Block);
       Chap1.Start_Block_Decl (Bod);
@@ -1382,11 +1383,12 @@ package body Trans.Chap9 is
                  | Type_Iir_Pure_State
                  | Type_Iir_Delay_Mechanism
                  | Type_Iir_Predefined_Functions
-                 | Type_Iir_Direction
+                 | Type_Direction_Type
                  | Type_Iir_Int32
                  | Type_Int32
                  | Type_Fp64
                  | Type_Token_Type
+                 | Type_Scalar_Size
                  | Type_Name_Id =>
                   null;
             end case;
@@ -2463,7 +2465,7 @@ package body Trans.Chap9 is
       Open_Temp;
 
       --  Evaluate iterator range.
-      Chap3.Elab_Object_Subtype (Iter_Type);
+      Chap3.Elab_Object_Subtype_Indication (Iter);
 
       Range_Ptr := Create_Temp_Ptr
         (Iter_Type_Info.B.Range_Ptr_Type,
@@ -2578,7 +2580,7 @@ package body Trans.Chap9 is
       Open_Temp;
 
       --  Evaluate iterator range.
-      Chap3.Elab_Object_Subtype (Iter_Type);
+      Chap3.Elab_Object_Subtype_Indication (Iter);
 
       --  Allocate instances.
       Var_Inst := Create_Temp_Init

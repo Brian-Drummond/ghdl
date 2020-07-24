@@ -41,6 +41,8 @@ package body Vhdl.Sem_Stmts is
    --  get_associated_chain (for case statement).
    procedure Sem_Sequential_Statements_Internal (First_Stmt : Iir);
 
+   procedure Sem_Simultaneous_Statements (First : Iir);
+
    -- Access to the current subprogram or process.
    Current_Subprogram: Iir := Null_Iir;
 
@@ -316,6 +318,15 @@ package body Vhdl.Sem_Stmts is
    begin
       Target_Object := Name_To_Object (Target);
       if Target_Object = Null_Iir then
+         if Get_Kind (Target) = Iir_Kind_Simple_Name
+           and then Is_Error (Get_Named_Entity (Target))
+         then
+            --  Common case: target is not declared.  There was already
+            --  an error message for it.
+            return;
+         end if;
+
+         --  Uncommon case: target is not an object (could be a component).
          Error_Msg_Sem (+Target, "target is not a signal name");
          return;
       end if;
@@ -407,6 +418,14 @@ package body Vhdl.Sem_Stmts is
             --  An object designated by an access type is always an object of
             --  class variable.
             null;
+         when Iir_Kind_Free_Quantity_Declaration
+           | Iir_Kinds_Branch_Quantity_Declaration
+           | Iir_Kind_Dot_Attribute =>
+            if (Get_Kind (Get_Current_Concurrent_Statement)
+                  /= Iir_Kind_Simultaneous_Procedural_Statement)
+            then
+               Error_Msg_Sem (+Stmt, "%n cannot be assigned", +Target_Prefix);
+            end if;
          when others =>
             Error_Msg_Sem (+Stmt, "%n is not a variable to be assigned",
                            +Target_Prefix);
@@ -475,6 +494,7 @@ package body Vhdl.Sem_Stmts is
    --  Analyze a waveform_list WAVEFORM_LIST that is assigned via statement
    --  ASSIGN_STMT to a subelement or a slice of a signal SIGNAL_DECL.
    procedure Sem_Waveform_Chain (Waveform_Chain : Iir_Waveform_Element;
+                                 Constrained : Boolean;
                                  Waveform_Type : in out Iir)
    is
       Expr: Iir;
@@ -496,7 +516,8 @@ package body Vhdl.Sem_Stmts is
             --  sem_check_waveform_list.
             null;
          else
-            Expr := Sem_Expression_Wildcard (Expr, Waveform_Type, True);
+            Expr := Sem_Expression_Wildcard
+              (Expr, Waveform_Type, Constrained);
 
             if Expr /= Null_Iir then
                if Is_Expr_Fully_Analyzed (Expr) then
@@ -694,28 +715,49 @@ package body Vhdl.Sem_Stmts is
       Set_Guard (Stmt, Guard);
    end Sem_Guard;
 
+   --  Analyze optional Condition field of PARENT.
+   procedure Sem_Condition_Opt (Parent : Iir)
+   is
+      Cond : Iir;
+   begin
+      Cond := Get_Condition (Parent);
+      if Cond /= Null_Iir then
+         Cond := Sem_Condition (Cond);
+         if Cond /= Null_Iir then
+            Set_Condition (Parent, Cond);
+         end if;
+      end if;
+   end Sem_Condition_Opt;
+
    procedure Sem_Signal_Assignment (Stmt: Iir)
    is
-      Cond_Wf : Iir_Conditional_Waveform;
-      Expr : Iir;
-      Wf_Chain : Iir_Waveform_Element;
+      Cond_Wf     : Iir_Conditional_Waveform;
+      Wf_Chain    : Iir_Waveform_Element;
+      Target      : Iir;
       Target_Type : Iir;
-      Done : Boolean;
+      Done        : Boolean;
+      Constrained : Boolean;
    begin
       Target_Type := Wildcard_Any_Type;
+      Constrained := True;
 
       Done := False;
       for S in Resolve_Stages loop
          Sem_Signal_Assignment_Target_And_Option (Stmt, Target_Type);
          if Is_Defined_Type (Target_Type) then
             Done := True;
+            Target := Get_Target (Stmt);
+            Constrained := Get_Kind (Target) /= Iir_Kind_Aggregate
+              and then Is_Object_Name_Fully_Constrained (Target);
+         else
+            Constrained := False;
          end if;
 
          case Get_Kind (Stmt) is
             when Iir_Kind_Concurrent_Simple_Signal_Assignment
               | Iir_Kind_Simple_Signal_Assignment_Statement =>
                Wf_Chain := Get_Waveform_Chain (Stmt);
-               Sem_Waveform_Chain (Wf_Chain, Target_Type);
+               Sem_Waveform_Chain (Wf_Chain, Constrained, Target_Type);
                if Done then
                   Sem_Check_Waveform_Chain (Stmt, Wf_Chain);
                end if;
@@ -725,19 +767,13 @@ package body Vhdl.Sem_Stmts is
                Cond_Wf := Get_Conditional_Waveform_Chain (Stmt);
                while Cond_Wf /= Null_Iir loop
                   Wf_Chain := Get_Waveform_Chain (Cond_Wf);
-                  Sem_Waveform_Chain (Wf_Chain, Target_Type);
+                  Sem_Waveform_Chain (Wf_Chain, Constrained, Target_Type);
                   if Done then
                      Sem_Check_Waveform_Chain (Stmt, Wf_Chain);
                   end if;
                   if S = Resolve_Stage_1 then
                      --  Must be analyzed only once.
-                     Expr := Get_Condition (Cond_Wf);
-                     if Expr /= Null_Iir then
-                        Expr := Sem_Condition (Expr);
-                        if Expr /= Null_Iir then
-                           Set_Condition (Cond_Wf, Expr);
-                        end if;
-                     end if;
+                     Sem_Condition_Opt (Cond_Wf);
                   end if;
                   Cond_Wf := Get_Chain (Cond_Wf);
                end loop;
@@ -751,7 +787,8 @@ package body Vhdl.Sem_Stmts is
                      Wf_Chain := Get_Associated_Chain (El);
                      if Is_Valid (Wf_Chain) then
                         --  The first choice of a list.
-                        Sem_Waveform_Chain (Wf_Chain, Target_Type);
+                        Sem_Waveform_Chain
+                          (Wf_Chain, Constrained, Target_Type);
                         if Done then
                            Sem_Check_Waveform_Chain (Stmt, Wf_Chain);
                         end if;
@@ -781,7 +818,7 @@ package body Vhdl.Sem_Stmts is
    end Sem_Signal_Assignment;
 
    procedure Sem_Conditional_Expression_Chain
-     (Cond_Expr : Iir; Atype : in out Iir)
+     (Cond_Expr : Iir; Atype : in out Iir; Constrained : Boolean)
    is
       El : Iir;
       Expr : Iir;
@@ -790,7 +827,7 @@ package body Vhdl.Sem_Stmts is
       El := Cond_Expr;
       while El /= Null_Iir loop
          Expr := Get_Expression (El);
-         Expr := Sem_Expression_Wildcard (Expr, Atype, True);
+         Expr := Sem_Expression_Wildcard (Expr, Atype, Constrained);
 
          if Expr /= Null_Iir then
             Set_Expression (El, Expr);
@@ -818,10 +855,11 @@ package body Vhdl.Sem_Stmts is
    procedure Sem_Variable_Assignment (Stmt: Iir)
    is
       Target : Iir;
-      Expr : Iir;
+      Expr   : Iir;
       Target_Type : Iir;
-      Stmt_Type : Iir;
-      Done : Boolean;
+      Stmt_Type   : Iir;
+      Done        : Boolean;
+      Constrained : Boolean;
    begin
       --  LRM93 8.5 Variable assignment statement
       --  If the target of the variable assignment statement is in the form of
@@ -842,11 +880,18 @@ package body Vhdl.Sem_Stmts is
          Target := Sem_Expression_Wildcard (Target, Stmt_Type);
          if Target = Null_Iir then
             Target_Type := Stmt_Type;
+            --  To avoid spurious errors, assume the target is fully
+            --  constrained.
+            Constrained := True;
          else
             Set_Target (Stmt, Target);
             if Is_Expr_Fully_Analyzed (Target) then
                Check_Target (Stmt, Target);
                Done := True;
+               Constrained := Get_Kind (Target) /= Iir_Kind_Aggregate
+                 and then Is_Object_Name_Fully_Constrained (Target);
+            else
+               Constrained := False;
             end if;
             Target_Type := Get_Type (Target);
             Stmt_Type := Target_Type;
@@ -855,7 +900,8 @@ package body Vhdl.Sem_Stmts is
          case Iir_Kinds_Variable_Assignment_Statement (Get_Kind (Stmt)) is
             when Iir_Kind_Variable_Assignment_Statement =>
                Expr := Get_Expression (Stmt);
-               Expr := Sem_Expression_Wildcard (Expr, Stmt_Type, True);
+               Expr := Sem_Expression_Wildcard
+                 (Expr, Stmt_Type, Constrained);
                if Expr /= Null_Iir then
                   if Is_Expr_Fully_Analyzed (Expr) then
                      Check_Read (Expr);
@@ -876,7 +922,8 @@ package body Vhdl.Sem_Stmts is
 
             when Iir_Kind_Conditional_Variable_Assignment_Statement =>
                Expr := Get_Conditional_Expression_Chain (Stmt);
-               Sem_Conditional_Expression_Chain (Expr, Stmt_Type);
+               Sem_Conditional_Expression_Chain
+                 (Expr, Stmt_Type, Constrained);
          end case;
 
          exit when Done;
@@ -1005,10 +1052,8 @@ package body Vhdl.Sem_Stmts is
                end if;
                --  GHDL: I don't understand why the indexing expressions
                --  must be locally static.  So I don't check this in 93c.
-               if Flags.Vhdl_Std /= Vhdl_93c
-                 and then
-                 (Get_Expr_Staticness
-                    (Get_Nth_Element (Get_Index_List (Expr), 0)) /= Locally)
+               if (Get_Expr_Staticness
+                   (Get_Nth_Element (Get_Index_List (Expr), 0)) /= Locally)
                then
                   Error_Msg_Sem
                     (+Expr, "indexing expression must be locally static");
@@ -1061,6 +1106,10 @@ package body Vhdl.Sem_Stmts is
             when Iir_Kind_Simple_Name
               | Iir_Kind_Selected_Name =>
                return Check_Odcat_Expression (Get_Named_Entity (Expr));
+            when Iir_Kind_Parenthesis_Expression =>
+               --  GHDL: not part of the list but expected to be allowed by
+               --  IR2080 and too commonly used!
+               return Check_Odcat_Expression (Get_Expression (Expr));
             when others =>
                Error_Msg_Sem
                  (+Choice, "bad form of case expression (refer to LRM 8.8)");
@@ -1100,6 +1149,15 @@ package body Vhdl.Sem_Stmts is
             if Flags.Vhdl_Std >= Vhdl_08 then
                --  No specific restrictions in vhdl 2008.
                null;
+            elsif Flags.Flag_Relaxed_Rules then
+               --  In relaxed mode, only check staticness of the expression
+               --  subtype, as the type of a prefix may not be locally static
+               --  while the type of the expression is.
+               if Get_Type_Staticness (Choice_Type) /= Locally then
+                  Error_Msg_Sem
+                    (+Choice, "choice subtype is not locally static");
+                  return;
+               end if;
             else
                if not Check_Odcat_Expression (Choice) then
                   return;
@@ -1174,7 +1232,8 @@ package body Vhdl.Sem_Stmts is
             case Get_Kind (Prefix) is
                when Iir_Kind_Signal_Declaration
                  | Iir_Kind_Guard_Signal_Declaration
-                 | Iir_Kinds_Signal_Attribute =>
+                 | Iir_Kinds_Signal_Attribute
+                 | Iir_Kind_Above_Attribute =>
                   null;
                when Iir_Kind_Interface_Signal_Declaration =>
                   if not Is_Interface_Signal_Readable (Prefix) then
@@ -1234,6 +1293,71 @@ package body Vhdl.Sem_Stmts is
       end loop;
    end Mark_Suspendable;
 
+   function Sem_Real_Or_Time_Timeout (Expr : Iir) return Iir
+   is
+      Res : Iir;
+      Res_Type : Iir;
+   begin
+      Res := Sem_Expression_Ov (Expr, Null_Iir);
+
+      if Res = Null_Iir then
+         --  Error occurred.
+         return Res;
+      end if;
+
+      Res_Type := Get_Type (Res);
+      if not Is_Overload_List (Res_Type) then
+         Res_Type := Get_Base_Type (Get_Type (Res));
+         if Res_Type = Time_Type_Definition
+           or else Res_Type = Real_Type_Definition
+         then
+            Check_Read (Res);
+            return Res;
+         else
+            Error_Msg_Sem
+              (+Expr, "timeout expression must be of type time or real");
+            return Expr;
+         end if;
+      else
+         --  Many interpretations.
+         declare
+            Res_List : constant Iir_List := Get_Overload_List (Res_Type);
+            It : List_Iterator;
+            El : Iir;
+            Nbr_Res : Natural;
+         begin
+            Nbr_Res := 0;
+
+            --  Extract boolean interpretations.
+            It := List_Iterate (Res_List);
+            while Is_Valid (It) loop
+               El := Get_Base_Type (Get_Element (It));
+               if Are_Basetypes_Compatible (El, Time_Type_Definition)
+                 /= Not_Compatible
+               then
+                  Res_Type := Time_Type_Definition;
+                  Nbr_Res := Nbr_Res + 1;
+               elsif Are_Basetypes_Compatible (El, Real_Type_Definition)
+                 /= Not_Compatible
+               then
+                  Res_Type := Real_Type_Definition;
+                  Nbr_Res := Nbr_Res + 1;
+               end if;
+               Next (It);
+            end loop;
+
+            if Nbr_Res = 1 then
+               Res := Sem_Expression_Ov (Expr, Res_Type);
+               Check_Read (Res);
+               return Res;
+            else
+               Error_Overload (Expr);
+               return Expr;
+            end if;
+         end;
+      end if;
+   end Sem_Real_Or_Time_Timeout;
+
    procedure Sem_Wait_Statement (Stmt: Iir_Wait_Statement)
    is
       Expr: Iir;
@@ -1285,15 +1409,20 @@ package body Vhdl.Sem_Stmts is
 
       Expr := Get_Timeout_Clause (Stmt);
       if Expr /= Null_Iir then
-         Expr := Sem_Expression (Expr, Time_Type_Definition);
-         if Expr /= Null_Iir then
-            Check_Read (Expr);
-            Expr := Eval_Expr_If_Static (Expr);
+         if AMS_Vhdl then
+            Expr := Sem_Real_Or_Time_Timeout (Expr);
             Set_Timeout_Clause (Stmt, Expr);
-            if Get_Expr_Staticness (Expr) = Locally
-              and then Get_Physical_Value (Expr) < 0
-            then
-               Error_Msg_Sem (+Stmt, "timeout value must be positive");
+         else
+            Expr := Sem_Expression (Expr, Time_Type_Definition);
+            if Expr /= Null_Iir then
+               Check_Read (Expr);
+               Expr := Eval_Expr_If_Static (Expr);
+               Set_Timeout_Clause (Stmt, Expr);
+               if Get_Expr_Staticness (Expr) = Locally
+                 and then Get_Physical_Value (Expr) < 0
+               then
+                  Error_Msg_Sem (+Stmt, "timeout value must be positive");
+               end if;
             end if;
          end if;
       end if;
@@ -1303,17 +1432,12 @@ package body Vhdl.Sem_Stmts is
 
    procedure Sem_Exit_Next_Statement (Stmt : Iir)
    is
-      Cond: Iir;
       Loop_Label : Iir;
       Loop_Stmt: Iir;
       P : Iir;
    begin
       --  Analyze condition (if present).
-      Cond := Get_Condition (Stmt);
-      if Cond /= Null_Iir then
-         Cond := Sem_Condition (Cond);
-         Set_Condition (Stmt, Cond);
-      end if;
+      Sem_Condition_Opt (Stmt);
 
       --  Analyze label.
       Loop_Label := Get_Loop_Label (Stmt);
@@ -1361,6 +1485,84 @@ package body Vhdl.Sem_Stmts is
       end loop;
    end Sem_Exit_Next_Statement;
 
+   function Sem_Quantity_Name (Name : Iir) return Iir
+   is
+      Res : Iir;
+   begin
+      Sem_Name (Name);
+
+      Res := Get_Named_Entity (Name);
+
+      if Res = Error_Mark then
+         return Null_Iir;
+      elsif Is_Overload_List (Res) then
+         Error_Msg_Sem (+Name, "quantity name expected");
+         return Null_Iir;
+      else
+         Res := Finish_Sem_Name (Name);
+         if not Is_Quantity_Name (Res) then
+            Error_Msg_Sem (+Name, "%n is not a quantity name", +Res);
+            return Null_Iir;
+         else
+            return Res;
+         end if;
+      end if;
+   end Sem_Quantity_Name;
+
+   procedure Sem_Break_List (First : Iir)
+   is
+      El : Iir;
+      Name : Iir;
+      Break_Quantity : Iir;
+      Sel_Quantity : Iir;
+      Expr : Iir;
+      Expr_Type : Iir;
+   begin
+      El := First;
+      while El /= Null_Iir loop
+         Name := Get_Break_Quantity (El);
+         Break_Quantity := Sem_Quantity_Name (Name);
+
+         --  AMS-LRM17 10.15 Break statement
+         --  The break quantity, the selector quantity, and the expression
+         --  shall have the same type [...]
+         if Break_Quantity /= Null_Iir then
+            Set_Break_Quantity (El, Break_Quantity);
+            Expr_Type := Get_Type (Break_Quantity);
+         else
+            Expr_Type := Null_Iir;
+         end if;
+
+         Expr := Get_Expression (El);
+         Expr := Sem_Expression (Expr, Expr_Type);
+         if Expr /= Null_Iir then
+            Set_Expression (El, Expr);
+         end if;
+
+         Sel_Quantity := Get_Selector_Quantity (El);
+         if Sel_Quantity /= Null_Iir then
+            Sel_Quantity := Sem_Quantity_Name (Name);
+            if Sel_Quantity /= Null_Iir and then Expr_Type /= Null_Iir then
+               if Is_Expr_Compatible (Expr_Type, Sel_Quantity) = Not_Compatible
+               then
+                  Error_Msg_Sem (+Sel_Quantity,
+                                 "selector quantity must be of the same type "
+                                   & "as the break quantity");
+               end if;
+            end if;
+         end if;
+
+         El := Get_Chain (El);
+      end loop;
+   end Sem_Break_List;
+
+   procedure Sem_Break_Statement (Stmt : Iir) is
+   begin
+      Sem_Break_List (Get_Break_Element (Stmt));
+
+      Sem_Condition_Opt (Stmt);
+   end Sem_Break_Statement;
+
    -- Process is the scope, this is also the process for which drivers can
    -- be created.
    procedure Sem_Sequential_Statements_Internal (First_Stmt : Iir)
@@ -1375,14 +1577,9 @@ package body Vhdl.Sem_Stmts is
             when Iir_Kind_If_Statement =>
                declare
                   Clause: Iir := Stmt;
-                  Cond: Iir;
                begin
                   while Clause /= Null_Iir loop
-                     Cond := Get_Condition (Clause);
-                     if Cond /= Null_Iir then
-                        Cond := Sem_Condition (Cond);
-                        Set_Condition (Clause, Cond);
-                     end if;
+                     Sem_Condition_Opt (Clause);
                      Sem_Sequential_Statements_Internal
                        (Get_Sequential_Statement_Chain (Clause));
                      Clause := Get_Else_Clause (Clause);
@@ -1408,17 +1605,9 @@ package body Vhdl.Sem_Stmts is
                   Close_Declarative_Region;
                end;
             when Iir_Kind_While_Loop_Statement =>
-               declare
-                  Cond: Iir;
-               begin
-                  Cond := Get_Condition (Stmt);
-                  if Cond /= Null_Iir then
-                     Cond := Sem_Condition (Cond);
-                     Set_Condition (Stmt, Cond);
-                  end if;
-                  Sem_Sequential_Statements_Internal
-                    (Get_Sequential_Statement_Chain (Stmt));
-               end;
+               Sem_Condition_Opt (Stmt);
+               Sem_Sequential_Statements_Internal
+                 (Get_Sequential_Statement_Chain (Stmt));
             when Iir_Kind_Simple_Signal_Assignment_Statement
               | Iir_Kind_Conditional_Signal_Assignment_Statement =>
                Sem_Signal_Assignment (Stmt);
@@ -1443,6 +1632,8 @@ package body Vhdl.Sem_Stmts is
                Sem_Case_Statement (Stmt);
             when Iir_Kind_Wait_Statement =>
                Sem_Wait_Statement (Stmt);
+            when Iir_Kind_Break_Statement =>
+               Sem_Break_Statement (Stmt);
             when Iir_Kind_Procedure_Call_Statement =>
                declare
                   Call : constant Iir := Get_Procedure_Call (Stmt);
@@ -1940,8 +2131,24 @@ package body Vhdl.Sem_Stmts is
       Sem_Guard (Stmt);
    end Sem_Concurrent_Selected_Signal_Assignment;
 
-   procedure Simple_Simultaneous_Statement (Stmt : Iir) is
+   procedure Sem_Concurrent_Break_Statement (Stmt : Iir)
+   is
+      Sensitivity_List : Iir_List;
+   begin
+      Sem_Break_List (Get_Break_Element (Stmt));
+
+      Sensitivity_List := Get_Sensitivity_List (Stmt);
+      if Sensitivity_List /= Null_Iir_List then
+         Sem_Sensitivity_List (Sensitivity_List);
+      end if;
+
+      Sem_Condition_Opt (Stmt);
+   end Sem_Concurrent_Break_Statement;
+
+   procedure Sem_Simple_Simultaneous_Statement (Stmt : Iir)
+   is
       Left, Right : Iir;
+      Left_Type, Right_Type : Iir;
       Res_Type : Iir;
    begin
       Left := Get_Simultaneous_Left (Stmt);
@@ -1955,6 +2162,12 @@ package body Vhdl.Sem_Stmts is
          return;
       end if;
 
+      Left_Type := Get_Type (Left);
+      Right_Type := Get_Type (Right);
+      if Left_Type = Null_Iir or else Right_Type = Null_Iir then
+         return;
+      end if;
+
       Res_Type := Search_Compatible_Type (Get_Type (Left), Get_Type (Right));
       if Res_Type = Null_Iir then
          Error_Msg_Sem
@@ -1962,8 +2175,103 @@ package body Vhdl.Sem_Stmts is
          return;
       end if;
 
+      --  AMS-LRM17 11.10 Simple simultaneous statement
+      --  The base type of each simple expression shall be the same nature
+      --  type.
+      if not Sem_Types.Is_Nature_Type (Res_Type) then
+         Error_Msg_Sem (+Stmt, "type of expressions must be a float types");
+      end if;
+
+      if not Is_Expr_Fully_Analyzed (Left) then
+         Left := Sem_Expression_Ov (Left, Res_Type);
+      end if;
+      if not Is_Expr_Fully_Analyzed (Right) then
+         Right := Sem_Expression_Ov (Right, Res_Type);
+      end if;
+
+      Set_Simultaneous_Left (Stmt, Left);
+      Set_Simultaneous_Right (Stmt, Right);
+
       --  FIXME: check for nature type...
-   end Simple_Simultaneous_Statement;
+   end Sem_Simple_Simultaneous_Statement;
+
+   procedure Sem_Simultaneous_If_Statement (Stmt : Iir)
+   is
+      Clause : Iir;
+   begin
+      Clause := Stmt;
+      while Clause /= Null_Iir loop
+         Sem_Condition_Opt (Clause);
+         Sem_Simultaneous_Statements
+           (Get_Simultaneous_Statement_Chain (Clause));
+         Clause := Get_Else_Clause (Clause);
+      end loop;
+   end Sem_Simultaneous_If_Statement;
+
+   procedure Sem_Simultaneous_Case_Statement (Stmt : Iir)
+   is
+      Expr: Iir;
+      Chain : Iir;
+      El: Iir;
+   begin
+      Expr := Get_Expression (Stmt);
+      Expr := Sem_Case_Expression (Expr);
+      if Expr /= Null_Iir then
+         Check_Read (Expr);
+         Set_Expression (Stmt, Expr);
+
+         Chain := Get_Case_Statement_Alternative_Chain (Stmt);
+         Sem_Case_Choices (Expr, Chain, Get_Location (Stmt));
+         Set_Case_Statement_Alternative_Chain (Stmt, Chain);
+      end if;
+
+      El := Chain;
+      while El /= Null_Iir loop
+         if not Get_Same_Alternative_Flag (El) then
+            Sem_Simultaneous_Statements (Get_Associated_Chain (El));
+         end if;
+         El := Get_Chain (El);
+      end loop;
+   end Sem_Simultaneous_Case_Statement;
+
+   procedure Sem_Simultaneous_Procedural_Statement (Stmt : Iir) is
+   begin
+      Set_Is_Within_Flag (Stmt, True);
+
+      --  AMS-LRM17 12.1 Declarative region
+      --  j) A simultaneous procedural statement
+      Open_Declarative_Region;
+
+      Sem_Sequential_Statements (Stmt, Stmt);
+
+      Close_Declarative_Region;
+
+      Set_Is_Within_Flag (Stmt, False);
+   end Sem_Simultaneous_Procedural_Statement;
+
+   procedure Sem_Simultaneous_Statements (First : Iir)
+   is
+      Stmt : Iir;
+   begin
+      Stmt := First;
+      while Stmt /= Null_Iir loop
+         case Get_Kind (Stmt) is
+            when Iir_Kind_Simple_Simultaneous_Statement =>
+               Sem_Simple_Simultaneous_Statement (Stmt);
+            when Iir_Kind_Simultaneous_If_Statement =>
+               Sem_Simultaneous_If_Statement (Stmt);
+            when Iir_Kind_Simultaneous_Case_Statement =>
+               Sem_Simultaneous_Case_Statement (Stmt);
+            when Iir_Kind_Simultaneous_Procedural_Statement =>
+               Sem_Simultaneous_Procedural_Statement (Stmt);
+            when Iir_Kind_Simultaneous_Null_Statement =>
+               null;
+            when others =>
+               Error_Kind ("sem_simultaneous_statements", Stmt);
+         end case;
+         Stmt := Get_Chain (Stmt);
+      end loop;
+   end Sem_Simultaneous_Statements;
 
    procedure Sem_Concurrent_Statement (Stmt : in out Iir; Is_Passive : Boolean)
    is
@@ -2019,6 +2327,8 @@ package body Vhdl.Sem_Stmts is
          when Iir_Kind_Concurrent_Procedure_Call_Statement =>
             Stmt :=
               Sem_Concurrent_Procedure_Call_Statement (Stmt, Is_Passive);
+         when Iir_Kind_Concurrent_Break_Statement =>
+            Sem_Concurrent_Break_Statement (Stmt);
          when Iir_Kind_Psl_Declaration =>
             Sem_Psl.Sem_Psl_Declaration (Stmt);
          when Iir_Kind_Psl_Endpoint_Declaration =>
@@ -2034,7 +2344,15 @@ package body Vhdl.Sem_Stmts is
          when Iir_Kind_Psl_Default_Clock =>
             Sem_Psl.Sem_Psl_Default_Clock (Stmt);
          when Iir_Kind_Simple_Simultaneous_Statement =>
-            Simple_Simultaneous_Statement (Stmt);
+            Sem_Simple_Simultaneous_Statement (Stmt);
+         when Iir_Kind_Simultaneous_If_Statement =>
+            Sem_Simultaneous_If_Statement (Stmt);
+         when Iir_Kind_Simultaneous_Case_Statement =>
+            Sem_Simultaneous_Case_Statement (Stmt);
+         when Iir_Kind_Simultaneous_Procedural_Statement =>
+            Sem_Simultaneous_Procedural_Statement (Stmt);
+         when Iir_Kind_Simultaneous_Null_Statement =>
+            null;
          when others =>
             Error_Kind ("sem_concurrent_statement", Stmt);
       end case;

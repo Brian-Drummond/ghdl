@@ -80,7 +80,7 @@ files required for the executable. Then, it links all these files with the runti
   elaborates the design, this can be skipped.
 
   .. WARNING::
-     This elaboration command is not a complete elaboration in terms of the VHDL standard. The actual elaboration is performed at runtime. Therefore, in order to get a complete VHDL elaboration without running the simulation, ``ghdl --elab-run --no-run`` is required.
+     This elaboration command is not a complete elaboration in terms of the VHDL standard. The actual elaboration is performed at runtime. Therefore, in order to get a complete VHDL elaboration without running the simulation, ``ghdl --elab-run --no-run`` is required. See :option:`--no-run`.
 
 
 .. index:: cmd run
@@ -92,9 +92,9 @@ Run [``-r``]
 
 .. option:: -r <[options...] primary_unit [secondary_unit] [simulation_options...]>
 
-Runs/simulates a design. The options and arguments are the same as for the :ref:`elaboration command <Elaboration:command>`.
+Runs/simulates a design. Two sets of options are accepted, both of them being separated by ``primary_unit [secondary_unit]``. For the first set, ``options...``, arguments are the same as for the :ref:`elaboration command <Elaboration:command>`. For the second set, ``simulation_options...``, arguments are defined in :ref:`USING:Simulation`.
 
-* GGC/LLVM: simply, the filename of the executable is determined and it is executed. Options are ignored. You may also directly execute the program. The executable must be in the current directory.
+* GGC/LLVM: the filename of the executable is determined and it is executed. Elaboration options are ignored. You may also directly execute the program. The executable must be in the current directory.
 * mcode: the design is elaborated and the simulation is launched. As a consequence, you must use the same options used during analysis.
 
 This command exists for three reasons:
@@ -103,17 +103,17 @@ This command exists for three reasons:
 * It is coherent with the :option:`-a` and :option:`-e` commands.
 * It works with mcode implementation, where the executable code is generated in memory.
 
-See section :ref:`USING:Simulation`, for details on options.
-
 
 .. index:: cmd elaborate and run
+
+.. _elab_and_run:command:
 
 Elaborate and run [``--elab-run``]
 ----------------------------------
 
-.. option:: --elab-run <[elab_options...] primary_unit [secondary_unit] [run_options...]>
+.. option:: --elab-run <[options...] primary_unit [secondary_unit] [simulation_options...]>
 
-Acts like the elaboration command (see :option:`-e`) followed by the run command (see :option:`-r`).
+Acts like the elaboration command followed by the run command. Note that this command accepts two sets of options. See :option:`-e`, :option:`-r` and :ref:`USING:Simulation`.
 
 
 .. index:: cmd checking syntax
@@ -253,13 +253,26 @@ Options
 
 .. option:: --std=<STANDARD>
 
-  Specify the standard to use. By default, the standard is ``93c``, which means VHDL-93 accepting VHDL-87 syntax. For details on ``STANDARD`` values see section :ref:`VHDL_standards`.
+  Specify the standard to use. By default, the standard is ``93c``,
+  which means VHDL-93 with relaxed rules. For details on ``STANDARD``
+  values see section :ref:`VHDL_standards`.
+
+.. option:: -fsynopsys
+
+  Allow the use of synopsys non-standard packages
+  (``std_logic_arith``, ``std_logic_signed``, ``std_logic_unsigned``,
+  ``std_logic_textio``).  These packages are
+  present in the ieee library but without this option it's an error to
+  use them.
+
+  The synopsys packages were created by some companies, and are popular. However
+  they are not standard packages, and have been placed in the `IEEE`
+  library without the permission from the ``ieee``.
 
 .. option:: --ieee=<IEEE_VAR>
 
   .. index:: ieee library
   .. index:: synopsys library
-  .. index:: mentor library
 
   Select the ``IEEE`` library to use. ``IEEE_VAR`` must be one of:
 
@@ -279,18 +292,8 @@ Options
     for more details.
 
   synopsys
-    Supply the former packages and the following additional packages:
-    ``std_logic_arith``, ``std_logic_signed``,
-    ``std_logic_unsigned``, ``std_logic_textio``.
-
-    These packages were created by some companies, and are popular. However
-    they are not standard packages, and have been placed in the `IEEE`
-    library without the permission from the ``ieee``.
-
-  mentor
-    Supply the standard packages and the following additional package:
-    ``std_logic_arith``. This package is a slight variation of a definitely
-    not standard but widely misused package.
+    This option is now deprecated.  It is equivalent to
+    ``--ieee=standard`` and ``-fsynopsys``.
 
   To avoid errors, you must use the same `IEEE` library for all units of
   your design, and during elaboration.
@@ -314,30 +317,67 @@ Options
 
 .. WARNING:: This option is not set by default. I don't think this option is a good feature, because it breaks the encapsulation rule. When set, an operator can be silently overridden in another package. You'd do better to fix your design and use the ``numeric_std`` package.
 
+.. option:: -frelaxed
 .. option:: -frelaxed-rules
 
-  Within an object declaration, allow references to the name (which references the hidden declaration). This ignores the error in the following code:
+  Slightly relax some rules to be compatible with various other
+  simulators or synthesizers:
 
-  .. code-block:: VHDL
+  * VHDL-87 file declarations are accepted;
 
-   package pkg1 is
-     type state is (state1, state2, state3);
-   end pkg1;
+  * Default binding indication rules of VHDL-02 are used. Default binding rules
+    are often used, but they are particularly obscure before VHDL-02.
 
-   use work.pkg1.all;
-   package pkg2 is
-     constant state1 : state := state1;
-   end pkg2;
+  * Within an object declaration, allow references to the name (which references the hidden declaration). This ignores the error in the following code:
 
-  Some code (such as Xilinx packages) have such constructs, which are valid.
+    .. code-block:: VHDL
 
-  (The scope of the ``state1`` constant starts at the `constant` keyword. Because the constant ``state1`` and the enumeration literal ``state1`` are homographs, the enumeration literal is hidden in the immediate scope of the constant).
+     package pkg1 is
+       type state is (state1, state2, state3);
+     end pkg1;
+
+     use work.pkg1.all;
+     package pkg2 is
+       constant state1 : state := state1;
+     end pkg2;
+
+    Some code (such as Xilinx packages) have such constructs, which are valid.
+
+    (The scope of the ``state1`` constant starts at the `constant`
+    keyword. Because the constant ``state1`` and the enumeration
+    literal ``state1`` are homographs, the enumeration literal is
+    hidden in the immediate scope of the constant).
 
   This option also relaxes the rules about pure functions. Violations result in warnings instead of errors.
 
 .. option:: -fpsl
 
   Enable parsing of PSL assertions within comments. See section :ref:`PSL_implementation` for more details.
+
+.. option:: --mb-comments, -C
+
+  Allow UTF8 or multi-bytes chars in a comment.
+
+  According to the VHDL standards before 2002, the only characters
+  allowed in a source file (and that includes the comments) are the
+  graphical characters of the ISO 8859-1 character set.  This is
+  incompatible with comments using UTF-8 or some other encoding.  This
+  option lift this restriction.
+
+.. option:: --syn-binding
+
+  Use synthesizer rules for component binding. During elaboration, if
+  a component is not bound to an entity using VHDL LRM rules, try to
+  find in any known library an entity whose name is the same as the
+  component name.
+
+  This rule is known as the synthesizer rule.
+
+  There are two key points: normal VHDL LRM rules are tried first and
+  entities are searched only in known libraries. A known library is a
+  library which has been named in your design.
+
+  This option is only useful during elaboration.
 
 .. option:: --format=<FORMAT>
 
@@ -364,6 +404,23 @@ Options
 
   Be verbose. For example, for analysis, elaboration and make commands, GHDL displays the commands executed.
 
+.. option:: -o=<FNAME>
+
+  All the commands that perform a link (:option:`-e`, :option:`--elab-run`, :option:`--link`, :option:`-c`, :option:`-m`,
+  etc.) support overriding the location and name of the generated artifact.
+
+.. option:: --time-resolution=<UNIT>
+
+  Set the base time resolution of the simulation. This option is supported in commands :option:`-a` and :option:`-r` only.
+  Allowed values are ``auto`` (default with *mcode*), ``fs`` (default with LLVM/GCC), ``ps``, ``ns``, ``us``, ``ms`` or ``sec``.
+
+  .. HINT::
+    When overriding the time resolution, all the time units that are used in the design must be larger. Using units below
+    the resolution will produce a failure.
+
+  .. ATTENTION::
+    This feature is supported with *mcode* backend only. It is not possible to support it with either LLVM or GCC backends,
+    because it needs to apply globally.
 
 Warnings
 ========
@@ -496,9 +553,6 @@ Furthermore, GHDL provides a few commands which act on a library:
 
 .. index:: cmd library directory
 
-Directory [``--dir``]
----------------------
-
 .. option:: --dir <[options] [libs]>
 
 Displays the content of the design libraries (by default the ``work`` library). All options are allowed, but only a few are meaningful: :option:`--work`, :option:`--workdir` and :option:`--std`.
@@ -507,9 +561,6 @@ Displays the content of the design libraries (by default the ``work`` library). 
 .. index:: cmd library clean
 
 .. _Clean:command:
-
-Clean [``--clean``]
--------------------
 
 .. option:: --clean <[options]>
 
@@ -520,9 +571,6 @@ Try to remove any object, executable or temporary file it could have created. So
 
 .. _Remove:command:
 
-Remove [``--remove``]
----------------------
-
 .. option:: --remove <[options]>
 
 Acts like the clean command but removes the library too. Note that after removing a design library, the files are not
@@ -530,9 +578,6 @@ known anymore by GHDL.
 
 
 .. index:: cmd library copy
-
-Copy [``--copy``]
------------------
 
 .. option:: --copy <--work=name [options]>
 
@@ -554,9 +599,6 @@ command before its execution.
 
 .. index:: cmd VPI compile
 
-compile [``--vpi-compile``]
----------------------------
-
 .. option:: --vpi-compile <command>
 
 Add an include path to the command and execute it::
@@ -567,20 +609,12 @@ This will execute::
 
   command -Ixxx/include
 
-For example::
+For example, ``ghdl --vpi-compile gcc -c vpi1.c`` executes ``gcc -c vpi1.c -fPIC -Ixxx/include``.
 
-  ghdl --vpi-compile gcc -c vpi1.c
-
-executes::
-
-  gcc -c vpi1.c -fPIC -Ixxx/include
 
 .. _VPI_link_command:
 
 .. index:: cmd VPI link
-
-link [``--vpi-link``]
----------------------
 
 .. option:: --vpi-link <command>
 
@@ -592,60 +626,56 @@ This will execute::
 
   command -Lxxx/lib -lghdlvpi
 
-For example::
-
-  ghdl --vpi-link gcc -o vpi1.vpi vpi1.o
-
-executes::
-
-  gcc -o vpi1.vpi vpi1.o --shared -Lxxx/lib -lghdlvpi
+For example, ``ghdl --vpi-link gcc -o vpi1.vpi vpi1.o`` executes ``gcc -o vpi1.vpi vpi1.o --shared -Lxxx/lib -lghdlvpi``.
 
 
 .. _VPI_cflags_command:
 
 .. index:: cmd VPI cflags
 
-cflags [``--vpi-cflags``]
--------------------------
-
 .. option:: --vpi-cflags
 
 Display flags added by :option:`--vpi-compile`.
 
-.. index:: cmd VPI ldflags
 
-ldflags [``--vpi-ldflags``]
----------------------------
+.. index:: cmd VPI ldflags
 
 .. option:: --vpi-ldflags
 
 Display flags added by :option:`--vpi-link`.
 
-.. index:: cmd VPI include dir
 
-include dir [``--vpi-include-dir``]
------------------------------------
+.. index:: cmd VPI include dir
 
 .. option:: --vpi-include-dir
 
 Display the include directory added by the compile flags.
 
-.. index:: cmd VPI library dir
 
-library dir [``--vpi-library-dir``]
------------------------------------
+.. index:: cmd VPI library dir
 
 .. option:: --vpi-library-dir
 
 Display the library directory added by the link flags.
 
+.. option:: --vpi-library-dir-unix
+
+Display the library directory added by the link flags, forcing UNIX syntax.
 
 .. _ieee_library_pitfalls:
 
 IEEE library pitfalls
 =====================
 
-When you use options :option:`--ieee=synopsys <--ieee>` or :option:`--ieee=mentor <--ieee>`, the ``ieee`` library contains non standard packages such as ``std_logic_arith``. These packages are not standard because there are not described by an IEEE standard, even if they have been put in the `IEEE` library. Furthermore, they are not really de-facto standard, because there are slight differences between the packages of Mentor and those of Synopsys. Furthermore, since they are not well thought out, their use has pitfalls. For example, this description has an error during compilation:
+When you use options :option:`--ieee=synopsys <--ieee>`, the ``ieee``
+library contains non standard packages such as
+``std_logic_arith``. These packages are not standard because there are
+not described by an IEEE standard, even if they have been put in the
+`IEEE` library. Furthermore, they are not really de-facto standard,
+because there are slight differences between the packages of Mentor
+and those of Synopsys. Furthermore, since they are not well thought
+out, their use has pitfalls. For example, this description has an
+error during compilation:
 
 .. code-block:: VHDL
 

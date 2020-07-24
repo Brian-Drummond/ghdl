@@ -32,7 +32,7 @@ with Vhdl.Utils; use Vhdl.Utils;
 with Netlists.Iterators; use Netlists.Iterators;
 with Netlists.Disp_Vhdl; use Netlists.Disp_Vhdl;
 
-with Synth.Values; use Synth.Values;
+with Synth.Objtypes; use Synth.Objtypes;
 
 package body Synth.Disp_Vhdl is
    procedure Disp_Signal (Desc : Port_Desc) is
@@ -44,13 +44,20 @@ package body Synth.Disp_Vhdl is
       Put_Line (";");
    end Disp_Signal;
 
-   procedure Disp_Ports_As_Signals (M : Module) is
+   procedure Disp_Ports_As_Signals (M : Module)
+   is
+      Desc : Port_Desc;
    begin
       for I in 1 .. Get_Nbr_Inputs (M) loop
          Disp_Signal (Get_Input_Desc (M, I - 1));
       end loop;
       for I in 1 .. Get_Nbr_Outputs (M) loop
-         Disp_Signal (Get_Output_Desc (M, I - 1));
+         Desc := Get_Output_Desc (M, I - 1);
+         if not Desc.Is_Inout then
+            --  inout ports are not prefixed, so they must not be declared
+            --  as signals.
+            Disp_Signal (Desc);
+         end if;
       end loop;
    end Disp_Ports_As_Signals;
 
@@ -125,7 +132,11 @@ package body Synth.Disp_Vhdl is
             if W > 1 then
                Put ("std_logic_vector(");
             end if;
-            Put ("to_unsigned(");
+            if Typ.Drange.Is_Signed then
+               Put ("to_signed(");
+            else
+               Put ("to_unsigned(");
+            end if;
             Put (Pfx & "," & Width'Image (W) & ")");
             if W > 1 then
                Put (")");
@@ -148,13 +159,19 @@ package body Synth.Disp_Vhdl is
             elsif Is_Std_Logic_Array (Btype) then
                W := Typ.Vbound.Len;
                Disp_In_Lhs (Mname, Off, W, Full);
-               Put ("std_logic_vector(" & Pfx);
+               if W > 1 then
+                  Put ("std_logic_vector(");
+               end if;
+               Put (Pfx);
                if W = 1 then
                   --  This is an array of length 1.  A scalar is used in the
                   --  netlist.
                   Put (" (" & Pfx & "'left)");
                end if;
-               Put_Line (");");
+               if W > 1 then
+                  Put (')');
+               end if;
+               Put_Line (";");
             elsif Btype = Vhdl.Std_Package.Bit_Vector_Type_Definition then
                W := Typ.Vbound.Len;
                Disp_In_Lhs (Mname, Off, W, Full);
@@ -170,9 +187,9 @@ package body Synth.Disp_Vhdl is
                begin
                   for I in 0 .. Bnd.Len - 1 loop
                      case Bnd.Dir is
-                        when Iir_To =>
+                        when Dir_To =>
                            Idx := Bnd.Left + Int32 (I);
-                        when Iir_Downto =>
+                        when Dir_Downto =>
                            Idx := Bnd.Left - Int32 (I);
                      end case;
                      Disp_In_Converter
@@ -197,7 +214,7 @@ package body Synth.Disp_Vhdl is
                      Disp_In_Converter
                        (Mname,
                         Pfx & '.' & Name_Table.Image (Get_Identifier (El)),
-                        Off + Et.Off, Get_Type (El), Et.Typ, Rec_Full);
+                        Off + Et.Boff, Get_Type (El), Et.Typ, Rec_Full);
                   end;
                end loop;
             end;
@@ -213,7 +230,7 @@ package body Synth.Disp_Vhdl is
       Port_Name : constant String :=
         Name_Table.Image (Get_Identifier (Port));
       Port_Type : constant Node := Get_Type (Port);
-      Typ : constant Type_Acc := Get_Value_Type (Inst, Port_Type);
+      Typ : constant Type_Acc := Get_Subtype_Object (Inst, Port_Type);
    begin
       Disp_In_Converter (Port_Name, Port_Name, 0, Port_Type, Typ, True);
    end Disp_Input_Port_Converter;
@@ -326,9 +343,9 @@ package body Synth.Disp_Vhdl is
                begin
                   for I in 0 .. Bnd.Len - 1 loop
                      case Bnd.Dir is
-                        when Iir_To =>
+                        when Dir_To =>
                            Idx := Bnd.Left + Int32 (I);
-                        when Iir_Downto =>
+                        when Dir_Downto =>
                            Idx := Bnd.Left - Int32 (I);
                      end case;
                      Disp_Out_Converter
@@ -353,7 +370,7 @@ package body Synth.Disp_Vhdl is
                      Disp_Out_Converter
                        (Mname,
                         Pfx & '.' & Name_Table.Image (Get_Identifier (El)),
-                        Off + Et.Off, Get_Type (El), Et.Typ, Rec_Full);
+                        Off + Et.Boff, Get_Type (El), Et.Typ, Rec_Full);
                   end;
                end loop;
             end;
@@ -369,7 +386,7 @@ package body Synth.Disp_Vhdl is
       Port_Name : constant String :=
         Name_Table.Image (Get_Identifier (Port));
       Port_Type : constant Node := Get_Type (Port);
-      Typ : constant Type_Acc := Get_Value_Type (Inst, Port_Type);
+      Typ : constant Type_Acc := Get_Subtype_Object (Inst, Port_Type);
    begin
       Disp_Out_Converter (Port_Name, Port_Name, 0, Port_Type, Typ, True);
    end Disp_Output_Port_Converter;
@@ -429,7 +446,9 @@ package body Synth.Disp_Vhdl is
       Name_Wrap := Name_Table.Get_Identifier ("wrap");
       for P of Ports_Desc (Main) loop
          pragma Assert (Get_Sname_Prefix (P.Name) = No_Sname);
-         Set_Sname_Prefix (P.Name, New_Sname_User (Name_Wrap, No_Sname));
+         if not P.Is_Inout then
+            Set_Sname_Prefix (P.Name, New_Sname_User (Name_Wrap, No_Sname));
+         end if;
       end loop;
 
       Put_Line ("library ieee;");
@@ -441,6 +460,7 @@ package body Synth.Disp_Vhdl is
       Put_Line (" is");
       Disp_Ports_As_Signals (Main);
       Disp_Architecture_Declarations (Main);
+      Disp_Architecture_Attributes (Main);
 
       Put_Line ("begin");
       if Inst /= null then

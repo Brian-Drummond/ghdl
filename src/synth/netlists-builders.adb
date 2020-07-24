@@ -26,12 +26,14 @@ package body Netlists.Builders is
    function Create_Input (Id : String; W : Width := 0) return Port_Desc is
    begin
       return (Name => New_Sname_Artificial (Get_Identifier (Id), No_Sname),
+              Is_Inout => False,
               W => W);
    end Create_Input;
 
    function Create_Output (Id : String; W : Width := 0) return Port_Desc is
    begin
       return (Name => New_Sname_Artificial (Get_Identifier (Id), No_Sname),
+              Is_Inout => False,
               W => W);
    end Create_Output;
 
@@ -320,28 +322,30 @@ package body Netlists.Builders is
       Res := New_User_Module
         (Ctxt.Design,
          New_Sname_Artificial (Get_Identifier ("memory"), No_Sname),
-         Id_Memory, 0, 1, 0);
+         Id_Memory, 1, 1, 0);
       Ctxt.M_Memory := Res;
-      Outputs (0 .. 0) := (0 => Create_Output ("ports"));
-      Set_Ports_Desc (Res, Port_Desc_Array'(1 .. 0 => <>), Outputs (0 .. 0));
+      Outputs (0 .. 0) := (0 => Create_Output ("oport"));
+      Inputs (0 .. 0) := (0 => Create_Input ("iport"));
+      Set_Ports_Desc (Res, Inputs (0 .. 0), Outputs (0 .. 0));
 
       Res := New_User_Module
         (Ctxt.Design,
          New_Sname_Artificial (Get_Identifier ("memory_init"), No_Sname),
-         Id_Memory_Init, 1, 1, 0);
+         Id_Memory_Init, 2, 1, 0);
       Ctxt.M_Memory_Init := Res;
-      Outputs (0 .. 0) := (0 => Create_Output ("ports"));
-      Inputs (0 .. 0) := (0 => Create_Input ("init"));
-      Set_Ports_Desc (Res, Inputs (0 .. 0), Outputs (0 .. 0));
+      Outputs (0 .. 0) := (0 => Create_Output ("oport"));
+      Inputs (0 .. 1) := (0 => Create_Input ("iport"),
+                          1 => Create_Input ("init"));
+      Set_Ports_Desc (Res, Inputs (0 .. 1), Outputs (0 .. 0));
 
       Res := New_User_Module
         (Ctxt.Design,
          New_Sname_Artificial (Get_Identifier ("mem_rd"), No_Sname),
          Id_Mem_Rd, 2, 2, 0);
       Ctxt.M_Mem_Rd := Res;
-      Inputs (0 .. 1) := (0 => Create_Input ("pport"),
+      Inputs (0 .. 1) := (0 => Create_Input ("iport"),
                           1 => Create_Input ("addr"));
-      Outputs (0 .. 1) := (0 => Create_Output ("nport"),
+      Outputs (0 .. 1) := (0 => Create_Output ("oport"),
                            1 => Create_Output ("data"));
       Set_Ports_Desc (Res, Inputs (0 .. 1), Outputs (0 .. 1));
 
@@ -350,11 +354,11 @@ package body Netlists.Builders is
          New_Sname_Artificial (Get_Identifier ("mem_rd_sync"), No_Sname),
          Id_Mem_Rd_Sync, 4, 2, 0);
       Ctxt.M_Mem_Rd_Sync := Res;
-      Inputs (0 .. 3) := (0 => Create_Input ("pport"),
+      Inputs (0 .. 3) := (0 => Create_Input ("iport"),
                           1 => Create_Input ("addr"),
                           2 => Create_Input ("clk"),
                           3 => Create_Input ("en"));
-      Outputs (0 .. 1) := (0 => Create_Output ("nport"),
+      Outputs (0 .. 1) := (0 => Create_Output ("oport"),
                            1 => Create_Output ("data"));
       Set_Ports_Desc (Res, Inputs (0 .. 3), Outputs (0 .. 1));
 
@@ -363,28 +367,40 @@ package body Netlists.Builders is
          New_Sname_Artificial (Get_Identifier ("mem_wr_sync"), No_Sname),
          Id_Mem_Wr_Sync, 5, 1, 0);
       Ctxt.M_Mem_Wr_Sync := Res;
-      Inputs := (0 => Create_Input ("pport"),
+      Inputs := (0 => Create_Input ("iport"),
                  1 => Create_Input ("addr"),
                  2 => Create_Input ("clk"),
                  3 => Create_Input ("en"),
                  4 => Create_Input ("data"));
-      Outputs (0 .. 0) := (0 => Create_Output ("nport"));
+      Outputs (0 .. 0) := (0 => Create_Output ("oport"));
       Set_Ports_Desc (Res, Inputs (0 .. 4), Outputs (0 .. 0));
+
+      Res := New_User_Module
+        (Ctxt.Design,
+         New_Sname_Artificial (Get_Identifier ("mem_multiport"), No_Sname),
+         Id_Mem_Multiport, 2, 1, 0);
+      Ctxt.M_Mem_Multiport := Res;
+      Inputs (0 .. 1) := (0 => Create_Input ("i0"),
+                          1 => Create_Input ("i1"));
+      Set_Ports_Desc (Res, Inputs (0 .. 1), Outputs (0 .. 0));
    end Create_Memory_Modules;
 
-   procedure Create_Edge_Module (Ctxt : Context_Acc;
-                                 Res : out Module;
-                                 Name : Name_Id)
-
+   procedure Create_Edge_Module (Ctxt : Context_Acc)
    is
       Outputs : Port_Desc_Array (0 .. 0);
       Inputs : Port_Desc_Array (0 .. 0);
    begin
-      Res := New_User_Module
-        (Ctxt.Design, New_Sname_Artificial (Name, No_Sname), Id_Edge, 1, 1, 0);
+      Ctxt.M_Posedge := New_User_Module
+        (Ctxt.Design, New_Sname_Artificial (Name_Posedge, No_Sname),
+         Id_Posedge, 1, 1, 0);
       Inputs := (0 => Create_Input ("i", 1));
       Outputs := (0 => Create_Output ("o", 1));
-      Set_Ports_Desc (Res, Inputs, Outputs);
+      Set_Ports_Desc (Ctxt.M_Posedge, Inputs, Outputs);
+
+      Ctxt.M_Negedge := New_User_Module
+        (Ctxt.Design, New_Sname_Artificial (Name_Negedge, No_Sname),
+         Id_Negedge, 1, 1, 0);
+      Set_Ports_Desc (Ctxt.M_Negedge, Inputs, Outputs);
    end Create_Edge_Module;
 
    procedure Create_Mux_Modules (Ctxt : Context_Acc)
@@ -410,29 +426,45 @@ package body Netlists.Builders is
         (Ctxt.Design, New_Sname_Artificial (Get_Identifier ("mux4"), No_Sname),
          Id_Mux4, 5, 1, 0);
       Set_Ports_Desc (Ctxt.M_Mux4, Inputs (0 .. 4), Outputs);
+
+      Inputs (0).W := 0;
+      Inputs (1) := Create_Input ("def");
+      Ctxt.M_Pmux := New_User_Module
+        (Ctxt.Design, New_Sname_Artificial (Get_Identifier ("pmux"), No_Sname),
+         Id_Pmux, 2, 1, 1);
+      Set_Ports_Desc (Ctxt.M_Pmux, Inputs (0 .. 1), Outputs);
+      Set_Params_Desc
+        (Ctxt.M_Pmux,
+         (0 => (New_Sname_Artificial (Get_Identifier ("n"), No_Sname),
+                Typ => Param_Uns32)));
    end Create_Mux_Modules;
 
    procedure Create_Objects_Module (Ctxt : Context_Acc)
    is
       Outputs : Port_Desc_Array (0 .. 0);
-      Inputs : Port_Desc_Array (0 .. 0);
       Inputs2 : Port_Desc_Array (0 .. 1);
+      Outputs2 : Port_Desc_Array (0 .. 1);
    begin
-      Inputs := (0 => Create_Input ("i"));
+      Inputs2 := (0 => Create_Input ("i"),
+                  1 => Create_Input ("init"));
       Outputs := (0 => Create_Output ("o"));
 
       Ctxt.M_Output := New_User_Module
         (Ctxt.Design, New_Sname_Artificial (Name_Output, No_Sname),
          Id_Output, 1, 1, 0);
-      Set_Ports_Desc (Ctxt.M_Output, Inputs, Outputs);
+      Set_Ports_Desc (Ctxt.M_Output, Inputs2 (0 .. 0), Outputs);
+
+      Ctxt.M_Ioutput := New_User_Module
+        (Ctxt.Design,
+         New_Sname_Artificial (Get_Identifier ("ioutput"), No_Sname),
+         Id_Ioutput, 2, 1, 0);
+      Set_Ports_Desc (Ctxt.M_Ioutput, Inputs2, Outputs);
 
       Ctxt.M_Signal := New_User_Module
         (Ctxt.Design, New_Sname_Artificial (Name_Signal, No_Sname),
          Id_Signal, 1, 1, 0);
-      Set_Ports_Desc (Ctxt.M_Signal, Inputs, Outputs);
+      Set_Ports_Desc (Ctxt.M_Signal, Inputs2 (0 .. 0), Outputs);
 
-      Inputs2 := (0 => Create_Input ("i"),
-                  1 => Create_Input ("init"));
       Ctxt.M_Isignal := New_User_Module
         (Ctxt.Design,
          New_Sname_Artificial (Get_Identifier ("isignal"), No_Sname),
@@ -442,7 +474,31 @@ package body Netlists.Builders is
       Ctxt.M_Port := New_User_Module
         (Ctxt.Design, New_Sname_Artificial (Name_Port, No_Sname),
          Id_Port, 1, 1, 0);
-      Set_Ports_Desc (Ctxt.M_Port, Inputs, Outputs);
+      Set_Ports_Desc (Ctxt.M_Port, Inputs2 (0 .. 0), Outputs);
+
+      Ctxt.M_Nop := New_User_Module
+        (Ctxt.Design, New_Sname_Artificial (Get_Identifier ("nop"), No_Sname),
+         Id_Nop, 1, 1, 0);
+      Set_Ports_Desc (Ctxt.M_Nop, Inputs2 (0 .. 0), Outputs);
+
+      Ctxt.M_Enable := New_User_Module
+        (Ctxt.Design,
+         New_Sname_Artificial (Get_Identifier ("enable"), No_Sname),
+         Id_Enable, 1, 1, 0);
+      Set_Ports_Desc (Ctxt.M_Enable, Inputs2 (0 .. 0), Outputs);
+
+      Ctxt.M_Inout := New_User_Module
+        (Ctxt.Design, New_Sname_Artificial (Name_Inout, No_Sname),
+         Id_Inout, 1, 2, 0);
+      Outputs2 := (0 => Outputs (0),
+                   1 => Create_Output ("oport"));
+      Set_Ports_Desc (Ctxt.M_Inout, Inputs2 (0 .. 0), Outputs2);
+
+      Ctxt.M_Iinout := New_User_Module
+        (Ctxt.Design,
+         New_Sname_Artificial (Get_Identifier("iinout"), No_Sname),
+         Id_Iinout, 2, 2, 0);
+      Set_Ports_Desc (Ctxt.M_Iinout, Inputs2 (0 .. 1), Outputs2);
    end Create_Objects_Module;
 
    procedure Create_Dff_Modules (Ctxt : Context_Acc)
@@ -487,7 +543,25 @@ package body Netlists.Builders is
                                     2 => Create_Input ("rst"),
                                     3 => Create_Input ("rst_val"),
                                     4 => Create_Input ("init")),
-                     Outputs);
+                      Outputs);
+
+      Ctxt.M_Mdff := New_User_Module
+        (Ctxt.Design, New_Sname_Artificial (Get_Identifier ("mdff"), No_Sname),
+         Id_Mdff, 3, 1, 0);
+      Set_Ports_Desc (Ctxt.M_Mdff, (0 => Create_Input ("clk", 1),
+                                    1 => Create_Input ("d"),
+                                    2 => Create_Input ("els")),
+                      Outputs);
+
+      Ctxt.M_Midff := New_User_Module
+        (Ctxt.Design,
+         New_Sname_Artificial (Get_Identifier ("midff"), No_Sname),
+         Id_Midff, 4, 1, 0);
+      Set_Ports_Desc (Ctxt.M_Midff, (0 => Create_Input ("clk", 1),
+                                     1 => Create_Input ("d"),
+                                     2 => Create_Input ("els"),
+                                     3 => Create_Input ("init")),
+                      Outputs);
    end Create_Dff_Modules;
 
    procedure Create_Assert_Assume_Cover (Ctxt : Context_Acc)
@@ -533,6 +607,22 @@ package body Netlists.Builders is
       Set_Ports_Desc (Res, Port_Desc_Array'(1 .. 0 => <>), Outputs);
    end Create_Formal_Input;
 
+   procedure Create_Tri_Module (Ctxt : Context_Acc)
+   is
+      Outputs : Port_Desc_Array (0 .. 0);
+      Inputs : Port_Desc_Array (0 .. 1);
+      Res : Module;
+   begin
+      Res := New_User_Module (Ctxt.Design,
+                              New_Sname_Artificial (Name_Tri, No_Sname),
+                              Id_Tri, 2, 1, 0);
+      Ctxt.M_Tri := Res;
+      Outputs := (0 => Create_Output ("o"));
+      Inputs := (0 => Create_Input ("en"),
+                 1 => Create_Input ("i"));
+      Set_Ports_Desc (Res, Inputs, Outputs);
+   end Create_Tri_Module;
+
    function Build_Builders (Design : Module) return Context_Acc
    is
       Res : Context_Acc;
@@ -566,6 +656,15 @@ package body Netlists.Builders is
       Create_Dyadic_Module (Design, Res.M_Dyadic (Id_Sub),
                             Get_Identifier ("sub"), Id_Sub);
 
+      Create_Dyadic_Module (Design, Res.M_Dyadic (Id_Umin),
+                            Get_Identifier ("umin"), Id_Umin);
+      Create_Dyadic_Module (Design, Res.M_Dyadic (Id_Smin),
+                            Get_Identifier ("smin"), Id_Smin);
+      Create_Dyadic_Module (Design, Res.M_Dyadic (Id_Umax),
+                            Get_Identifier ("umax"), Id_Umax);
+      Create_Dyadic_Module (Design, Res.M_Dyadic (Id_Smax),
+                            Get_Identifier ("smax"), Id_Smax);
+
       Create_Dyadic_Module (Design, Res.M_Dyadic (Id_Umul),
                             Get_Identifier ("umul"), Id_Umul);
       Create_Dyadic_Module (Design, Res.M_Dyadic (Id_Smul),
@@ -597,6 +696,7 @@ package body Netlists.Builders is
       Create_Monadic_Module (Design, Res.M_Monadic (Id_Not), Name_Not, Id_Not);
       Create_Monadic_Module (Design, Res.M_Monadic (Id_Neg),
                              Get_Identifier ("neg"), Id_Neg);
+      Create_Monadic_Module (Design, Res.M_Monadic (Id_Abs), Name_Abs, Id_Abs);
 
       Create_Compare_Module (Design, Res.M_Compare (Id_Eq),
                              Get_Identifier ("eq"), Id_Eq);
@@ -648,8 +748,10 @@ package body Netlists.Builders is
                              Get_Identifier ("red_or"), Id_Red_Or);
       Create_Monadic_Module (Design, Res.M_Reduce (Id_Red_And),
                              Get_Identifier ("red_and"), Id_Red_And);
+      Create_Monadic_Module (Design, Res.M_Reduce (Id_Red_Xor),
+                             Get_Identifier ("red_xor"), Id_Red_Xor);
 
-      Create_Edge_Module (Res, Res.M_Edge, Name_Edge);
+      Create_Edge_Module (Res);
 
       Create_Mux_Modules (Res);
       Create_Objects_Module (Res);
@@ -661,6 +763,10 @@ package body Netlists.Builders is
       Create_Formal_Input (Res, Id_Anyconst, Name_Anyconst);
       Create_Formal_Input (Res, Id_Allseq, Name_Allseq);
       Create_Formal_Input (Res, Id_Anyseq, Name_Anyseq);
+
+      Create_Tri_Module (Res);
+      Create_Dyadic_Module (Design, Res.M_Resolver,
+                            Get_Identifier ("resolver"), Id_Resolver);
 
       return Res;
    end Build_Builders;
@@ -698,7 +804,6 @@ package body Netlists.Builders is
                           L, R : Net) return Net
    is
       Wd : constant Width := Get_Width (L);
-      pragma Assert (Wd /= No_Width);
       pragma Assert (Get_Width (R) = Wd);
       pragma Assert (Ctxt.M_Dyadic (Id) /= No_Module);
       Inst : Instance;
@@ -792,7 +897,6 @@ package body Netlists.Builders is
 
    function Build_Const_Z (Ctxt : Context_Acc; W : Width) return Net
    is
-      pragma Assert (W > 0);
       Inst : Instance;
       O : Net;
    begin
@@ -876,18 +980,30 @@ package body Netlists.Builders is
       return Inst;
    end Build_Const_Log;
 
-   function Build_Edge (Ctxt : Context_Acc; Src : Net) return Net
+   function Build_Edge (Ctxt : Context_Acc; M : Module; Src : Net) return Net
    is
       pragma Assert (Get_Width (Src) = 1);
       Inst : Instance;
       O : Net;
    begin
-      Inst := New_Internal_Instance (Ctxt, Ctxt.M_Edge);
+      Inst := New_Internal_Instance (Ctxt, M);
       O := Get_Output (Inst, 0);
       pragma Assert (Get_Width (O) = 1);
       Connect (Get_Input (Inst, 0), Src);
       return O;
    end Build_Edge;
+
+   pragma Inline (Build_Edge);
+
+   function Build_Posedge (Ctxt : Context_Acc; Src : Net) return Net is
+   begin
+      return Build_Edge (Ctxt, Ctxt.M_Posedge, Src);
+   end Build_Posedge;
+
+   function Build_Negedge (Ctxt : Context_Acc; Src : Net) return Net is
+   begin
+      return Build_Edge (Ctxt, Ctxt.M_Negedge, Src);
+   end Build_Negedge;
 
    function Build_Mux2 (Ctxt : Context_Acc;
                         Sel : Net;
@@ -915,7 +1031,6 @@ package body Netlists.Builders is
                         I0, I1, I2, I3 : Net) return Net
    is
       Wd : constant Width := Get_Width (I0);
-      pragma Assert (Wd /= No_Width);
       pragma Assert (Get_Width (I1) = Wd);
       pragma Assert (Get_Width (I2) = Wd);
       pragma Assert (Get_Width (I3) = Wd);
@@ -933,6 +1048,24 @@ package body Netlists.Builders is
       Connect (Get_Input (Inst, 4), I3);
       return O;
    end Build_Mux4;
+
+   function Build_Pmux (Ctxt : Context_Acc; Sel : Net; Def : Net) return Net
+   is
+      Sel_W : constant Width := Get_Width (Sel);
+      Def_W : constant Width := Get_Width (Def);
+      Inst : Instance;
+      O : Net;
+   begin
+      Inst := New_Var_Instance (Ctxt.Parent, Ctxt.M_Pmux,
+                                New_Internal_Name (Ctxt),
+                                2 + Port_Nbr (Sel_W), 1, 1);
+      Set_Param_Uns32 (Inst, 0, 2 + Sel_W);
+      O := Get_Output (Inst, 0);
+      Set_Width (O, Def_W);
+      Connect (Get_Input (Inst, 0), Sel);
+      Connect (Get_Input (Inst, 1), Def);
+      return O;
+   end Build_Pmux;
 
    function Build_Concat2 (Ctxt : Context_Acc; I0, I1 : Net) return Net
    is
@@ -1026,7 +1159,6 @@ package body Netlists.Builders is
      return Net
    is
       Wd : constant Width := Get_Width (Mem);
-      pragma Assert (Wd /= No_Width);
       Inst : Instance;
       O : Net;
    begin
@@ -1068,9 +1200,7 @@ package body Netlists.Builders is
      (Ctxt : Context_Acc;
       I : Net; Step : Uns32; Max : Uns32; W : Width) return Net
    is
-      pragma Assert (Get_Width (I) /= No_Width);
-      pragma Assert (Step > 0);
-      pragma Assert (W > 0);
+      --  Note: step could be 0.
       Inst : Instance;
       O : Net;
    begin
@@ -1100,7 +1230,7 @@ package body Netlists.Builders is
       return O;
    end Build_Addidx;
 
-   function Build_Memory (Ctxt : Context_Acc; W : Width) return Net
+   function Build_Memory (Ctxt : Context_Acc; W : Width) return Instance
    is
       pragma Assert (W > 0);
       Inst : Instance;
@@ -1109,11 +1239,11 @@ package body Netlists.Builders is
       Inst := New_Internal_Instance (Ctxt, Ctxt.M_Memory);
       O := Get_Output (Inst, 0);
       Set_Width (O, W);
-      return O;
+      return Inst;
    end Build_Memory;
 
    function Build_Memory_Init (Ctxt : Context_Acc; W : Width; Init : Net)
-                              return Net
+                              return Instance
    is
       pragma Assert (W > 0);
       pragma Assert (Get_Width (Init) = W);
@@ -1123,8 +1253,8 @@ package body Netlists.Builders is
       Inst := New_Internal_Instance (Ctxt, Ctxt.M_Memory_Init);
       O := Get_Output (Inst, 0);
       Set_Width (O, W);
-      Connect (Get_Input (Inst, 0), Init);
-      return O;
+      Connect (Get_Input (Inst, 1), Init);
+      return Inst;
    end Build_Memory_Init;
 
    function Build_Mem_Rd
@@ -1202,6 +1332,21 @@ package body Netlists.Builders is
       return Inst;
    end Build_Mem_Wr_Sync;
 
+   function Build_Mem_Multiport (Ctxt : Context_Acc; I0, I1 : Net) return Net
+   is
+      W : constant Width := Get_Width (I0);
+      pragma Assert (Get_Width (I1) = W);
+      Inst : Instance;
+      O : Net;
+   begin
+      Inst := New_Internal_Instance (Ctxt, Ctxt.M_Mem_Multiport);
+      O := Get_Output (Inst, 0);
+      Set_Width (O, W);
+      Connect (Get_Input (Inst, 0), I0);
+      Connect (Get_Input (Inst, 1), I1);
+      return O;
+   end Build_Mem_Multiport;
+
    function Build_Object (Ctxt : Context_Acc; M : Module; W : Width) return Net
    is
       Inst : Instance;
@@ -1217,6 +1362,43 @@ package body Netlists.Builders is
    begin
       return Build_Object (Ctxt, Ctxt.M_Output, W);
    end Build_Output;
+
+   function Build_Inout_Object (Ctxt : Context_Acc; M : Module; W : Width)
+                                return Instance
+   is
+      Inst : Instance;
+      O : Net;
+   begin
+      Inst := New_Internal_Instance (Ctxt, M);
+      O := Get_Output (Inst, 0);
+      Set_Width (O, W);
+      O := Get_Output (Inst, 1);
+      Set_Width (O, W);
+      return Inst;
+   end Build_Inout_Object;
+
+   function Build_Inout (Ctxt : Context_Acc; W : Width) return Instance is
+   begin
+      return Build_Inout_Object (Ctxt, Ctxt.M_Inout, W);
+   end Build_Inout;
+
+   function Build_Iinout (Ctxt : Context_Acc; W : Width) return Instance is
+   begin
+      return Build_Inout_Object (Ctxt, Ctxt.M_Iinout, W);
+   end Build_Iinout;
+
+   function Build_Ioutput (Ctxt : Context_Acc; Init : Net) return Net
+   is
+      Wd : constant Width := Get_Width (Init);
+      Inst : Instance;
+      O : Net;
+   begin
+      Inst := New_Internal_Instance (Ctxt, Ctxt.M_Ioutput);
+      O := Get_Output (Inst, 0);
+      Set_Width (O, Wd);
+      Connect (Get_Input (Inst, 1), Init);
+      return O;
+   end Build_Ioutput;
 
    function Build_Signal (Ctxt : Context_Acc; Name : Sname; W : Width)
                          return Net
@@ -1234,7 +1416,6 @@ package body Netlists.Builders is
                           return Net
    is
       Wd : constant Width := Get_Width (Init);
-      pragma Assert (Wd /= No_Width);
       Inst : Instance;
       O : Net;
    begin
@@ -1248,7 +1429,6 @@ package body Netlists.Builders is
    function Build_Port (Ctxt : Context_Acc; N : Net) return Net
    is
       Wd : constant Width := Get_Width (N);
-      pragma Assert (Wd /= No_Width);
       Inst : Instance;
       O : Net;
    begin
@@ -1258,6 +1438,30 @@ package body Netlists.Builders is
       Connect (Get_Input (Inst, 0), N);
       return O;
    end Build_Port;
+
+   function Build_Nop (Ctxt : Context_Acc; I : Net) return Net
+   is
+      Wd : constant Width := Get_Width (I);
+      Inst : Instance;
+      O : Net;
+   begin
+      Inst := New_Internal_Instance (Ctxt, Ctxt.M_Nop);
+      Connect (Get_Input (Inst, 0), I);
+      O := Get_Output (Inst, 0);
+      Set_Width (O, Wd);
+      return O;
+   end Build_Nop;
+
+   function Build_Enable (Ctxt : Context_Acc) return Net
+   is
+      Inst : Instance;
+      O : Net;
+   begin
+      Inst := New_Internal_Instance (Ctxt, Ctxt.M_Enable);
+      O := Get_Output (Inst, 0);
+      Set_Width (O, 1);
+      return O;
+   end Build_Enable;
 
    function Build_Dff (Ctxt : Context_Acc;
                        Clk : Net;
@@ -1282,7 +1486,6 @@ package body Netlists.Builders is
                         Init : Net) return Net
    is
       Wd : constant Width := Get_Width (Init);
-      pragma Assert (Wd /= No_Width);
       pragma Assert (D = No_Net or else Get_Width (D) = Wd);
       pragma Assert (Get_Width (Clk) = 1);
       Inst : Instance;
@@ -1305,7 +1508,6 @@ package body Netlists.Builders is
                         Rst : Net; Rst_Val : Net) return Net
    is
       Wd : constant Width := Get_Width (D);
-      pragma Assert (Wd /= No_Width);
       pragma Assert (Get_Width (Clk) = 1);
       Inst : Instance;
       O : Net;
@@ -1326,7 +1528,6 @@ package body Netlists.Builders is
                          Rst : Net; Rst_Val : Net; Init : Net) return Net
    is
       Wd : constant Width := Get_Width (D);
-      pragma Assert (Wd /= No_Width);
       pragma Assert (Get_Width (Clk) = 1);
       Inst : Instance;
       O : Net;
@@ -1342,12 +1543,84 @@ package body Netlists.Builders is
       return O;
    end Build_Iadff;
 
+   function Build_Mdff (Ctxt : Context_Acc;
+                        Clk : Net;
+                        D : Net;
+                        Els : Net) return Net
+   is
+      Wd : constant Width := Get_Width (D);
+      pragma Assert (Get_Width (Clk) = 1);
+      pragma Assert (Get_Width (Els) = Wd);
+      Inst : Instance;
+      O : Net;
+   begin
+      Inst := New_Internal_Instance (Ctxt, Ctxt.M_Mdff);
+      O := Get_Output (Inst, 0);
+      Set_Width (O, Wd);
+      Connect (Get_Input (Inst, 0), Clk);
+      Connect (Get_Input (Inst, 1), D);
+      Connect (Get_Input (Inst, 2), Els);
+      return O;
+   end Build_Mdff;
+
+   function Build_Midff (Ctxt : Context_Acc;
+                         Clk : Net;
+                         D : Net;
+                         Els : Net;
+                         Init : Net) return Net
+   is
+      Wd : constant Width := Get_Width (D);
+      pragma Assert (Get_Width (Clk) = 1);
+      pragma Assert (Get_Width (Els) = Wd);
+      pragma Assert (Get_Width (Init) = Wd);
+      Inst : Instance;
+      O : Net;
+   begin
+      Inst := New_Internal_Instance (Ctxt, Ctxt.M_Midff);
+      O := Get_Output (Inst, 0);
+      Set_Width (O, Wd);
+      Connect (Get_Input (Inst, 0), Clk);
+      Connect (Get_Input (Inst, 1), D);
+      Connect (Get_Input (Inst, 2), Els);
+      Connect (Get_Input (Inst, 3), Init);
+      return O;
+   end Build_Midff;
+
+   function Build_Tri (Ctxt : Context_Acc; En : Net; D : Net) return Net
+   is
+      Wd : constant Width := Get_Width (D);
+      pragma Assert (Get_Width (En) = 1);
+      Inst : Instance;
+      O : Net;
+   begin
+      Inst := New_Internal_Instance (Ctxt, Ctxt.M_Tri);
+      O := Get_Output (Inst, 0);
+      Set_Width (O, Wd);
+      Connect (Get_Input (Inst, 0), En);
+      Connect (Get_Input (Inst, 1), D);
+      return O;
+   end Build_Tri;
+
+   --  Reuse Build_Dyadic ?
+   function Build_Resolver (Ctxt : Context_Acc; L, R : Net) return Net
+   is
+      Wd : constant Width := Get_Width (L);
+      pragma Assert (Get_Width (R) = Wd);
+      Inst : Instance;
+      O : Net;
+   begin
+      Inst := New_Internal_Instance (Ctxt, Ctxt.M_Resolver);
+      O := Get_Output (Inst, 0);
+      Set_Width (O, Wd);
+      Connect (Get_Input (Inst, 0), L);
+      Connect (Get_Input (Inst, 1), R);
+      return O;
+   end Build_Resolver;
+
    function Build_Extract
      (Ctxt : Context_Acc; I : Net; Off, W : Width) return Net
    is
       Wd : constant Width := Get_Width (I);
-      pragma Assert (Wd /= No_Width);
-      pragma Assert (W > 0);
       pragma Assert (W + Off <= Wd);
       Inst : Instance;
       O : Net;
@@ -1442,5 +1715,4 @@ package body Netlists.Builders is
       Set_Width (O, W);
       return O;
    end Build_Formal_Input;
-
 end Netlists.Builders;

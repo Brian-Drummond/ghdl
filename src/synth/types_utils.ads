@@ -35,4 +35,8 @@ package Types_Utils is
 
    function To_Uns64 is new Ada.Unchecked_Conversion
      (Fp64, Uns64);
+
+   --  Sign extend V: bit SZ is copied to bits SZ + 1 .. 63/31.
+   function Sext (V : Uns64; Sz : Natural) return Uns64;
+   function Sext (V : Uns32; Sz : Natural) return Uns32;
 end Types_Utils;

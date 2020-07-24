@@ -22,14 +22,17 @@ with Netlists.Builders; use Netlists.Builders;
 with Netlists.Concats;
 with Netlists.Gates;
 with Netlists.Gates_Ports;
+with Netlists.Locations; use Netlists.Locations;
 with Netlists.Utils; use Netlists.Utils;
 with Netlists.Folds; use Netlists.Folds;
+with Netlists.Inference;
 
 with Errorout; use Errorout;
 
-with Synth.Inference;
+with Synth.Flags;
 with Synth.Errors; use Synth.Errors;
 with Synth.Source; use Synth.Source;
+with Synth.Context;
 
 with Vhdl.Nodes;
 
@@ -48,7 +51,9 @@ package body Synth.Environment is
    end Get_Wire_Mark;
 
    function Alloc_Wire (Kind : Wire_Kind; Obj : Source.Syn_Src)
-                       return Wire_Id is
+                       return Wire_Id
+   is
+      Res : Wire_Id;
    begin
       Wire_Id_Table.Append ((Kind => Kind,
                              Mark_Flag => False,
@@ -57,48 +62,20 @@ package body Synth.Environment is
                              Cur_Assign => No_Seq_Assign,
                              Final_Assign => No_Conc_Assign,
                              Nbr_Final_Assign => 0));
-      return Wire_Id_Table.Last;
+      Res := Wire_Id_Table.Last;
+      return Res;
    end Alloc_Wire;
 
    procedure Free_Wire (Wid : Wire_Id)
    is
       Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
    begin
+      --  Check the wire was not already free.
       pragma Assert (Wire_Rec.Kind /= Wire_None);
+
       pragma Assert (Wire_Rec.Cur_Assign = No_Seq_Assign);
       Wire_Rec.Kind := Wire_None;
    end Free_Wire;
-
-   procedure Mark (M : out Wire_Id) is
-   begin
-      M := Wire_Id_Table.Last;
-   end Mark;
-
-   procedure Release (M : in out Wire_Id) is
-   begin
-      --  Check all wires to be released are free.
-      for I in M + 1 .. Wire_Id_Table.Last loop
-         declare
-            Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (I);
-         begin
-            if Wire_Rec.Kind /= Wire_None then
-               raise Internal_Error;
-            end if;
-         end;
-      end loop;
-
-      --  Release.
-      Wire_Id_Table.Set_Last (M);
-
-      M := No_Wire_Id;
-   end Release;
-
-   procedure All_Released is
-   begin
-      if Wire_Id_Table.Last /= No_Wire_Id then
-         raise Internal_Error;
-      end if;
-   end All_Released;
 
    procedure Set_Wire_Gate (Wid : Wire_Id; Gate : Net) is
    begin
@@ -133,10 +110,28 @@ package body Synth.Environment is
       Assign_Table.Table (Asgn).Chain := Chain;
    end Set_Assign_Chain;
 
+   function Get_Assign_Is_Static (Asgn : Seq_Assign) return Boolean is
+   begin
+      return Assign_Table.Table (Asgn).Val.Is_Static = True;
+   end Get_Assign_Is_Static;
+
+   function Get_Assign_Static_Val (Asgn : Seq_Assign) return Memtyp is
+   begin
+      return Assign_Table.Table (Asgn).Val.Val;
+   end Get_Assign_Static_Val;
+
    function Get_Assign_Partial (Asgn : Seq_Assign) return Partial_Assign is
    begin
-      return Assign_Table.Table (Asgn).Asgns;
+      --  Note: fails if the value is static.
+      --  Use Get_Assign_Partial_Force if you want to automatically convert
+      --  the value to a Partial_Assign (a net).
+      return Assign_Table.Table (Asgn).Val.Asgns;
    end Get_Assign_Partial;
+
+   function Get_Seq_Assign_Value (Asgn : Seq_Assign) return Seq_Assign_Value is
+   begin
+      return Assign_Table.Table (Asgn).Val;
+   end Get_Seq_Assign_Value;
 
    function New_Partial_Assign (Val : Net; Offset : Uns32)
                                return Partial_Assign is
@@ -176,11 +171,65 @@ package body Synth.Environment is
    procedure Push_Phi is
    begin
       Phis_Table.Append ((First => No_Seq_Assign,
-                          Nbr => 0));
+                          Last => No_Seq_Assign,
+                          Nbr => 0,
+                          En => No_Wire_Id));
    end Push_Phi;
 
+   procedure Mark (M : out Wire_Id) is
+   begin
+      M := Wire_Id_Table.Last;
+   end Mark;
+
+   procedure Release (M : in out Wire_Id)
+   is
+      Last : Wire_Id;
+   begin
+      --  Check all wires to be released are free.
+      Last := M;
+      for I in M + 1 .. Wire_Id_Table.Last loop
+         declare
+            Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (I);
+            Asgn : Seq_Assign;
+         begin
+            case Wire_Rec.Kind is
+               when Wire_None =>
+                  null;
+               when Wire_Enable =>
+                  --  Keep.  This renames the wire, but the only references
+                  --  must be in the wire.
+                  Last := Last + 1;
+                  if Last /= I then
+                     --  Renames.
+                     Asgn := Wire_Rec.Cur_Assign;
+                     while Asgn /= No_Seq_Assign loop
+                        Assign_Table.Table (Asgn).Id := Last;
+                        Asgn := Get_Assign_Prev (Asgn);
+                     end loop;
+                     Wire_Id_Table.Table (Last) := Wire_Rec;
+                  end if;
+               when others =>
+                  raise Internal_Error;
+            end case;
+         end;
+      end loop;
+
+      --  Release.
+      Wire_Id_Table.Set_Last (Last);
+
+      M := No_Wire_Id;
+   end Release;
+
+   procedure All_Released is
+   begin
+      if Wire_Id_Table.Last /= No_Wire_Id then
+         raise Internal_Error;
+      end if;
+   end All_Released;
+
+   --  Concatenate when possible partial assignments of HEAD.
    procedure Merge_Partial_Assignments
-     (Ctxt : Context_Acc; Head : Partial_Assign)
+     (Ctxt : Context_Acc; Head : Seq_Assign_Value)
    is
       use Netlists.Concats;
       First : Partial_Assign;
@@ -190,7 +239,11 @@ package body Synth.Environment is
       Next_Off : Uns32;
       Next_Val : Net;
    begin
-      First := Head;
+      if Head.Is_Static /= False then
+         return;
+      end if;
+
+      First := Head.Asgns;
       loop
          exit when First = No_Partial_Assign;
 
@@ -256,13 +309,13 @@ package body Synth.Environment is
    is
       Phi : Phi_Type renames Phis_Table.Table (Current_Phi);
       Asgn, Next_Asgn : Seq_Assign;
-      First, Last : Seq_Assign;
       Wid : Wire_Id;
    begin
-      First := No_Seq_Assign;
-      Last := No_Seq_Assign;
       Asgn := Phi.First;
-      Phi.Nbr := 0;
+      Phi := (First => No_Seq_Assign,
+              Last => No_Seq_Assign,
+              Nbr => 0,
+              En => No_Wire_Id);
       while Asgn /= No_Seq_Assign loop
          pragma Assert (Assign_Table.Table (Asgn).Phi = Current_Phi);
          Next_Asgn := Get_Assign_Chain (Asgn);
@@ -275,17 +328,16 @@ package body Synth.Environment is
             Wire_Id_Table.Table (Wid).Cur_Assign := No_Seq_Assign;
          else
             --  Append.
-            if First = No_Seq_Assign then
-               First := Asgn;
+            if Phi.First = No_Seq_Assign then
+               Phi.First := Asgn;
             else
-               Set_Assign_Chain (Last, Asgn);
+               Set_Assign_Chain (Phi.Last, Asgn);
             end if;
             Phi.Nbr := Phi.Nbr + 1;
-            Last := Asgn;
+            Phi.Last := Asgn;
          end if;
          Asgn := Next_Asgn;
       end loop;
-      Phi.First := First;
    end Phi_Discard_Wires;
 
    function Get_Conc_Offset (Asgn : Conc_Assign) return Uns32 is
@@ -322,6 +374,59 @@ package body Synth.Environment is
       Wire_Rec.Nbr_Final_Assign := Wire_Rec.Nbr_Final_Assign + 1;
    end Add_Conc_Assign;
 
+   procedure Pop_And_Merge_Phi_Wire (Ctxt : Builders.Context_Acc;
+                                     Asgn_Rec : Seq_Assign_Record;
+                                     Stmt : Source.Syn_Src)
+   is
+      Wid : constant Wire_Id := Asgn_Rec.Id;
+      Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
+      Outport : constant Net := Wire_Rec.Gate;
+      --  Must be connected to an Id_Output or Id_Signal
+      pragma Assert (Outport /= No_Net);
+      P : Partial_Assign;
+      Res : Net;
+   begin
+      --  Check output is not already assigned.
+      pragma Assert (Get_Input_Net (Get_Net_Parent (Outport), 0) = No_Net);
+
+      case Asgn_Rec.Val.Is_Static is
+         when Unknown =>
+            raise Internal_Error;
+         when True =>
+            --  Create a net.  No inference to do.
+            Res := Synth.Context.Get_Memtyp_Net (Ctxt, Asgn_Rec.Val.Val);
+            Add_Conc_Assign (Wid, Res, 0, Stmt);
+         when False =>
+            P := Asgn_Rec.Val.Asgns;
+            pragma Assert (P /= No_Partial_Assign);
+            while P /= No_Partial_Assign loop
+               declare
+                  Pa : Partial_Assign_Record renames
+                    Partial_Assign_Table.Table (P);
+               begin
+                  if Synth.Flags.Flag_Debug_Noinference then
+                     Res := Pa.Value;
+                  elsif Wire_Rec.Kind = Wire_Enable then
+                     --  Possibly infere a idff/iadff.
+                     pragma Assert (Pa.Offset = 0);
+                     Res := Inference.Infere_Assert
+                       (Ctxt, Pa.Value, Outport, Stmt);
+                  else
+                     --  Note: lifetime is currently based on the kind of the
+                     --   wire (variable -> not reused beyond this process).
+                     --   This is OK for vhdl but not general.
+                     Res := Inference.Infere
+                       (Ctxt, Pa.Value, Pa.Offset, Outport, Stmt,
+                        Wire_Rec.Kind = Wire_Variable);
+                  end if;
+
+                  Add_Conc_Assign (Wid, Res, Pa.Offset, Stmt);
+                  P := Pa.Next;
+               end;
+            end loop;
+      end case;
+   end Pop_And_Merge_Phi_Wire;
+
    --  This procedure is called after each concurrent statement to assign
    --  values to signals.
    procedure Pop_And_Merge_Phi (Ctxt : Builders.Context_Acc;
@@ -331,54 +436,96 @@ package body Synth.Environment is
       Asgn : Seq_Assign;
    begin
       Pop_Phi (Phi);
+      pragma Assert (Phis_Table.Last = No_Phi_Id);
+
+      --  It is possible that the same value is assigned to different targets.
+      --  Example:
+      --    if rising_edge(clk) then
+      --      a := c;
+      --    end if;
+      --    b := a;
+      --  Because the assignment is not yet done, only the net is stored in
+      --  the partial assign.  When the net for variable A is infered and
+      --  changed to a dff, it is not known that it will also be assigned to
+      --  variable B.
+      --
+      --  Mark gates that will be infered.  And if already marked, insert
+      --  a nop.
+      Asgn := Phi.First;
+      while Asgn /= No_Seq_Assign loop
+         declare
+            Asgn_Rec : Seq_Assign_Record renames Assign_Table.Table (Asgn);
+            P : Partial_Assign;
+         begin
+            if Asgn_Rec.Val.Is_Static = False then
+               P := Asgn_Rec.Val.Asgns;
+               pragma Assert (P /= No_Partial_Assign);
+               while P /= No_Partial_Assign loop
+                  declare
+                     Pa : Partial_Assign_Record
+                       renames Partial_Assign_Table.Table (P);
+                     Res_Inst : constant Instance := Get_Net_Parent (Pa.Value);
+                  begin
+                     if Get_Mark_Flag (Res_Inst)
+                       and then Get_Id (Res_Inst) = Gates.Id_Mux2
+                     then
+                        --  A nop is needed iff the value is reused and will be
+                        --  inferred (which is only possible for Id_Mux2).
+                        Pa.Value := Build_Nop (Ctxt, Pa.Value);
+                     else
+                        Set_Mark_Flag (Res_Inst, True);
+                     end if;
+
+                     P := Pa.Next;
+                  end;
+               end loop;
+            end if;
+            Asgn := Asgn_Rec.Chain;
+         end;
+      end loop;
+
+      --  Clear mark flag.
+      Asgn := Phi.First;
+      while Asgn /= No_Seq_Assign loop
+         declare
+            Asgn_Rec : Seq_Assign_Record renames Assign_Table.Table (Asgn);
+            P : Partial_Assign;
+         begin
+            if Asgn_Rec.Val.Is_Static = False then
+               P := Asgn_Rec.Val.Asgns;
+               pragma Assert (P /= No_Partial_Assign);
+               while P /= No_Partial_Assign loop
+                  declare
+                     Pa : Partial_Assign_Record
+                       renames Partial_Assign_Table.Table (P);
+                     Res_Inst : constant Instance := Get_Net_Parent (Pa.Value);
+                  begin
+                     Set_Mark_Flag (Res_Inst, False);
+
+                     P := Pa.Next;
+                  end;
+               end loop;
+            end if;
+            Asgn := Asgn_Rec.Chain;
+         end;
+      end loop;
 
       Asgn := Phi.First;
       while Asgn /= No_Seq_Assign loop
          declare
             Asgn_Rec : Seq_Assign_Record renames Assign_Table.Table (Asgn);
-            Wid : constant Wire_Id := Asgn_Rec.Id;
-            Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
-            Outport : constant Net := Wire_Rec.Gate;
-            --  Must be connected to an Id_Output or Id_Signal
-            pragma Assert (Outport /= No_Net);
-            P : Partial_Assign;
          begin
-            case Wire_Rec.Kind is
-               when Wire_Output
-                 | Wire_Signal
-                 | Wire_Variable =>
-                  --  Check output is not already assigned.
-                  pragma Assert
-                    (Get_Input_Net (Get_Net_Parent (Outport), 0) = No_Net);
-
-               when others =>
-                  raise Internal_Error;
-            end case;
-
-            P := Asgn_Rec.Asgns;
-            pragma Assert (P /= No_Partial_Assign);
-            while P /= No_Partial_Assign loop
-               declare
-                  Pa : Partial_Assign_Record renames
-                    Partial_Assign_Table.Table (P);
-               begin
-                  Inference.Infere
-                    (Ctxt, Wid, Pa.Value, Pa.Offset, Outport, Stmt);
-                  P := Pa.Next;
-               end;
-            end loop;
-
+            Pop_And_Merge_Phi_Wire (Ctxt, Asgn_Rec, Stmt);
             Asgn := Asgn_Rec.Chain;
          end;
       end loop;
-      --  FIXME: free wires.
    end Pop_And_Merge_Phi;
 
    procedure Propagate_Phi_Until_Mark (Ctxt : Builders.Context_Acc;
                                        Phi : Phi_Type;
                                        Mark : Wire_Id)
    is
-      Asgn : Seq_Assign;
+      Asgn, Next_Asgn : Seq_Assign;
    begin
       Asgn := Phi.First;
       while Asgn /= No_Seq_Assign loop
@@ -387,16 +534,27 @@ package body Synth.Environment is
             Wid : constant Wire_Id := Asgn_Rec.Id;
             Pasgn, Next_Pasgn : Partial_Assign;
          begin
+            --  FIXME: Asgn_Rec may become invalid due to allocation by
+            --  Phi_Assign.  So we read what is needed before calling
+            --  Phi_Assign.
+            Next_Asgn := Asgn_Rec.Chain;
             if Wid <= Mark then
-               Pasgn := Asgn_Rec.Asgns;
-               while Pasgn /= No_Partial_Assign loop
-                  Next_Pasgn := Get_Partial_Next (Pasgn);
-                  Set_Partial_Next (Pasgn, No_Partial_Assign);
-                  Phi_Assign (Ctxt, Wid, Pasgn);
-                  Pasgn := Next_Pasgn;
-               end loop;
+               case Asgn_Rec.Val.Is_Static is
+                  when Unknown =>
+                     raise Internal_Error;
+                  when True =>
+                     Phi_Assign_Static (Wid, Asgn_Rec.Val.Val);
+                  when False =>
+                     Pasgn := Asgn_Rec.Val.Asgns;
+                     while Pasgn /= No_Partial_Assign loop
+                        Next_Pasgn := Get_Partial_Next (Pasgn);
+                        Set_Partial_Next (Pasgn, No_Partial_Assign);
+                        Phi_Assign (Ctxt, Wid, Pasgn);
+                        Pasgn := Next_Pasgn;
+                     end loop;
+               end case;
             end if;
-            Asgn := Asgn_Rec.Chain;
+            Asgn := Next_Asgn;
          end;
       end loop;
    end Propagate_Phi_Until_Mark;
@@ -464,17 +622,89 @@ package body Synth.Environment is
       end if;
    end Sort_Conc_Assign;
 
+   --  Return True iff PREV and NEXT are two concurrent assignments for
+   --  a multiport memory.
+   function Is_Finalize_Assignment_Multiport (Prev, Next : Conc_Assign)
+                                             return Boolean
+   is
+      use Netlists.Gates;
+      P_Val : Net;
+      N_Val : Net;
+   begin
+      --  The assignemnts must fully overlap (same offset and same width).
+      if Get_Conc_Offset (Prev) /= Get_Conc_Offset (Next) then
+         return False;
+      end if;
+      P_Val := Get_Conc_Value (Prev);
+      N_Val := Get_Conc_Value (Next);
+      if Get_Width (P_Val) /= Get_Width (N_Val) then
+         return False;
+      end if;
+
+      --  Both assignments must be a dff.
+      case Get_Id (Get_Net_Parent (P_Val)) is
+         when Id_Dyn_Insert_En =>
+            null;
+         when others =>
+            return False;
+      end case;
+      case Get_Id (Get_Net_Parent (N_Val)) is
+         when Id_Dyn_Insert_En =>
+            null;
+         when others =>
+            return False;
+      end case;
+
+      return True;
+   end Is_Finalize_Assignment_Multiport;
+
+   function Is_Tribuf_Net (N : Net) return Boolean
+   is
+      use Netlists.Gates;
+   begin
+      case Get_Id (Get_Net_Parent (N)) is
+         when Id_Tri
+           | Id_Resolver
+           | Id_Port =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Is_Tribuf_Net;
+
+   function Is_Tribuf_Assignment (Prev, Next : Conc_Assign) return Boolean
+   is
+      P_Val : Net;
+      N_Val : Net;
+   begin
+      --  The assignemnts must fully overlap (same offset and same width).
+      if Get_Conc_Offset (Prev) /= Get_Conc_Offset (Next) then
+         return False;
+      end if;
+      P_Val := Get_Conc_Value (Prev);
+      N_Val := Get_Conc_Value (Next);
+      if Get_Width (P_Val) /= Get_Width (N_Val) then
+         return False;
+      end if;
+
+      --  Both assignments must be a tri or a resolver.
+      return Is_Tribuf_Net (P_Val)
+        and then Is_Tribuf_Net (N_Val);
+   end Is_Tribuf_Assignment;
+
+   --  Compute the VALUE to be assigned to WIRE_REC.  Handle partial
+   --  assignment, multiple assignments and error cases.
    procedure Finalize_Complex_Assignment (Ctxt : Builders.Context_Acc;
                                           Wire_Rec : Wire_Id_Record;
                                           Value : out Net)
    is
+      Wire_Width : constant Width := Get_Width (Wire_Rec.Gate);
       First_Assign : Conc_Assign;
       Asgn : Conc_Assign;
       Last_Asgn : Conc_Assign;
       New_Asgn : Conc_Assign;
       Next_Off : Uns32;
       Expected_Off : Uns32;
-      Last_Off : Uns32;
       Nbr_Assign : Natural;
    begin
       Nbr_Assign := Wire_Rec.Nbr_Final_Assign;
@@ -486,13 +716,16 @@ package body Synth.Environment is
       --  Report overlaps and holes, count number of inputs
       Last_Asgn := No_Conc_Assign;
       Expected_Off := 0;
-      Last_Off := Get_Width (Wire_Rec.Gate);
-      while (Expected_Off < Last_Off) or Asgn /= No_Conc_Assign loop
+      while (Expected_Off < Wire_Width) or Asgn /= No_Conc_Assign loop
+         --  NEXT_OFF is the offset of the next assignment.
+         --  EXPECTED_OFF is the offset just after the previous assignment.
          if Asgn /= No_Conc_Assign then
             Next_Off := Get_Conc_Offset (Asgn);
          else
-            Next_Off := Last_Off;
+            --  If there is no more assignment, simulate a hole until the end.
+            Next_Off := Wire_Width;
          end if;
+
          if Next_Off = Expected_Off then
             --  Normal case.
             pragma Assert (Asgn /= No_Conc_Assign);
@@ -503,12 +736,12 @@ package body Synth.Environment is
             --  There is an hole.
             if Next_Off = Expected_Off + 1 then
                Warning_Msg_Synth
-                 (+Wire_Rec.Decl, "no assignment for offset %v",
-                  (1 => +Expected_Off));
+                 (+Wire_Rec.Decl, "no assignment for offset %v of %n",
+                  (1 => +Expected_Off, 2 => +Wire_Rec.Decl));
             else
                Warning_Msg_Synth
-                 (+Wire_Rec.Decl, "no assignment for offsets %v:%v",
-                  (+Expected_Off, +(Next_Off - 1)));
+                 (+Wire_Rec.Decl, "no assignment for offsets %v:%v of %n",
+                  (+Expected_Off, +(Next_Off - 1), +Wire_Rec.Decl));
             end if;
 
             --  Insert conc_assign with initial value.
@@ -529,14 +762,46 @@ package body Synth.Environment is
 
             Expected_Off := Next_Off;
          else
+            --  Overlap.
             pragma Assert (Next_Off < Expected_Off);
-            Error_Msg_Synth
-              (+Wire_Rec.Decl, "multiple assignments for offsets %v:%v",
-               (+Next_Off, +(Expected_Off - 1)));
-            --  TODO: insert resolver
             pragma Assert (Asgn /= No_Conc_Assign);
-            Expected_Off := Expected_Off + Get_Width (Get_Conc_Value (Asgn));
-            Last_Asgn := Asgn;
+
+            if Wire_Rec.Kind = Wire_Variable
+              and then Is_Finalize_Assignment_Multiport (Last_Asgn, Asgn)
+            then
+               --  Insert a multiport (for shared variable).
+               declare
+                  Last_Asgn_Rec : Conc_Assign_Record renames
+                    Conc_Assign_Table.Table (Last_Asgn);
+               begin
+                  Last_Asgn_Rec.Value := Build_Mem_Multiport
+                    (Ctxt, Last_Asgn_Rec.Value, Get_Conc_Value (Asgn));
+               end;
+               --  Remove this assignment.
+               Nbr_Assign := Nbr_Assign - 1;
+               Set_Conc_Chain (Last_Asgn, Get_Conc_Chain (Asgn));
+            elsif Is_Tribuf_Assignment (Last_Asgn, Asgn) then
+               --  Insert a resolver.
+               declare
+                  Last_Asgn_Rec : Conc_Assign_Record renames
+                    Conc_Assign_Table.Table (Last_Asgn);
+                  V : constant Net := Last_Asgn_Rec.Value;
+               begin
+                  Last_Asgn_Rec.Value := Build_Resolver
+                    (Ctxt, V, Get_Conc_Value (Asgn));
+                  Copy_Location (Last_Asgn_Rec.Value, V);
+               end;
+               --  Remove this assignment.
+               Nbr_Assign := Nbr_Assign - 1;
+               Set_Conc_Chain (Last_Asgn, Get_Conc_Chain (Asgn));
+            else
+               Error_Msg_Synth
+                 (+Wire_Rec.Decl, "multiple assignments for offsets %v:%v",
+                  (+Next_Off, +(Expected_Off - 1)));
+               --  TODO: insert resolver
+               Expected_Off := Next_Off + Get_Width (Get_Conc_Value (Asgn));
+               Last_Asgn := Asgn;
+            end if;
             Asgn := Get_Conc_Chain (Asgn);
          end if;
       end loop;
@@ -550,7 +815,7 @@ package body Synth.Environment is
                                  Get_Conc_Value (Last_Asgn),
                                  Get_Conc_Value (First_Assign));
       else
-         Value := Build_Concatn (Ctxt, Last_Off, Uns32 (Nbr_Assign));
+         Value := Build_Concatn (Ctxt, Wire_Width, Uns32 (Nbr_Assign));
          declare
             Inst : constant Instance := Get_Net_Parent (Value);
          begin
@@ -578,10 +843,16 @@ package body Synth.Environment is
             if Wire_Rec.Decl /= Null_Node
               and then Wire_Rec.Kind = Wire_Output
             then
-               Error_Msg_Synth
+               Warning_Msg_Synth
                  (+Wire_Rec.Decl, "no assignment for %n", +Wire_Rec.Decl);
+               if Get_Id (Gate_Inst) = Gates.Id_Iinout then
+                  Value := Get_Input_Net (Gate_Inst, 1);
+               else
+                  Value := Build_Const_Z (Ctxt, Get_Width (Wire_Rec.Gate));
+               end if;
+            else
+               return;
             end if;
-            return;
          when 1 =>
             declare
                Conc_Asgn : Conc_Assign_Record renames
@@ -594,11 +865,12 @@ package body Synth.Environment is
                   --  Single and full assignment.
                   Value := Conc_Asgn.Value;
                else
-                  --  Partial or multiple assignments.
+                  --  Partial assignment.
                   Finalize_Complex_Assignment (Ctxt, Wire_Rec, Value);
                end if;
             end;
          when others =>
+            --  Multiple assignments.
             Finalize_Complex_Assignment (Ctxt, Wire_Rec, Value);
       end case;
 
@@ -698,19 +970,24 @@ package body Synth.Environment is
       W : constant Width := Get_Width (Wid_Rec.Gate);
    begin
       case Wid_Rec.Kind is
-         when Wire_Signal | Wire_Output | Wire_Inout | Wire_Variable =>
+         when Wire_Signal | Wire_Output | Wire_Inout
+           | Wire_Variable =>
             null;
-         when Wire_Input | Wire_None =>
+         when Wire_Input | Wire_Enable | Wire_None =>
             raise Internal_Error;
       end case;
 
+      if Asgn_Rec.Val.Is_Static = True then
+         return Synth.Context.Get_Memtyp_Net (Ctxt, Asgn_Rec.Val.Val);
+      end if;
+
       --  Cannot be empty.
-      pragma Assert (Asgn_Rec.Asgns /= No_Partial_Assign);
+      pragma Assert (Asgn_Rec.Val.Asgns /= No_Partial_Assign);
 
       --  Simple case: fully assigned.
       declare
          Pasgn : Partial_Assign_Record renames
-           Partial_Assign_Table.Table (Asgn_Rec.Asgns);
+           Partial_Assign_Table.Table (Asgn_Rec.Val.Asgns);
       begin
          if Pasgn.Offset = 0 and then Get_Width (Pasgn.Value) = W then
             return Pasgn.Value;
@@ -736,7 +1013,8 @@ package body Synth.Environment is
             else
                return Get_Assign_Value (Ctxt, Wire_Rec.Cur_Assign);
             end if;
-         when Wire_Signal | Wire_Output | Wire_Inout | Wire_Input =>
+         when Wire_Signal | Wire_Output | Wire_Inout | Wire_Input
+           | Wire_Enable =>
             --  For signals, always read the previous value.
             return Wire_Rec.Gate;
          when Wire_None =>
@@ -746,7 +1024,7 @@ package body Synth.Environment is
 
    --  Get the current value of W for WD bits at offset OFF.
    function Get_Current_Assign_Value
-     (Ctxt : Builders.Context_Acc; Wid : Wire_Id; Off : Uns32; Wd : Width)
+     (Ctxt : Context_Acc; Wid : Wire_Id; Off : Uns32; Wd : Width)
      return Net
    is
       Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
@@ -759,6 +1037,12 @@ package body Synth.Environment is
       --  If no seq assign, return current value.
       if First_Seq = No_Seq_Assign then
          return Build2_Extract (Ctxt, Wire_Rec.Gate, Off, Wd);
+      end if;
+
+      --  If the current value is static, just return it.
+      if Get_Assign_Is_Static (First_Seq) then
+         return Context.Get_Partial_Memtyp_Net
+           (Ctxt, Get_Assign_Static_Val (First_Seq), Off, Wd);
       end if;
 
       --  If the range is the same as the seq assign, return the value.
@@ -789,7 +1073,8 @@ package body Synth.Environment is
          Cur_Wd := Wd;
          pragma Assert (Wd > 0);
          loop
-            --  Find value at CUR_OFF from assignment.
+            --  Find value at CUR_OFF from assignment.  Start at the top
+            --  phi (which is not a static value).
             Seq := First_Seq;
             P := Get_Assign_Partial (Seq);
             loop
@@ -817,15 +1102,19 @@ package body Synth.Environment is
                      exit;
                   end if;
                   if Pr.Offset + Pw <= Cur_Off then
-                     --  Next partial;
+                     --  Skip this partial, it is before what we are searching.
                      P := Pr.Next;
                   elsif Pr.Offset > Cur_Off
                     and then Pr.Offset < Cur_Off + Cur_Wd
                   then
+                     --  There is a partial assignment that should be
+                     --  considered, but first we need some values before it.
                      --  Reduce WD and continue to search in previous;
                      Cur_Wd := Pr.Offset - Cur_Off;
                      P := No_Partial_Assign;
                   else
+                     --  The next partial assignment is beyond what we are
+                     --  searching.
                      --  Continue to search in previous.
                      P := No_Partial_Assign;
                   end if;
@@ -835,6 +1124,13 @@ package body Synth.Environment is
                         --  Extract from gate.
                         Append (Vec, Build_Extract (Ctxt, Wire_Rec.Gate,
                                                     Cur_Off, Cur_Wd));
+                        exit;
+                     end if;
+                     if Get_Assign_Is_Static (Seq) then
+                        --  Extract from static value.
+                        Append (Vec, Context.Get_Partial_Memtyp_Net
+                                  (Ctxt, Get_Assign_Static_Val (Seq),
+                                   Cur_Off, Cur_Wd));
                         exit;
                      end if;
                      P := Get_Assign_Partial (Seq);
@@ -860,7 +1156,7 @@ package body Synth.Environment is
    --  assignments are poped.  Set the offset and width to OFF and WD of the
    --  result.
    procedure Extract_Merge_Partial_Assigns (Ctxt : Builders.Context_Acc;
-                                            P : in out Partial_Assign_Array;
+                                            P : in out Seq_Assign_Value_Array;
                                             N : out Net_Array;
                                             Off : in out Uns32;
                                             Wd : out Width)
@@ -874,34 +1170,61 @@ package body Synth.Environment is
       Off := Uns32'Last;
       Wd := Width'Last;
       for I in P'Range loop
-         if P (I) /= No_Partial_Assign then
-            declare
-               Pa : Partial_Assign_Record
-                 renames Partial_Assign_Table.Table (P (I));
-               N_Wd : Width;
-               N_Off : Uns32;
-            begin
-               if Pa.Offset < Off and then Min_Off < Off then
-                  --  There is an assignment for an offset before the
-                  --  current one.  Handle it.
-                  pragma Assert (Off >= Min_Off);
-                  N_Off := Uns32'Max (Pa.Offset, Min_Off);
-                  N_Wd := Get_Width (Pa.Value) - (N_Off - Pa.Offset);
-                  Wd := Width'Min (N_Wd, Off - N_Off);
-                  Off := N_Off;
-               elsif Pa.Offset = Off
-                 or else (Off = Min_Off and then Pa.Offset < Off)
-               then
-                  --  Reduce the width if the assignment is shorter.
-                  Wd := Width'Min
-                    (Wd, Get_Width (Pa.Value) - (Off - Pa.Offset));
-               elsif Pa.Offset < Off + Wd then
-                  --  Reduce the width when there is an assignment after
-                  --  the current offset.
-                  Wd := Pa.Offset - Off;
-               end if;
-            end;
-         end if;
+         case P (I).Is_Static is
+            when Unknown =>
+               --  No assignment.
+               null;
+            when True =>
+               declare
+                  P_Wd : constant Width := P (I).Val.Typ.W;
+               begin
+                  if Min_Off >= P_Wd then
+                     --  No net can be beyond the width.
+                     pragma Assert (Off = Uns32'Last);
+                     pragma Assert (Wd = Width'Last);
+                     return;
+                  end if;
+
+                  if Off > Min_Off and then Off < P_Wd then
+                     --  There is already an assignment for an offset after
+                     --  the minimum.  Stick to the min!
+                     Wd := Off - Min_Off;
+                     Off := Min_Off;
+                  else
+                     --  Either no assignment, or an assignment at Min_Off.
+                     Off := Min_Off;
+                     Wd := Width'Min (Wd, P_Wd - Min_Off);
+                  end if;
+               end;
+            when False =>
+               declare
+                  pragma Assert (P (I).Asgns /= No_Partial_Assign);
+                  Pa : Partial_Assign_Record
+                    renames Partial_Assign_Table.Table (P (I).Asgns);
+                  N_Wd : Width;
+                  N_Off : Uns32;
+               begin
+                  if Pa.Offset < Off and then Min_Off < Off then
+                     --  There is an assignment for an offset before the
+                     --  current one.  Handle it.
+                     pragma Assert (Off >= Min_Off);
+                     N_Off := Uns32'Max (Pa.Offset, Min_Off);
+                     N_Wd := Get_Width (Pa.Value) - (N_Off - Pa.Offset);
+                     Wd := Width'Min (N_Wd, Off - N_Off);
+                     Off := N_Off;
+                  elsif Pa.Offset = Off
+                    or else (Off = Min_Off and then Pa.Offset < Off)
+                  then
+                     --  Reduce the width if the assignment is shorter.
+                     Wd := Width'Min
+                       (Wd, Get_Width (Pa.Value) - (Off - Pa.Offset));
+                  elsif Pa.Offset < Off + Wd then
+                     --  Reduce the width when there is an assignment after
+                     --  the current offset.
+                     Wd := Pa.Offset - Off;
+                  end if;
+               end;
+         end case;
       end loop;
 
       --  No more assignments.
@@ -911,32 +1234,87 @@ package body Synth.Environment is
 
       --  Get the values for that offset/width.  Update lists.
       for I in P'Range loop
-         if P (I) /= No_Partial_Assign
-           and then Get_Partial_Offset (P (I)) <= Off
-         then
-            declare
-               Val : constant Net := Get_Partial_Value (P (I));
-               P_W : constant Width := Get_Width (Val);
-               P_Off : constant Uns32 := Get_Partial_Offset (P (I));
-            begin
-               --  There is a partial assignment.
-               if P_Off = Off and then P_W = Wd then
-                  --  Full covered.
-                  N (I) := Val;
-                  P (I) := Get_Partial_Next (P (I));
-               else
-                  N (I) := Build_Extract (Ctxt, Val, Off - P_Off, Wd);
-                  if P_Off + P_W = Off + Wd then
-                     P (I) := Get_Partial_Next (P (I));
+         --  Default: no partial assignment.  Get extract previous value.
+         N (I) := No_Net;
+
+         case P (I).Is_Static is
+            when Unknown =>
+               null;
+            when True =>
+               N (I) := Context.Get_Partial_Memtyp_Net
+                 (Ctxt, P (I).Val, Off, Wd);
+            when False =>
+               if Get_Partial_Offset (P (I).Asgns) <= Off then
+                  declare
+                     Asgn : constant Partial_Assign := P (I).Asgns;
+                     Val : constant Net := Get_Partial_Value (Asgn);
+                     P_W : constant Width := Get_Width (Val);
+                     P_Off : constant Uns32 := Get_Partial_Offset (Asgn);
+                  begin
+                     --  There is a partial assignment.
+                     if P_Off = Off and then P_W = Wd then
+                        --  Full covered.
+                        N (I) := Val;
+                        P (I).Asgns := Get_Partial_Next (Asgn);
+                     else
+                        N (I) := Build_Extract (Ctxt, Val, Off - P_Off, Wd);
+                        if P_Off + P_W = Off + Wd then
+                           P (I).Asgns := Get_Partial_Next (Asgn);
+                        end if;
+                     end if;
+                  end;
+                  if P (I).Asgns = No_Partial_Assign then
+                     P (I) := No_Seq_Assign_Value;
                   end if;
                end if;
-            end;
-         else
-            --  No partial assignment.  Get extract previous value.
-            N (I) := No_Net;
-         end if;
+         end case;
       end loop;
    end Extract_Merge_Partial_Assigns;
+
+   function Is_Assign_Value_Array_Static
+     (Wid : Wire_Id; Arr : Seq_Assign_Value_Array) return Memtyp
+   is
+      Res : Memtyp;
+      Prev_Val : Memtyp;
+   begin
+      Prev_Val := Null_Memtyp;
+      for I in Arr'Range loop
+         case Arr (I).Is_Static is
+            when False =>
+               --  A value is not static.
+               return Null_Memtyp;
+            when Unknown =>
+               if Prev_Val = Null_Memtyp then
+                  --  First use of previous value.
+                  if not Is_Static_Wire (Wid) then
+                     --  The previous value is not static.
+                     return Null_Memtyp;
+                  end if;
+                  Prev_Val := Get_Static_Wire (Wid);
+                  if Res /= Null_Memtyp then
+                     --  There is already a result.
+                     if not Is_Equal (Res, Prev_Val) then
+                        --  The previous value is different from the result.
+                        return Null_Memtyp;
+                     end if;
+                  else
+                     Res := Prev_Val;
+                  end if;
+               end if;
+            when True =>
+               if Res = Null_Memtyp then
+                  --  First value.  Keep it.
+                  Res := Arr (I).Val;
+               else
+                  if not Is_Equal (Res, Arr (I).Val) then
+                     --  Value is different.
+                     return  Null_Memtyp;
+                  end if;
+               end if;
+         end case;
+      end loop;
+      return Res;
+   end Is_Assign_Value_Array_Static;
 
    procedure Partial_Assign_Init (List : out Partial_Assign_List) is
    begin
@@ -955,7 +1333,7 @@ package body Synth.Environment is
    end Partial_Assign_Append;
 
    procedure Merge_Partial_Assigns (Ctxt : Builders.Context_Acc;
-                                    W : Wire_Id;
+                                    Wid : Wire_Id;
                                     List : in out Partial_Assign_List)
    is
       Pasgn : Partial_Assign;
@@ -963,21 +1341,21 @@ package body Synth.Environment is
       while List.First /= No_Partial_Assign loop
          Pasgn := Get_Partial_Next (List.First);
          Set_Partial_Next (List.First, No_Partial_Assign);
-         Phi_Assign (Ctxt, W, List.First);
+         Phi_Assign (Ctxt, Wid, List.First);
          List.First := Pasgn;
       end loop;
    end Merge_Partial_Assigns;
 
    procedure Merge_Assigns (Ctxt : Builders.Context_Acc;
-                            W : Wire_Id;
+                            Wid : Wire_Id;
                             Sel : Net;
-                            F_Asgns : Partial_Assign;
-                            T_Asgns : Partial_Assign;
+                            F_Asgns : Seq_Assign_Value;
+                            T_Asgns : Seq_Assign_Value;
                             Stmt : Source.Syn_Src)
    is
       use Netlists.Gates;
       use Netlists.Gates_Ports;
-      P : Partial_Assign_Array (0 .. 1);
+      P : Seq_Assign_Value_Array (0 .. 1);
       N : Net_Array (0 .. 1);
       Min_Off : Uns32;
       Off : Uns32;
@@ -1001,7 +1379,7 @@ package body Synth.Environment is
          for I in N'Range loop
             if N (I) = No_Net then
                --  No partial assignment.  Get extract previous value.
-               N (I) := Get_Current_Assign_Value (Ctxt, W, Off, Wd);
+               N (I) := Get_Current_Assign_Value (Ctxt, Wid, Off, Wd);
             end if;
          end loop;
 
@@ -1018,12 +1396,34 @@ package body Synth.Environment is
          --  Build mux.
          N1_Inst := Get_Net_Parent (N (1));
          if Get_Id (N1_Inst) = Id_Mux2
-           and then Get_Driver (Get_Mux2_I0 (N1_Inst)) = N (0)
+           and then Same_Net (Get_Driver (Get_Mux2_I0 (N1_Inst)), N (0))
          then
-            Res := Build_Mux2
-              (Ctxt, Build_Dyadic (Ctxt, Id_And,
-                                   Sel, Get_Driver (Get_Mux2_Sel (N1_Inst))),
-               N (0), Get_Driver (Get_Mux2_I1 (N1_Inst)));
+            declare
+               N1_Net : Net;
+               N1_Sel : Input;
+               N1_Sel_Net : Net;
+            begin
+               N1_Net := Get_Output (N1_Inst, 0);
+               N1_Sel := Get_Input (N1_Inst, 0);
+               N1_Sel_Net := Get_Driver (N1_Sel);
+               if not Is_Connected (N1_Net) then
+                  --  If the previous mux2 is not used, just modify it.
+                  Res := N1_Net;
+                  Disconnect (N1_Sel);
+                  N1_Sel_Net := Build_Dyadic (Ctxt, Id_And, Sel, N1_Sel_Net);
+                  Set_Location (N1_Sel_Net, Stmt);
+                  Connect (N1_Sel, N1_Sel_Net);
+               else
+                  Res := Build_Dyadic (Ctxt, Id_And, Sel, N1_Sel_Net);
+                  Set_Location (Res, Stmt);
+                  Res := Build_Mux2
+                    (Ctxt, Res, N (0), Get_Driver (Get_Mux2_I1 (N1_Inst)));
+               end if;
+            end;
+         elsif N (0) = N (1) then
+            --  Minor optimization: no need to add a mux if both sides are
+            --  equal.  But this is important for the control wires.
+            Res := N (0);
          else
             Res := Build_Mux2 (Ctxt, Sel, N (0), N (1));
          end if;
@@ -1039,8 +1439,58 @@ package body Synth.Environment is
       --  Do the assignments from the result list.
       --  It cannot be done before because the assignments will overwrite the
       --  last assignments which are read to create a partial assignment.
-      Merge_Partial_Assigns (Ctxt, W, List);
+      Merge_Partial_Assigns (Ctxt, Wid, List);
    end Merge_Assigns;
+
+   function Merge_Static_Assigns (Wid : Wire_Id; Tv, Fv : Seq_Assign_Value)
+                                 return Boolean
+   is
+      Prev : Memtyp;
+   begin
+      --  First case: both TV and FV are static.
+      if Tv.Is_Static = True and then Fv.Is_Static = True then
+         if Is_Equal (Tv.Val, Fv.Val) then
+            Phi_Assign_Static (Wid, Tv.Val);
+            return True;
+         else
+            return False;
+         end if;
+      end if;
+
+      --  If either TV or FV are nets, they cannot be merged.
+      if Tv.Is_Static = False or else Fv.Is_Static = False then
+         return False;
+      end if;
+
+      --  Get the previous value.
+      declare
+         Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
+         pragma Assert (Wire_Rec.Kind /= Wire_None);
+         First_Seq : Seq_Assign;
+      begin
+         --  Latest seq assign
+         First_Seq := Wire_Rec.Cur_Assign;
+
+         --  If no seq assign, fails.
+         if First_Seq = No_Seq_Assign then
+            return False;
+         end if;
+
+         if not Get_Assign_Is_Static (First_Seq) then
+            return False;
+         end if;
+         Prev := Get_Assign_Static_Val (First_Seq);
+      end;
+
+      if Tv.Is_Static = True then
+         pragma Assert (Fv = No_Seq_Assign_Value);
+         return Is_Equal (Tv.Val, Prev);
+      else
+         pragma Assert (Fv.Is_Static = True);
+         pragma Assert (Tv = No_Seq_Assign_Value);
+         return Is_Equal (Fv.Val, Prev);
+      end if;
+   end Merge_Static_Assigns;
 
    --  Add muxes for two lists T and F of assignments.
    procedure Merge_Phis (Ctxt : Builders.Context_Acc;
@@ -1051,7 +1501,7 @@ package body Synth.Environment is
       T_Asgns : Seq_Assign;
       F_Asgns : Seq_Assign;
       W : Wire_Id;
-      Tp, Fp : Partial_Assign;
+      Tv, Fv : Seq_Assign_Value;
    begin
       T_Asgns := Sort_Phi (T);
       F_Asgns := Sort_Phi (F);
@@ -1064,8 +1514,8 @@ package body Synth.Environment is
          then
             --  Has an assignment only for the false branch.
             W := Get_Wire_Id (F_Asgns);
-            Fp := Get_Assign_Partial (F_Asgns);
-            Tp := No_Partial_Assign;
+            Fv := Get_Seq_Assign_Value (F_Asgns);
+            Tv := No_Seq_Assign_Value;
             F_Asgns := Get_Assign_Chain (F_Asgns);
          elsif F_Asgns = No_Seq_Assign
            or else (T_Asgns /= No_Seq_Assign
@@ -1073,40 +1523,98 @@ package body Synth.Environment is
          then
             --  Has an assignment only for the true branch.
             W := Get_Wire_Id (T_Asgns);
-            Fp := No_Partial_Assign;
-            Tp := Get_Assign_Partial (T_Asgns);
+            Fv := No_Seq_Assign_Value;
+            Tv := Get_Seq_Assign_Value (T_Asgns);
             T_Asgns := Get_Assign_Chain (T_Asgns);
          else
             --  Has assignments for both the true and the false branch.
             pragma Assert (Get_Wire_Id (F_Asgns) = Get_Wire_Id (T_Asgns));
             W := Get_Wire_Id (F_Asgns);
-            Fp := Get_Assign_Partial (F_Asgns);
-            Tp := Get_Assign_Partial (T_Asgns);
+            Fv := Get_Seq_Assign_Value (F_Asgns);
+            Tv := Get_Seq_Assign_Value (T_Asgns);
             T_Asgns := Get_Assign_Chain (T_Asgns);
             F_Asgns := Get_Assign_Chain (F_Asgns);
          end if;
          --  Merge partial assigns as much as possible.  This reduce
          --  propagation of splits.
-         Merge_Partial_Assignments (Ctxt, Fp);
-         Merge_Partial_Assignments (Ctxt, Tp);
-         Merge_Assigns (Ctxt, W, Sel, Fp, Tp, Stmt);
+         Merge_Partial_Assignments (Ctxt, Fv);
+         Merge_Partial_Assignments (Ctxt, Tv);
+         if not Merge_Static_Assigns (W, Tv, Fv) then
+            Merge_Assigns (Ctxt, W, Sel, Fv, Tv, Stmt);
+         end if;
 
       end loop;
    end Merge_Phis;
 
-   procedure Phi_Insert_Assign (Asgn : Seq_Assign)
+   procedure Phi_Append_Assign (P : in out Phi_Type; Asgn : Seq_Assign) is
+   begin
+      --  Chain assignment in the current sequence.
+      if P.First = No_Seq_Assign then
+         P.First := Asgn;
+      else
+         Set_Assign_Chain (P.Last, Asgn);
+      end if;
+      P.Last := Asgn;
+      P.Nbr := P.Nbr + 1;
+   end Phi_Append_Assign;
+
+   procedure Phi_Append_Assign (Asgn : Seq_Assign)
    is
       pragma Assert (Asgn /= No_Seq_Assign);
       Asgn_Rec : Seq_Assign_Record renames Assign_Table.Table (Asgn);
       pragma Assert (Asgn_Rec.Phi = Current_Phi);
       pragma Assert (Asgn_Rec.Chain = No_Seq_Assign);
-      P : Phi_Type renames Phis_Table.Table (Phis_Table.Last);
    begin
-      --  Chain assignment in the current sequence.
-      Asgn_Rec.Chain := P.First;
-      P.First := Asgn;
-      P.Nbr := P.Nbr + 1;
-   end Phi_Insert_Assign;
+      Phi_Append_Assign (Phis_Table.Table (Phis_Table.Last), Asgn);
+   end Phi_Append_Assign;
+
+   function Phi_Enable (Ctxt : Builders.Context_Acc; Loc : Source.Syn_Src)
+                       return Net
+   is
+      Last : constant Phi_Id := Phis_Table.Last;
+      Wid : Wire_Id;
+      N : Net;
+      Asgn : Seq_Assign;
+   begin
+      if Last = No_Phi_Id then
+         --  Can be called only when a phi is created.
+         raise Internal_Error;
+      end if;
+      if Last = No_Phi_Id + 1 then
+         --  That's the first phi, which is always enabled.
+         return No_Net;
+      end if;
+
+      --  Cached value.
+      Wid := Phis_Table.Table (Last).En;
+      if Wid = No_Wire_Id then
+         Wid := Alloc_Wire (Wire_Enable, Loc);
+         Phis_Table.Table (Last).En := Wid;
+
+         --  Create the Enable gate.
+         N := Build_Enable (Ctxt);
+         Set_Location (N, Loc);
+         Set_Wire_Gate (Wid, N);
+
+         --  Initialize to '0'.
+         --  This is really cheating, as it is like assigning in the first
+         --  phi.
+         Assign_Table.Append ((Phi => No_Phi_Id + 1,
+                               Id => Wid,
+                               Prev => No_Seq_Assign,
+                               Chain => No_Seq_Assign,
+                               Val => (Is_Static => True, Val => Bit0)));
+         Asgn := Assign_Table.Last;
+         Wire_Id_Table.Table (Wid).Cur_Assign := Asgn;
+         Phi_Append_Assign (Phis_Table.Table (No_Phi_Id + 1), Asgn);
+
+         --  Assign to '1'.
+         Phi_Assign_Static (Wid, Bit1);
+         return N;
+      else
+         return Get_Current_Value (Ctxt, Wid);
+      end if;
+   end Phi_Enable;
 
    --  Check consistency:
    --  - ordered.
@@ -1116,7 +1624,7 @@ package body Synth.Environment is
       Seq_Asgn : Seq_Assign_Record renames Assign_Table.Table (Seq);
       Prev_El : Partial_Assign;
    begin
-      Prev_El := Seq_Asgn.Asgns;
+      Prev_El := Seq_Asgn.Val.Asgns;
       if Prev_El = No_Partial_Assign then
          --  It's empty!
          return;
@@ -1158,7 +1666,7 @@ package body Synth.Environment is
    begin
       Inserted := False;
       Last_El := No_Partial_Assign;
-      El := Seq_Asgn.Asgns;
+      El := Seq_Asgn.Val.Asgns;
       while El /= No_Partial_Assign loop
          declare
             P : Partial_Assign_Record renames Partial_Assign_Table.Table (El);
@@ -1178,7 +1686,7 @@ package body Synth.Environment is
                      if Last_El /= No_Partial_Assign then
                         Partial_Assign_Table.Table (Last_El).Next := Asgn;
                      else
-                        Seq_Asgn.Asgns := Asgn;
+                        Seq_Asgn.Val.Asgns := Asgn;
                      end if;
                      V.Next := P.Next;
                      Inserted := True;
@@ -1202,7 +1710,7 @@ package body Synth.Environment is
                      if Last_El /= No_Partial_Assign then
                         Partial_Assign_Table.Table (Last_El).Next := Asgn;
                      else
-                        Seq_Asgn.Asgns := Asgn;
+                        Seq_Asgn.Val.Asgns := Asgn;
                      end if;
                      V.Next := El;
                      Inserted := True;
@@ -1257,7 +1765,7 @@ package body Synth.Environment is
                      if Last_El /= No_Partial_Assign then
                         Partial_Assign_Table.Table (Last_El).Next := Asgn;
                      else
-                        Seq_Asgn.Asgns := Asgn;
+                        Seq_Asgn.Val.Asgns := Asgn;
                      end if;
                      V.Next := El;
                      Inserted := True;
@@ -1297,16 +1805,30 @@ package body Synth.Environment is
                                Id => Dest,
                                Prev => Cur_Asgn,
                                Chain => No_Seq_Assign,
-                               Asgns => Pasgn));
+                               Val => (Is_Static => False, Asgns => Pasgn)));
          Wire_Rec.Cur_Assign := Assign_Table.Last;
-         Phi_Insert_Assign (Assign_Table.Last);
+         Phi_Append_Assign (Assign_Table.Last);
       else
          --  Overwrite.
+         if Get_Assign_Is_Static (Cur_Asgn) then
+            --  Force seq_assign to be a net.
+            declare
+               Asgn_Rec : Seq_Assign_Record renames
+                 Assign_Table.Table (Cur_Asgn);
+               N : Net;
+               Pa : Partial_Assign;
+            begin
+               N := Synth.Context.Get_Memtyp_Net (Ctxt, Asgn_Rec.Val.Val);
+               Pa := New_Partial_Assign (N, 0);
+               Asgn_Rec.Val := (Is_Static => False, Asgns => Pa);
+            end;
+         end if;
+
          Insert_Partial_Assign (Ctxt, Cur_Asgn, Pasgn);
       end if;
    end Phi_Assign;
 
-   procedure Phi_Assign
+   procedure Phi_Assign_Net
      (Ctxt : Builders.Context_Acc; Dest : Wire_Id; Val : Net; Offset : Uns32)
    is
       Pasgn : Partial_Assign;
@@ -1314,52 +1836,51 @@ package body Synth.Environment is
       Pasgn := New_Partial_Assign (Val, Offset);
 
       Phi_Assign (Ctxt, Dest, Pasgn);
-   end Phi_Assign;
+   end Phi_Assign_Net;
+
+   procedure Phi_Assign_Static (Dest : Wire_Id; Val : Memtyp)
+   is
+      Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Dest);
+      pragma Assert (Wire_Rec.Kind /= Wire_None);
+      Cur_Asgn : constant Seq_Assign := Wire_Rec.Cur_Assign;
+   begin
+      if Cur_Asgn = No_Seq_Assign
+        or else Assign_Table.Table (Cur_Asgn).Phi < Current_Phi
+      then
+         --  Never assigned, or first assignment in that level
+         Assign_Table.Append ((Phi => Current_Phi,
+                               Id => Dest,
+                               Prev => Cur_Asgn,
+                               Chain => No_Seq_Assign,
+                               Val => (Is_Static => True, Val => Val)));
+         Wire_Rec.Cur_Assign := Assign_Table.Last;
+         Phi_Append_Assign (Assign_Table.Last);
+      else
+         Assign_Table.Table (Cur_Asgn).Val := (Is_Static => True, Val => Val);
+      end if;
+   end Phi_Assign_Static;
 
    --  Return the net driving WID when it is known to be possibly constant.
    --  Return No_Net is not constant.
-   function Get_Const_Net_Maybe (Wid : Wire_Id) return Net
+   function Is_Static_Wire (Wid : Wire_Id) return Boolean
    is
       Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
-      Pasgn : Partial_Assign;
-      N : Net;
    begin
       if Wire_Rec.Kind /= Wire_Variable then
-         return No_Net;
+         return False;
       end if;
       if Wire_Rec.Cur_Assign = No_Seq_Assign then
-         return No_Net;
-      end if;
-      Pasgn := Get_Assign_Partial (Wire_Rec.Cur_Assign);
-      pragma Assert (Pasgn /= No_Partial_Assign);
-      if Get_Partial_Offset (Pasgn) /= 0 then
-         return No_Net;
-      end if;
-      N := Get_Partial_Value (Pasgn);
-      if Get_Width (N) /= Get_Width (Wire_Rec.Gate) then
-         return No_Net;
-      end if;
-      return N;
-   end Get_Const_Net_Maybe;
-
-   function Is_Const_Wire (Wid : Wire_Id) return Boolean
-   is
-      N : constant Net := Get_Const_Net_Maybe (Wid);
-   begin
-      if N = No_Net then
          return False;
-      else
-         return Is_Const_Net (N);
       end if;
-   end Is_Const_Wire;
+      return Get_Assign_Is_Static (Wire_Rec.Cur_Assign);
+   end Is_Static_Wire;
 
-   function Get_Const_Wire (Wid : Wire_Id) return Net
+   function Get_Static_Wire (Wid : Wire_Id) return Memtyp
    is
-      N : constant Net := Get_Const_Net_Maybe (Wid);
+      Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
    begin
-      pragma Assert (N /= No_Net);
-      return N;
-   end Get_Const_Wire;
+      return Get_Assign_Static_Val (Wire_Rec.Cur_Assign);
+   end Get_Static_Wire;
 begin
    Wire_Id_Table.Append ((Kind => Wire_None,
                           Mark_Flag => False,
@@ -1371,10 +1892,11 @@ begin
    pragma Assert (Wire_Id_Table.Last = No_Wire_Id);
 
    Assign_Table.Append ((Phi => No_Phi_Id,
-                        Id => No_Wire_Id,
-                        Prev => No_Seq_Assign,
-                        Chain => No_Seq_Assign,
-                        Asgns => No_Partial_Assign));
+                         Id => No_Wire_Id,
+                         Prev => No_Seq_Assign,
+                         Chain => No_Seq_Assign,
+                         Val => (Is_Static => False,
+                                 Asgns => No_Partial_Assign)));
    pragma Assert (Assign_Table.Last = No_Seq_Assign);
 
    Partial_Assign_Table.Append ((Next => No_Partial_Assign,
@@ -1383,7 +1905,9 @@ begin
    pragma Assert (Partial_Assign_Table.Last = No_Partial_Assign);
 
    Phis_Table.Append ((First => No_Seq_Assign,
-                       Nbr => 0));
+                       Last => No_Seq_Assign,
+                       Nbr => 0,
+                       En => No_Wire_Id));
    pragma Assert (Phis_Table.Last = No_Phi_Id);
 
    Conc_Assign_Table.Append ((Next => No_Conc_Assign,

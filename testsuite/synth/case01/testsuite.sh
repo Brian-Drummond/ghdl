@@ -2,15 +2,11 @@
 
 . ../../testenv.sh
 
-for t in case01 case02; do
-    analyze $t.vhdl tb_$t.vhdl
-    elab_simulate tb_$t
-    clean
-
-    synth $t.vhdl -e $t > syn_$t.vhdl
-    analyze syn_$t.vhdl tb_$t.vhdl
-    elab_simulate tb_$t
-    clean
+for t in case01 case02 case03 case04; do
+    synth_tb $t
 done
+
+synth case05.vhdl -e case05 > syn_case05.vhdl
+synth case06.vhdl -e case06 > syn_case06.vhdl
 
 echo "Test successful"

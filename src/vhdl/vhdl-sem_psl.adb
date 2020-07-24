@@ -17,13 +17,13 @@
 --  02111-1307, USA.
 
 with Types; use Types;
-with Std_Names;
 with Errorout; use Errorout;
 
 with PSL.Types; use PSL.Types;
 with PSL.Nodes; use PSL.Nodes;
 with PSL.Subsets;
 with PSL.Hash;
+with PSL.Rewrites;
 with PSL.Errors; use PSL.Errors;
 
 with Vhdl.Sem_Expr;
@@ -44,7 +44,7 @@ package body Vhdl.Sem_Psl is
 
    --  Return TRUE iff Atype is a PSL boolean type.
    --  See PSL1.1 5.1.2  Boolean expressions
-   function Is_Psl_Bool_Type (Atype : Iir) return Boolean
+   function Is_Psl_Boolean_Type (Atype : Iir) return Boolean
    is
       Btype : Iir;
    begin
@@ -55,91 +55,265 @@ package body Vhdl.Sem_Psl is
       return Btype = Vhdl.Std_Package.Boolean_Type_Definition
         or else Btype = Vhdl.Std_Package.Bit_Type_Definition
         or else Btype = Vhdl.Ieee.Std_Logic_1164.Std_Ulogic_Type;
-   end Is_Psl_Bool_Type;
+   end Is_Psl_Boolean_Type;
 
    --  Return TRUE if EXPR type is a PSL boolean type.
-   function Is_Psl_Bool_Expr (Expr : Iir) return Boolean is
+   function Is_Psl_Boolean_Expr (Expr : Iir) return Boolean is
    begin
-      return Is_Psl_Bool_Type (Get_Type (Expr));
-   end Is_Psl_Bool_Expr;
+      return Is_Psl_Boolean_Type (Get_Type (Expr));
+   end Is_Psl_Boolean_Expr;
+
+   function Is_Psl_Bit_Type (Atype : Iir) return Boolean
+   is
+      Btype : constant Iir := Get_Base_Type (Atype);
+   begin
+      return Btype = Vhdl.Std_Package.Bit_Type_Definition
+        or else Btype = Vhdl.Ieee.Std_Logic_1164.Std_Ulogic_Type;
+   end Is_Psl_Bit_Type;
+
+   function Is_Psl_Bitvector_Type (Atype : Iir) return Boolean is
+   begin
+      if not Is_One_Dimensional_Array_Type (Atype) then
+         return False;
+      end if;
+      return Is_Psl_Bit_Type (Get_Element_Subtype (Atype));
+   end Is_Psl_Bitvector_Type;
+
+   function Sem_Prev_Builtin (Call : Iir; Atype : Iir) return Iir
+   is
+      use Vhdl.Sem_Expr;
+      use Vhdl.Std_Package;
+      Expr  : Iir;
+      Count : Iir;
+      Clock : Iir;
+      First : Boolean;
+   begin
+      Expr := Get_Expression (Call);
+      First := Is_Expr_Not_Analyzed (Expr);
+      Expr := Sem_Expression_Ov (Expr, Atype);
+      if Expr /= Null_Iir then
+         Set_Expression (Call, Expr);
+         Set_Type (Call, Get_Type (Expr));
+         Set_Expr_Staticness (Call, None);
+      end if;
+
+      if First then
+         --  Analyze count and clock only once.
+         Count := Get_Count_Expression (Call);
+         if Count /= Null_Iir then
+            Count := Sem_Expression_Wildcard
+              (Count, Wildcard_Any_Integer_Type);
+            Count := Eval_Expr (Count);
+            Set_Count_Expression (Call, Count);
+         end if;
+
+         Clock := Get_Clock_Expression (Call);
+         if Clock /= Null_Iir then
+            Clock := Sem_Expression_Wildcard (Clock, Wildcard_Psl_Bit_Type);
+            Set_Clock_Expression (Call, Clock);
+         else
+            if Current_Psl_Default_Clock = Null_Iir then
+               Error_Msg_Sem (+Call, "no clock for PSL prev builtin");
+            else
+               Set_Default_Clock (Call, Current_Psl_Default_Clock);
+            end if;
+         end if;
+      end if;
+
+      return Call;
+   end Sem_Prev_Builtin;
+
+   function Sem_Stable_Builtin (Call : Iir) return Iir
+   is
+      use Vhdl.Sem_Expr;
+      use Vhdl.Std_Package;
+      Expr  : Iir;
+      Clock : Iir;
+      First : Boolean;
+   begin
+      Expr := Get_Expression (Call);
+      First := Is_Expr_Not_Analyzed (Expr);
+      Expr := Sem_Expression (Expr, Null_Iir);
+      if Expr /= Null_Iir then
+         Set_Expression (Call, Expr);
+         Set_Type (Call, Vhdl.Std_Package.Boolean_Type_Definition);
+         Set_Expr_Staticness (Call, None);
+      end if;
+
+      if First then
+         --  Analyze clock only once.
+         Clock := Get_Clock_Expression (Call);
+         if Clock /= Null_Iir then
+            Clock := Sem_Expression_Wildcard (Clock, Wildcard_Psl_Bit_Type);
+            Set_Clock_Expression (Call, Clock);
+         else
+            if Current_Psl_Default_Clock = Null_Iir then
+               Error_Msg_Sem (+Call, "no clock for PSL stable builtin");
+            else
+               Set_Default_Clock (Call, Current_Psl_Default_Clock);
+            end if;
+         end if;
+      end if;
+
+      return Call;
+   end Sem_Stable_Builtin;
+
+   function Sem_Rose_Builtin (Call : Iir) return Iir
+   is
+      use Vhdl.Sem_Expr;
+      use Vhdl.Std_Package;
+      Expr  : Iir;
+      Clock : Iir;
+      First : Boolean;
+   begin
+      Expr := Get_Expression (Call);
+      First := Is_Expr_Not_Analyzed (Expr);
+      Expr := Sem_Expression (Expr, Null_Iir);
+      if Expr /= Null_Iir then
+         Set_Expression (Call, Expr);
+         Set_Type (Call, Vhdl.Std_Package.Boolean_Type_Definition);
+         Set_Expr_Staticness (Call, None);
+      end if;
+
+      if First then
+         --  Analyze clock only once.
+         Clock := Get_Clock_Expression (Call);
+         if Clock /= Null_Iir then
+            Clock := Sem_Expression_Wildcard (Clock, Wildcard_Psl_Bit_Type);
+            Set_Clock_Expression (Call, Clock);
+         else
+            if Current_Psl_Default_Clock = Null_Iir then
+               Error_Msg_Sem (+Call, "no clock for PSL rose builtin");
+            else
+               Set_Default_Clock (Call, Current_Psl_Default_Clock);
+            end if;
+         end if;
+      end if;
+
+      return Call;
+   end Sem_Rose_Builtin;
+
+   function Sem_Fell_Builtin (Call : Iir) return Iir
+   is
+      use Vhdl.Sem_Expr;
+      use Vhdl.Std_Package;
+      Expr  : Iir;
+      Clock : Iir;
+      First : Boolean;
+   begin
+      Expr := Get_Expression (Call);
+      First := Is_Expr_Not_Analyzed (Expr);
+      Expr := Sem_Expression (Expr, Null_Iir);
+      if Expr /= Null_Iir then
+         Set_Expression (Call, Expr);
+         Set_Type (Call, Vhdl.Std_Package.Boolean_Type_Definition);
+         Set_Expr_Staticness (Call, None);
+      end if;
+
+      if First then
+         --  Analyze clock only once.
+         Clock := Get_Clock_Expression (Call);
+         if Clock /= Null_Iir then
+            Clock := Sem_Expression_Wildcard (Clock, Wildcard_Psl_Bit_Type);
+            Set_Clock_Expression (Call, Clock);
+         else
+            if Current_Psl_Default_Clock = Null_Iir then
+               Error_Msg_Sem (+Call, "no clock for PSL fell builtin");
+            else
+               Set_Default_Clock (Call, Current_Psl_Default_Clock);
+            end if;
+         end if;
+      end if;
+
+      return Call;
+   end Sem_Fell_Builtin;
+
+   --  Convert VHDL and/or/not nodes to PSL nodes.
+   function Convert_Bool (Expr : Iir) return PSL_Node;
+
+   function Convert_Bool_Dyadic_Operator (Expr : Iir; Kind : PSL.Nodes.Nkind)
+                                         return PSL_Node
+   is
+      Left  : constant Iir := Get_Left (Expr);
+      Right : constant Iir := Get_Right (Expr);
+      N : PSL_Node;
+   begin
+      if Is_Psl_Boolean_Expr (Left)
+        and then Is_Psl_Boolean_Expr (Right)
+      then
+         N := Create_Node (Kind);
+         Set_Location (N, Get_Location (Expr));
+         Set_Left (N, Convert_Bool (Left));
+         Set_Right (N, Convert_Bool (Right));
+         Free_Iir (Expr);
+         return N;
+      else
+         return Null_PSL_Node;
+      end if;
+   end Convert_Bool_Dyadic_Operator;
+
+   function Convert_Bool_Monadic_Operator (Expr : Iir; Kind : PSL.Nodes.Nkind)
+                                          return PSL_Node
+   is
+      Operand : constant Iir := Get_Operand (Expr);
+      N : PSL_Node;
+   begin
+      if Is_Psl_Boolean_Expr (Operand) then
+         N := Create_Node (Kind);
+         Set_Location (N, Get_Location (Expr));
+         Set_Boolean (N, Convert_Bool (Operand));
+         Free_Iir (Expr);
+         return N;
+      else
+         return Null_PSL_Node;
+      end if;
+   end Convert_Bool_Monadic_Operator;
 
    --  Convert VHDL and/or/not nodes to PSL nodes.
    function Convert_Bool (Expr : Iir) return PSL_Node
    is
-      use Std_Names;
-      Impl : Iir;
+      Res : PSL_Node;
    begin
       case Get_Kind (Expr) is
-         when Iir_Kinds_Dyadic_Operator =>
-            declare
-               Left : Iir;
-               Right : Iir;
-
-               function Build_Op (Kind : Nkind) return PSL_Node
-               is
-                  N : PSL_Node;
-               begin
-                  N := Create_Node (Kind);
-                  Set_Location (N, Get_Location (Expr));
-                  Set_Left (N, Convert_Bool (Left));
-                  Set_Right (N, Convert_Bool (Right));
-                  Free_Iir (Expr);
-                  return N;
-               end Build_Op;
-            begin
-               Impl := Get_Implementation (Expr);
-               Left := Get_Left (Expr);
-               Right := Get_Right (Expr);
-               if Impl /= Null_Iir
-                 and then Is_Psl_Bool_Expr (Left)
-                 and then Is_Psl_Bool_Expr (Right)
-               then
-                  if Get_Identifier (Impl) = Name_And then
-                     return Build_Op (N_And_Bool);
-                  elsif Get_Identifier (Impl) = Name_Or then
-                     return Build_Op (N_Or_Bool);
-                  end if;
-               end if;
-            end;
-         when Iir_Kinds_Monadic_Operator =>
-            declare
-               Operand : Iir;
-
-               function Build_Op (Kind : Nkind) return PSL_Node
-               is
-                  N : PSL_Node;
-               begin
-                  N := Create_Node (Kind);
-                  Set_Location (N, Get_Location (Expr));
-                  Set_Boolean (N, Convert_Bool (Operand));
-                  Free_Iir (Expr);
-                  return N;
-               end Build_Op;
-            begin
-               Impl := Get_Implementation (Expr);
-               Operand := Get_Operand (Expr);
-               if Impl /= Null_Iir
-                 and then Is_Psl_Bool_Expr (Operand)
-               then
-                  if Get_Identifier (Impl) = Name_Not then
-                     return Build_Op (N_Not_Bool);
-                  end if;
-               end if;
-            end;
+         when Iir_Kind_And_Operator =>
+            Res := Convert_Bool_Dyadic_Operator (Expr, N_And_Bool);
+            if Res /= Null_PSL_Node then
+               return Res;
+            end if;
+         when Iir_Kind_Or_Operator =>
+            Res := Convert_Bool_Dyadic_Operator (Expr, N_Or_Bool);
+            if Res /= Null_PSL_Node then
+               return Res;
+            end if;
+         when Iir_Kind_Not_Operator =>
+            Res := Convert_Bool_Monadic_Operator (Expr, N_Not_Bool);
+            if Res /= Null_PSL_Node then
+               return Res;
+            end if;
          when Iir_Kinds_Name =>
             --  Get the named entity for names in order to hash it.
             declare
                Name : Iir;
+               Hnode : PSL_Node;
+               N : PSL_Node;
             begin
                Name := Get_Named_Entity (Expr);
                if Name /= Null_Iir then
-                  return PSL.Hash.Get_PSL_Node (HDL_Node (Name));
+                  Hnode := PSL.Hash.Get_PSL_Node
+                    (HDL_Node (Name), Get_Location (Name));
+                  N := Create_Node (N_HDL_Expr);
+                  Set_Location (N, Get_Location (Expr));
+                  Set_HDL_Node (N, HDL_Node (Expr));
+                  Set_HDL_Hash (N, Hnode);
+                  return N;
                end if;
             end;
          when others =>
             null;
       end case;
-      return PSL.Hash.Get_PSL_Node (HDL_Node (Expr));
+
+      --  Default.
+      return PSL.Hash.Get_PSL_Node (HDL_Node (Expr), Get_Location (Expr));
    end Convert_Bool;
 
    --  Analyze an HDL expression.  This may mostly a wrapper except in the
@@ -149,6 +323,7 @@ package body Vhdl.Sem_Psl is
       use Sem_Names;
 
       Expr : Iir;
+      Expr_Type : Iir;
       Name : Iir;
       Decl : PSL_Node;
       Res : PSL_Node;
@@ -212,16 +387,20 @@ package body Vhdl.Sem_Psl is
                Expr := Name_To_Expression (Expr, Null_Iir);
          end case;
       else
-         Expr := Sem_Expr.Sem_Expression (Expr, Null_Iir);
+         Expr := Sem_Expr.Sem_Expression_Wildcard
+           (Expr, Std_Package.Wildcard_Psl_Boolean_Type);
       end if;
 
       if Expr = Null_Iir then
          return N;
       end if;
       Free_Node (N);
-      if not Is_Psl_Bool_Expr (Expr) then
+      Expr_Type := Get_Type (Expr);
+      if not Is_Overload_List (Expr_Type)
+        and then not  Is_Psl_Boolean_Type (Expr_Type)
+      then
          Error_Msg_Sem (+Expr, "type of expression must be boolean");
-         return PSL.Hash.Get_PSL_Node (HDL_Node (Expr));
+         return PSL.Hash.Get_PSL_Node (HDL_Node (Expr), Get_Location (Expr));
       else
          return Convert_Bool (Expr);
       end if;
@@ -305,7 +484,9 @@ package body Vhdl.Sem_Psl is
             R := Sem_Sequence (Get_Right (Seq));
             Set_Right (Seq, R);
             return Seq;
-         when N_Star_Repeat_Seq =>
+         when N_Star_Repeat_Seq
+            | N_Equal_Repeat_Seq
+            | N_Goto_Repeat_Seq =>
             Res := Get_Sequence (Seq);
             if Res /= Null_PSL_Node then
                Res := Sem_Sequence (Get_Sequence (Seq));
@@ -375,7 +556,7 @@ package body Vhdl.Sem_Psl is
          when N_Braced_SERE =>
             return Sem_Sequence (Prop);
          when N_Always
-           | N_Never =>
+            | N_Never =>
             --  By extension, clock_event is allowed within outermost
             --  always/never.
             Sem_Property (Prop, Top);
@@ -395,15 +576,16 @@ package body Vhdl.Sem_Psl is
             Sem_Boolean (Prop);
             return Prop;
          when N_Until
-           | N_Before =>
+            | N_Before =>
             Res := Sem_Property (Get_Left (Prop));
             Set_Left (Prop, Res);
             Res := Sem_Property (Get_Right (Prop));
             Set_Right (Prop, Res);
             return Prop;
          when N_Log_Imp_Prop
-           | N_And_Prop
-           | N_Or_Prop =>
+            | N_Log_Equiv_Prop
+            | N_And_Prop
+            | N_Or_Prop =>
             declare
                L, R : PSL_Node;
             begin
@@ -421,6 +603,8 @@ package body Vhdl.Sem_Psl is
                         return Reduce_Logic_Binary_Node (Prop, N_Or_Bool);
                      when N_Log_Imp_Prop =>
                         return Reduce_Logic_Binary_Node (Prop, N_Imp_Bool);
+                     when N_Log_Equiv_Prop =>
+                        return Reduce_Logic_Binary_Node (Prop, N_Equiv_Bool);
                      when others =>
                         Error_Kind ("psl.sem_property(log)", Prop);
                   end case;
@@ -451,12 +635,17 @@ package body Vhdl.Sem_Psl is
             Sem_Number (Prop);
             Sem_Property (Prop);
             return Prop;
-         when N_Next_A =>
+         when N_Next_A | N_Next_E =>
             --  FIXME: range.
             Sem_Property (Prop);
             return Prop;
          when N_Next_Event =>
             Sem_Number (Prop);
+            Sem_Boolean (Prop);
+            Sem_Property (Prop);
+            return Prop;
+         when N_Next_Event_A | N_Next_Event_E =>
+            --  FIXME: range.
             Sem_Boolean (Prop);
             Sem_Property (Prop);
             return Prop;
@@ -615,7 +804,8 @@ package body Vhdl.Sem_Psl is
       end Rewrite_Monadic_Operator;
    begin
       case Get_Kind (Prop) is
-         when N_HDL_Expr =>
+         when N_HDL_Expr
+           | N_HDL_Bool =>
             return Get_HDL_Node (Prop);
          when N_And_Bool =>
             return Rewrite_Dyadic_Operator (Prop, Iir_Kind_And_Operator);
@@ -631,13 +821,16 @@ package body Vhdl.Sem_Psl is
             begin
                Res := Create_Iir (Iir_Kind_Parenthesis_Expression);
                Set_Location (Res, Get_Location (Prop));
-               if Get_Kind (Expr) = N_HDL_Expr then
-                  Hexpr := Get_HDL_Node (Expr);
-                  Set_Expression (Res, Hexpr);
-                  Set_Type (Res, Get_Type (Hexpr));
-               else
-                  Set_Expression (Res, Rewrite_As_Boolean_Expression (Expr));
-               end if;
+               case Get_Kind (Expr) is
+                  when N_HDL_Expr
+                    | N_HDL_Bool =>
+                     Hexpr := Get_HDL_Node (Expr);
+                     Set_Expression (Res, Hexpr);
+                     Set_Type (Res, Get_Type (Hexpr));
+                  when others =>
+                     Hexpr := Rewrite_As_Boolean_Expression (Expr);
+                     Set_Expression (Res, Hexpr);
+               end case;
                return Res;
             end;
          when others =>
@@ -652,15 +845,15 @@ package body Vhdl.Sem_Psl is
    begin
       Res := Create_Iir (Iir_Kind_Concurrent_Assertion_Statement);
       Set_Location (Res, Get_Location (Stmt));
+
       Cond := Rewrite_As_Boolean_Expression (Get_Psl_Property (Stmt));
       if Get_Type (Cond) = Null_Iir then
          Cond := Sem_Expr.Sem_Condition (Cond);
-      elsif Get_Base_Type (Get_Type (Cond))
-        /= Vhdl.Std_Package.Boolean_Type_Definition
-      then
-         Cond := Sem_Expr.Insert_Condition_Operator (Cond);
+      else
+         Cond := Sem_Expr.Sem_Condition_Pass2 (Cond);
       end if;
       Cond := Eval_Expr_If_Static (Cond);
+
       Set_Assertion_Condition (Res, Cond);
       Set_Label (Res, Get_Label (Stmt));
       Set_Severity_Expression (Res, Get_Severity_Expression (Stmt));
@@ -676,7 +869,8 @@ package body Vhdl.Sem_Psl is
    function Is_Boolean_Assertion (Expr : PSL_Node) return Boolean is
    begin
       case Get_Kind (Expr) is
-         when N_HDL_Expr =>
+         when N_HDL_Expr
+           | N_HDL_Bool =>
             return True;
          when N_And_Bool | N_Or_Bool | N_Not_Bool | N_Paren_Bool =>
             return True;
@@ -812,6 +1006,7 @@ package body Vhdl.Sem_Psl is
          Report_End_Group;
       end if;
       Expr := Sem_Boolean (Get_Psl_Boolean (Stmt));
+      Expr := PSL.Rewrites.Rewrite_Boolean (Expr);
       Set_Psl_Boolean (Stmt, Expr);
       Current_Psl_Default_Clock := Stmt;
    end Sem_Psl_Default_Clock;
@@ -866,7 +1061,8 @@ package body Vhdl.Sem_Psl is
             if Get_Kind (Actual) in Iir_Kinds_Name then
                Actual := Get_Named_Entity (Actual);
             end if;
-            Psl_Actual := PSL.Hash.Get_PSL_Node (HDL_Node (Actual));
+            Psl_Actual := PSL.Hash.Get_PSL_Node
+              (HDL_Node (Actual), Get_Location (Actual));
          end if;
 
          Assoc2 := Create_Node (N_Actual);
@@ -1007,15 +1203,20 @@ package body Vhdl.Sem_Psl is
             when Iir_Kind_Psl_Cover_Directive =>
                Sem_Psl_Cover_Directive (Item);
             when Iir_Kind_Signal_Declaration
-              | Iir_Kind_Function_Declaration
-              | Iir_Kind_Procedure_Declaration
-              | Iir_Kind_Function_Body
-              | Iir_Kind_Procedure_Body
-              | Iir_Kind_Attribute_Declaration
-              | Iir_Kind_Attribute_Specification =>
+               | Iir_Kind_Function_Declaration
+               | Iir_Kind_Procedure_Declaration
+               | Iir_Kind_Function_Body
+               | Iir_Kind_Procedure_Body
+               | Iir_Kind_Attribute_Declaration
+               | Iir_Kind_Attribute_Specification =>
                Sem_Decls.Sem_Declaration
                  (Item, Prev_Item, False, Attr_Spec_Chain);
-            when Iir_Kind_Concurrent_Simple_Signal_Assignment =>
+            when Iir_Kinds_Concurrent_Signal_Assignment
+               | Iir_Kinds_Process_Statement
+               | Iir_Kinds_Generate_Statement
+               | Iir_Kind_Block_Statement
+               | Iir_Kind_Concurrent_Procedure_Call_Statement
+               | Iir_Kind_Component_Instantiation_Statement =>
                Sem_Stmts.Sem_Concurrent_Statement (Item, False);
             when others =>
                Error_Kind ("sem_psl_verification_unit", Item);

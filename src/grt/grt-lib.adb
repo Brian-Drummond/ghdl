@@ -25,8 +25,11 @@
 
 with Interfaces;
 with Grt.Errors; use Grt.Errors;
-with Grt.Options;
+with Grt.Errors_Exec; use Grt.Errors_Exec;
+with Grt.Severity;
+with Grt.Options; use Grt.Options;
 with Grt.Fcvt;
+with Grt.Backtraces;
 
 package body Grt.Lib is
    --procedure Memcpy (Dst : Address; Src : Address; Size : Size_T);
@@ -48,6 +51,7 @@ package body Grt.Lib is
                         Severity : Integer;
                         Loc : Ghdl_Location_Ptr)
    is
+      use Grt.Severity;
       Level : constant Integer := Severity mod 256;
       Bt : Backtrace_Addrs;
    begin
@@ -86,28 +90,34 @@ package body Grt.Lib is
          Error_S (Msg);
          Diag_C (" failed");
          Error_E_Call_Stack (Bt);
+      elsif Level >= Grt.Options.Backtrace_Severity then
+         Save_Backtrace (Bt, 2);
+         Grt.Backtraces.Put_Err_Backtrace (Bt);
       end if;
    end Do_Report;
 
-   procedure Ghdl_Assert_Failed
-     (Str : Std_String_Ptr; Severity : Integer; Loc : Ghdl_Location_Ptr)
-   is
+   function Is_Assert_Disabled (Policy : Assert_Handling) return Boolean is
    begin
+      return Policy = Disable_Asserts
+        or else (Policy = Disable_Asserts_At_Time_0 and Current_Time = 0);
+   end Is_Assert_Disabled;
+
+   procedure Ghdl_Assert_Failed
+     (Str : Std_String_Ptr; Severity : Integer; Loc : Ghdl_Location_Ptr) is
+   begin
+      if Is_Assert_Disabled (Asserts_Policy) then
+         return;
+      end if;
       Do_Report ("assertion", Str, "Assertion violation", Severity, Loc);
    end Ghdl_Assert_Failed;
 
    procedure Ghdl_Ieee_Assert_Failed
-     (Str : Std_String_Ptr; Severity : Integer; Loc : Ghdl_Location_Ptr)
-   is
-      use Grt.Options;
+     (Str : Std_String_Ptr; Severity : Integer; Loc : Ghdl_Location_Ptr) is
    begin
-      if Ieee_Asserts = Disable_Asserts
-        or else (Ieee_Asserts = Disable_Asserts_At_Time_0 and Current_Time = 0)
-      then
+      if Is_Assert_Disabled (Ieee_Asserts) then
          return;
-      else
-         Do_Report ("assertion", Str, "Assertion violation", Severity, Loc);
       end if;
+      Do_Report ("assertion", Str, "Assertion violation", Severity, Loc);
    end Ghdl_Ieee_Assert_Failed;
 
    procedure Ghdl_Psl_Assert_Failed
@@ -119,7 +129,7 @@ package body Grt.Lib is
    procedure Ghdl_Psl_Assume_Failed (Loc : Ghdl_Location_Ptr) is
    begin
       Do_Report ("psl assumption", null, "Assumption violation",
-                 Error_Severity, Loc);
+                 Grt.Severity.Error_Severity, Loc);
    end Ghdl_Psl_Assume_Failed;
 
    procedure Ghdl_Psl_Cover
@@ -135,11 +145,9 @@ package body Grt.Lib is
                  Str, "sequence not covered", Severity, Loc);
    end Ghdl_Psl_Cover_Failed;
 
-   procedure Ghdl_Report
-     (Str : Std_String_Ptr;
-      Severity : Integer;
-      Loc : Ghdl_Location_Ptr)
-   is
+   procedure Ghdl_Report (Str : Std_String_Ptr;
+                          Severity : Integer;
+                          Loc      : Ghdl_Location_Ptr) is
    begin
       Do_Report ("report", Str, "Assertion violation", Severity, Loc);
    end Ghdl_Report;
@@ -196,6 +204,38 @@ package body Grt.Lib is
       Diag_C (Line);
       Error_E_Call_Stack (Bt);
    end Ghdl_Direction_Check_Failed;
+
+   procedure Diag_C_Range (Rng : Std_Integer_Range_Ptr) is
+   begin
+      Diag_C (Rng.Left);
+      case Rng.Dir is
+         when Dir_Downto =>
+            Diag_C (" downto ");
+         when Dir_To =>
+            Diag_C (" to ");
+      end case;
+      Diag_C (Rng.Right);
+   end Diag_C_Range;
+
+   procedure Ghdl_Integer_Index_Check_Failed
+     (Filename : Ghdl_C_String;
+      Line     : Ghdl_I32;
+      Val      : Std_Integer;
+      Rng      : Std_Integer_Range_Ptr)
+   is
+      Bt : Backtrace_Addrs;
+   begin
+      Save_Backtrace (Bt, 1);
+      Error_S ("index (");
+      Diag_C (Val);
+      Diag_C (") out of bounds (");
+      Diag_C_Range (Rng);
+      Diag_C (") at ");
+      Diag_C (Filename);
+      Diag_C (":");
+      Diag_C (Line);
+      Error_E_Call_Stack (Bt);
+   end Ghdl_Integer_Index_Check_Failed;
 
    function Hi (V : Ghdl_I64) return Ghdl_U32 is
    begin

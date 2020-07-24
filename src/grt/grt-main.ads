@@ -23,14 +23,24 @@
 --  however invalidate any other reasons why the executable file might be
 --  covered by the GNU Public License.
 
+with Grt.Types; use Grt.Types;
+with Grt.Options;
+
 package Grt.Main is
-   --  Elaborate and simulate the design.
+   --  Set options.
+   procedure Run_Options (Progname : Ghdl_C_String;
+                          Argc : Integer;
+                          Argv : Grt.Options.Argv_Type);
+   pragma Export (C, Run_Options, "grt_main_options");
+
+   --  Do everything: initialize, elaborate and simulate the design.
    procedure Run;
 
    --  What Run does.
 
-   --  Elaborate the design.
-   procedure Run_Elab (Stop : out Boolean);
+   --  Initialize and elaborate the design.  Return False in case of error.
+   function Run_Elab return C_Boolean;
+   pragma Export (C, Run_Elab, "grt_main_elab");
 
    --  Do the whole simulation.
    function Run_Simul return Integer;

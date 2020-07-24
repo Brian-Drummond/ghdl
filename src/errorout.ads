@@ -24,7 +24,7 @@ package Errorout is
    Nbr_Errors : Natural := 0;
 
    --  Maximum number of errors, before silent them.
-   Max_Nbr_Errors : constant Natural := 100;
+   Max_Nbr_Errors : Natural := 100;
 
    type Msgid_Type is
      (
@@ -35,6 +35,12 @@ package Errorout is
 
       --  Design unit redefines another design unit.
       Warnid_Library,
+
+      --  Option is deprecated.
+      Warnid_Deprecated_Option,
+
+      --  Unexpected option.
+      Warnid_Unexpected_Option,
 
       --  Missing Xref in pretty print.
       Warnid_Missing_Xref,
@@ -104,6 +110,12 @@ package Errorout is
 
       --  Violation of pure rules.
       Warnid_Pure,
+
+      --  Assertion during analysis.
+      Warnid_Analyze_Assert,
+
+      --  Incorrect use of attributes (like non-object prefix).
+      Warnid_Attribute,
 
       --  Violation of staticness rules
       Warnid_Static,
@@ -250,6 +262,7 @@ package Errorout is
 
    procedure Register_Earg_Handler (Kind : Earg_Kind; Handler : Earg_Handler);
 
+   procedure Output_Quoted_Identifier (Id : Name_Id);
    procedure Output_Identifier (Id : Name_Id);
    procedure Output_Location (Err : Error_Record; Loc : Location_Type);
    procedure Output_Message (S : String);
@@ -295,9 +308,15 @@ private
    Default_Warnings : constant Warnings_Setting :=
      (Warnid_Library | Warnid_Binding | Warnid_Port | Warnid_Shared
         | Warnid_Runtime_Error | Warnid_Pure | Warnid_Specs | Warnid_Hide
-        | Warnid_Pragma
+        | Warnid_Pragma | Warnid_Analyze_Assert | Warnid_Attribute
+        | Warnid_Deprecated_Option | Warnid_Unexpected_Option
         | Msgid_Warning  => (Enabled => True, Error => False),
-      others             => (Enabled => False, Error => False));
+      Warnid_Delta_Cycle | Warnid_Body | Warnid_Static | Warnid_Nested_Comment
+        | Warnid_Universal | Warnid_Port_Bounds
+        | Warnid_Others | Warnid_Reserved_Word | Warnid_Directive
+        | Warnid_Parenthesis | Warnid_Delayed_Checks | Warnid_Default_Binding
+        | Warnid_Vital_Generic | Warnid_Missing_Xref
+        | Warnid_Unused => (Enabled => False, Error => False));
 
    --  Compute the column from Error_Record E.
    function Get_Error_Col (E : Error_Record) return Natural;

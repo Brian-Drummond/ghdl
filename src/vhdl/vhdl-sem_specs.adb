@@ -365,10 +365,10 @@ package body Vhdl.Sem_Specs is
       Set_Attribute_Value_Spec_Chain (Attr, El);
 
       --  Special handling for 'Foreign.
-      if (Flags.Vhdl_Std >= Vhdl_93c
+      if (Flags.Vhdl_Std >= Vhdl_93
           and then Attr_Decl = Foreign_Attribute)
         or else
-        (Flags.Vhdl_Std <= Vhdl_93c
+        (Flags.Vhdl_Std <= Vhdl_93
          and then Get_Identifier (Attr_Decl) = Std_Names.Name_Foreign)
       then
          --  LRM93 12.4
@@ -701,6 +701,9 @@ package body Vhdl.Sem_Specs is
            | Iir_Kind_Procedure_Body =>
             Sem_Named_Entity_Chain (Get_Declaration_Chain (Scope));
             Sem_Named_Entity_Chain (Get_Sequential_Statement_Chain (Scope));
+         when Iir_Kind_Protected_Type_Declaration
+           |  Iir_Kind_Protected_Type_Body =>
+            Sem_Named_Entity_Chain (Get_Declaration_Chain (Scope));
          when Iir_Kind_Vunit_Declaration =>
             Sem_Named_Entity_Chain (Get_Vunit_Item_Chain (Scope));
          when others =>
@@ -766,7 +769,7 @@ package body Vhdl.Sem_Specs is
          Inter : Name_Interpretation_Type;
          Decl : Iir;
       begin
-         if Flag_Relaxed_Rules or Vhdl_Std = Vhdl_93c then
+         if Flag_Relaxed_Rules then
             --  Some (clueless ?) vendors put attribute specifications in
             --  architectures for ports (declared in entities).  This is not
             --  valid according to the LRM (eg: LRM02 5.1 Attribute
@@ -833,10 +836,10 @@ package body Vhdl.Sem_Specs is
               | Tok_Architecture
               | Tok_Configuration =>
                if Get_Expr_Staticness (Expr) /= Locally then
-                  Error_Msg_Sem
-                    (+Spec,
+                  Error_Msg_Sem_Relaxed
+                    (Spec, Warnid_Attribute,
                      "attribute expression for %t must be locally static",
-                     +Get_Entity_Class (Spec));
+                     (1 => +Get_Entity_Class (Spec)));
                end if;
             when others =>
                null;
@@ -1153,6 +1156,102 @@ package body Vhdl.Sem_Specs is
       end if;
    end Sem_Disconnection_Specification;
 
+   procedure Sem_Step_Limit_Specification (Limit : Iir)
+   is
+      Type_Mark : Iir;
+      Atype : Iir;
+      Time_Expr : Iir;
+      List : Iir_Flist;
+      El : Iir;
+      Quan : Iir;
+      Prefix : Iir;
+   begin
+      --  Sem type mark.
+      Type_Mark := Get_Type_Mark (Limit);
+      Type_Mark := Sem_Type_Mark (Type_Mark);
+      Set_Type_Mark (Limit, Type_Mark);
+      Atype := Get_Type (Type_Mark);
+
+      --  FIXME: there are no requirements on the expression.
+      Time_Expr := Sem_Expression
+        (Get_Expression (Limit), Real_Type_Definition);
+      if Time_Expr /= Null_Iir then
+         Check_Read (Time_Expr);
+         Set_Expression (Limit, Time_Expr);
+         if Get_Expr_Staticness (Time_Expr) < Globally then
+            Error_Msg_Sem (+Time_Expr, "time expression must be static");
+         end if;
+      end if;
+
+      List := Get_Quantity_List (Limit);
+      if List in Iir_Flists_All_Others then
+         --  FIXME: checks todo
+         raise Internal_Error;
+      else
+         for I in Flist_First .. Flist_Last (List) loop
+            El := Get_Nth_Element (List, I);
+
+            if Is_Error (El) then
+               Quan := Null_Iir;
+            else
+               Sem_Name (El);
+               El := Finish_Sem_Name (El);
+               Set_Nth_Element (List, I, El);
+
+               Quan := Get_Named_Entity (El);
+               Quan := Name_To_Object (Quan);
+            end if;
+
+            if Quan /= Null_Iir then
+               Set_Type (El, Get_Type (Quan));
+               Prefix := Get_Object_Prefix (Quan);
+               --  AMS-LRM17 7.5
+               --  Each quantity name in a quantity in a step limit
+               --  specification shall be a locally static name that denotes
+               --  a quantity.
+               case Get_Kind (Prefix) is
+                  when Iir_Kinds_Quantity_Declaration
+                    | Iir_Kind_Interface_Quantity_Declaration =>
+                     null;
+                  when others =>
+                     Error_Msg_Sem (+El, "object must be a quantity");
+                     return;
+               end case;
+               if Get_Name_Staticness (Quan) /= Locally then
+                  Error_Msg_Sem (+El, "signal name must be locally static");
+               end if;
+
+               --  AMS-LRM17 7.5
+               --  If the quantity is a declared quantity or a slice of
+               --  thereof, the type mark shall be the same as the type mark
+               --  indicated in the quantity declaration for that quantity.
+               --  If the quantity is an array element of an explicitly
+               --  declared quantity, the type mark must be the same as the
+               --  element subtype indication in the (explicit or implicit)
+               --  array type declaration that declares the base type of the
+               --  explicitly declared quantity.
+               --  If the quantity is a record element of an explicitly
+               --  declared quantity, then the type mark must be the same as
+               --  the type mark in the element subtype definition of the
+               --  record type declaration that declares the type of the
+               --  explicitly declared quantity.
+               if not Is_Same_Type_Mark (Get_Type (Quan), Atype) then
+                  Error_Msg_Sem (+El, "type mark and quantity type mismatch");
+               end if;
+
+               --  AMS-LRM17 7.5
+               --  Each quantity must be declared in the declarative part
+               --  enclosing the step limit specification.
+               --  FIXME: todo.
+            elsif not Is_Error (El)
+              and then Get_Designated_Entity (El) /= Error_Mark
+            then
+               Error_Msg_Sem (+El, "name must designate a quantity");
+            end if;
+         end loop;
+      end if;
+   end Sem_Step_Limit_Specification;
+
    --  Analyze entity aspect ASPECT and return the entity declaration.
    --  Return NULL_IIR if not found.
    function Sem_Entity_Aspect (Aspect : Iir) return Iir is
@@ -1232,22 +1331,67 @@ package body Vhdl.Sem_Specs is
       end case;
    end Sem_Entity_Aspect;
 
-   procedure Sem_Binding_Indication (Bind : Iir_Binding_Indication;
-                                     Parent : Iir;
-                                     Primary_Entity_Aspect : Iir)
+   procedure Sem_Check_Missing_Generic_Association
+     (Inter_Chain : Iir;  Assoc1 : Iir; Assoc2 : Iir; Loc : Iir)
    is
-      Entity_Aspect : Iir;
-      Entity : Iir_Entity_Declaration;
+      Inter : Iir;
+      Inter_Iter : Iir;
+      Assoc      : Iir;
+      Err        : Boolean;
+      pragma Unreferenced (Err);
    begin
-      pragma Assert (Bind /= Null_Iir);
-      Entity_Aspect := Get_Entity_Aspect (Bind);
+      --  Set open flag.
+      Inter := Inter_Chain;
+      while Inter /= Null_Iir loop
+         Set_Open_Flag (Inter, True);
+         Inter := Get_Chain (Inter);
+      end loop;
 
+      --  Clear the open flag on associated interface.
+      for I in 1 .. 2 loop
+         case I is
+            when 1 =>
+               Assoc := Assoc1;
+            when 2 =>
+               Assoc := Assoc2;
+         end case;
+         Inter_Iter := Inter_Chain;
+         while Assoc /= Null_Iir loop
+            if Get_Kind (Assoc) /= Iir_Kind_Association_Element_Open then
+               Inter := Get_Association_Interface (Assoc, Inter_Iter);
+               Set_Open_Flag (Inter, False);
+            end if;
+            Next_Association_Interface (Assoc, Inter_Iter);
+         end loop;
+      end loop;
+
+      --  Check open interface.
+      Inter := Inter_Chain;
+      while Inter /= Null_Iir loop
+         if Get_Open_Flag (Inter) then
+            Set_Open_Flag (Inter, False);
+            Err := Sem_Check_Missing_Association
+              (Inter, Missing_Generic, True, Loc);
+         end if;
+         Inter := Get_Chain (Inter);
+      end loop;
+   end Sem_Check_Missing_Generic_Association;
+
+   procedure Sem_Binding_Indication (Bind  : Iir_Binding_Indication;
+                                     Parent                : Iir;
+                                     Primary_Binding       : Iir)
+   is
+      pragma Assert (Bind /= Null_Iir);
+      Entity_Aspect : constant Iir := Get_Entity_Aspect (Bind);
+      Entity        : Iir_Entity_Declaration;
+      Primary_Aspect : Iir;
+   begin
       if Entity_Aspect /= Null_Iir then
          Entity := Sem_Entity_Aspect (Entity_Aspect);
 
          --  LRM93 5.2.1  Binding Indication
          --  An incremental binding indication must not have an entity aspect.
-         if Primary_Entity_Aspect /= Null_Iir then
+         if Primary_Binding /= Null_Iir then
             Error_Msg_Sem
               (+Bind, "entity aspect not allowed for incremental binding");
          end if;
@@ -1262,15 +1406,16 @@ package body Vhdl.Sem_Specs is
          --  specification, it is an error if the entity aspect is absent.
          case Get_Kind (Parent) is
             when Iir_Kind_Component_Configuration =>
-               if Primary_Entity_Aspect = Null_Iir then
+               if Primary_Binding = Null_Iir then
                   Entity := Null_Iir;
                else
-                  case Get_Kind (Primary_Entity_Aspect) is
+                  Primary_Aspect := Get_Entity_Aspect (Primary_Binding);
+                  case Get_Kind (Primary_Aspect) is
                      when Iir_Kind_Entity_Aspect_Entity =>
-                        Entity := Get_Entity (Primary_Entity_Aspect);
+                        Entity := Get_Entity (Primary_Aspect);
                      when others =>
                         Error_Kind
-                          ("sem_binding_indication", Primary_Entity_Aspect);
+                          ("sem_binding_indication", Primary_Aspect);
                   end case;
                end if;
             when Iir_Kind_Configuration_Specification =>
@@ -1306,6 +1451,31 @@ package body Vhdl.Sem_Specs is
       else
          Sem_Generic_Port_Association_Chain (Entity, Bind);
 
+         --  If the binding is final (cannot be incrementally bound), check
+         --  that all generics are associated when required (like no default
+         --  value).
+         --  Do not check if there is no generic map aspect.
+         if Get_Kind (Parent) = Iir_Kind_Component_Configuration
+           and then Get_Generic_Map_Aspect_Chain (Bind) /= Null_Iir
+         then
+            declare
+               Primary_Assoc : Iir;
+            begin
+               if Primary_Binding /= Null_Iir then
+                  Primary_Assoc := Get_Generic_Map_Aspect_Chain
+                    (Primary_Binding);
+               else
+                  Primary_Assoc := Null_Iir;
+               end if;
+
+               Sem_Check_Missing_Generic_Association
+                 (Get_Generic_Chain (Entity),
+                  Get_Generic_Map_Aspect_Chain (Bind),
+                  Primary_Assoc,
+                  Bind);
+            end;
+         end if;
+
          --  LRM 5.2.1 Binding Indication
          --  If the generic map aspect or port map aspect of a binding
          --  indication is not present, then the default rules as described
@@ -1319,7 +1489,7 @@ package body Vhdl.Sem_Specs is
    procedure Apply_Configuration_Specification
      (Comp : Iir_Component_Instantiation_Statement;
       Spec : Iir;
-      Primary_Entity_Aspect : in out Iir)
+      Primary_Binding : in out Iir)
    is
       Prev_Spec : Iir;
       Prev_Conf : Iir;
@@ -1335,7 +1505,6 @@ package body Vhdl.Sem_Specs is
       end Prev_Spec_Error;
 
       Prev_Binding : Iir_Binding_Indication;
-      Prev_Entity_Aspect : Iir;
    begin
       Prev_Spec := Get_Configuration_Specification (Comp);
       if Prev_Spec /= Null_Iir then
@@ -1353,9 +1522,8 @@ package body Vhdl.Sem_Specs is
                --  Incremental binding.
                Prev_Binding := Get_Binding_Indication (Prev_Spec);
                if Prev_Binding /= Null_Iir then
-                  Prev_Entity_Aspect := Get_Entity_Aspect (Prev_Binding);
-                  if Primary_Entity_Aspect = Null_Iir then
-                     Primary_Entity_Aspect := Prev_Entity_Aspect;
+                  if Primary_Binding = Null_Iir then
+                     Primary_Binding := Prev_Binding;
                   else
                      --  FIXME: checks to do ?
                      null;
@@ -1392,7 +1560,7 @@ package body Vhdl.Sem_Specs is
    --  Analyze component_configuration or configuration_specification SPEC.
    --  STMTS is the concurrent statement list related to SPEC.
    procedure Sem_Component_Specification
-     (Parent_Stmts : Iir; Spec : Iir; Primary_Entity_Aspect : out Iir)
+     (Parent_Stmts : Iir; Spec : Iir; Primary_Binding : out Iir)
    is
       function Apply_Component_Specification
         (Chain : Iir; Check_Applied : Boolean) return Boolean
@@ -1418,7 +1586,7 @@ package body Vhdl.Sem_Specs is
                      or else Get_Component_Configuration (El) = Null_Iir)
                   then
                      Apply_Configuration_Specification
-                       (El, Spec, Primary_Entity_Aspect);
+                       (El, Spec, Primary_Binding);
                      Res := True;
                   end if;
                when Iir_Kind_For_Generate_Statement
@@ -1443,7 +1611,7 @@ package body Vhdl.Sem_Specs is
       Inst : Iir;
       Inst_Unit : Iir;
    begin
-      Primary_Entity_Aspect := Null_Iir;
+      Primary_Binding := Null_Iir;
       Comp_Name := Get_Component_Name (Spec);
       if Is_Error (Comp_Name) then
          pragma Assert (Flags.Flag_Force_Analysis);
@@ -1533,7 +1701,7 @@ package body Vhdl.Sem_Specs is
                      Error_Msg_Sem (+El, "component names mismatch");
                   else
                      Apply_Configuration_Specification
-                       (Inst, Spec, Primary_Entity_Aspect);
+                       (Inst, Spec, Primary_Binding);
                      Xref_Ref (El, Inst);
                      Set_Named_Entity (El, Inst);
                      Set_Is_Forward_Ref (El, True);
@@ -1547,11 +1715,11 @@ package body Vhdl.Sem_Specs is
    procedure Sem_Configuration_Specification
      (Parent_Stmts : Iir; Conf : Iir_Configuration_Specification)
    is
-      Primary_Entity_Aspect : Iir;
+      Primary_Binding : Iir;
       Component : Iir;
       Bind : Iir;
    begin
-      Sem_Component_Specification (Parent_Stmts, Conf, Primary_Entity_Aspect);
+      Sem_Component_Specification (Parent_Stmts, Conf, Primary_Binding);
       Component := Get_Component_Name (Conf);
       if Is_Error (Component) then
          pragma Assert (Flags.Flag_Force_Analysis);
@@ -1573,7 +1741,7 @@ package body Vhdl.Sem_Specs is
          --  Extend scope of component interface declaration.
          Sem_Scopes.Open_Scope_Extension;
          Sem_Scopes.Add_Component_Declarations (Component);
-         Sem_Binding_Indication (Bind, Conf, Primary_Entity_Aspect);
+         Sem_Binding_Indication (Bind, Conf, Primary_Binding);
          --  FIXME: check default port and generic association.
          Sem_Scopes.Close_Scope_Extension;
       end if;
@@ -1662,7 +1830,7 @@ package body Vhdl.Sem_Specs is
       --  Create a name for the entity.  As this is a default binding
       --  indication, the design unit does *NOT* depend on the entity, so the
       --  reference is a forward reference.
-      Entity_Name := Build_Simple_Name (Entity, Parent);
+      Entity_Name := Build_Simple_Name (Entity, Entity);
       Set_Is_Forward_Ref (Entity_Name, True);
 
       Set_Entity_Name (Aspect, Entity_Name);
@@ -1784,7 +1952,7 @@ package body Vhdl.Sem_Specs is
             end if;
             Assoc := Create_Iir (Iir_Kind_Association_Element_By_Expression);
             Location_Copy (Assoc, Parent);
-            Name := Build_Simple_Name (Comp_El, Parent);
+            Name := Build_Simple_Name (Comp_El, Comp_El);
             Set_Type (Name, Get_Type (Comp_El));
             Set_Actual (Assoc, Name);
             if Kind = Map_Port and then not Error then
@@ -1797,10 +1965,13 @@ package body Vhdl.Sem_Specs is
 
          --  Create the formal name.  This is a forward reference as the
          --  current design unit does not depend on the entity.
-         Name := Build_Simple_Name (Ent_El, Parent);
+         Name := Build_Simple_Name (Ent_El, Ent_El);
          Set_Is_Forward_Ref (Name, True);
-         Set_Type (Name, Get_Type (Ent_El));
          Set_Formal (Assoc, Name);
+
+         if Get_Kind (Ent_El) in Iir_Kinds_Interface_Object_Declaration then
+            Set_Type (Name, Get_Type (Ent_El));
+         end if;
 
          if Kind = Map_Port
            and then not Error
@@ -1901,8 +2072,8 @@ package body Vhdl.Sem_Specs is
       --     containing the design unit in which the component C is
       --     declared.
       if Flags.Flag_Syn_Binding
+        or Flags.Flag_Relaxed_Rules
         or Flags.Vhdl_Std >= Vhdl_02
-        or Flags.Vhdl_Std = Vhdl_93c
       then
          --  Find target library.
          Target_Lib := Comp;
@@ -1975,7 +2146,7 @@ package body Vhdl.Sem_Specs is
       --     containing the design unit in which the component C is
       --     declared.
       if Flags.Vhdl_Std >= Vhdl_02
-        or else Flags.Vhdl_Std = Vhdl_93c
+        or else Flags.Flag_Relaxed_Rules
       then
          Decl := Comp;
          while Get_Kind (Decl) /= Iir_Kind_Library_Declaration loop

@@ -18,6 +18,8 @@
 --  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
 --  MA 02110-1301, USA.
 
+with Ada.Unchecked_Deallocation;
+
 with Types; use Types;
 with Areapools; use Areapools;
 
@@ -25,122 +27,11 @@ with Grt.Files_Operations;
 
 with Netlists; use Netlists;
 
-with Vhdl.Nodes; use Vhdl.Nodes;
-
+with Synth.Objtypes; use Synth.Objtypes;
 with Synth.Environment; use Synth.Environment;
 with Synth.Source; use Synth.Source;
 
 package Synth.Values is
-   type Discrete_Range_Type is record
-      --  An integer range.
-      Dir : Iir_Direction;
-
-      --  Netlist representation: signed or unsigned, width of vector.
-      Is_Signed : Boolean;
-
-      Left : Int64;
-      Right : Int64;
-   end record;
-
-   --  Return the width of RNG.
-   function Discrete_Range_Width (Rng : Discrete_Range_Type) return Width;
-
-   type Float_Range_Type is record
-      Dir : Iir_Direction;
-      Left : Fp64;
-      Right : Fp64;
-   end record;
-
-   type Bound_Type is record
-      Dir : Iir_Direction;
-      Left : Int32;
-      Right : Int32;
-      Len : Width;
-
-      --  Width of bounds.  This is the precision used to compute the
-      --  address.
-      --  If bounds are 1 to 128 (so left = 1, dir = to, right = 128),
-      --  Wbounds = 8.
-      Wbounds : Width;
-   end record;
-
-   type Bound_Array_Type is array (Iir_Index32 range <>) of Bound_Type;
-
-   type Bound_Array (Len : Iir_Index32) is record
-      D : Bound_Array_Type (1 .. Len);
-   end record;
-
-   type Bound_Array_Acc is access Bound_Array;
-
-   type Type_Kind is
-     (
-      Type_Bit,
-      Type_Logic,
-      Type_Discrete,
-      Type_Float,
-      Type_Vector,
-      Type_Unbounded_Vector,
-
-      --  A slice is for a slice of vector with dynamic bounds.  So the bounds
-      --  of the result aren't known, but its width is.
-      Type_Slice,
-      Type_Array,
-      Type_Unbounded_Array,
-      Type_Record,
-
-      Type_Access,
-      Type_File
-     );
-
-   subtype Type_Nets is Type_Kind range Type_Bit .. Type_Logic;
-
-   type Type_Type (Kind : Type_Kind);
-   type Type_Acc is access Type_Type;
-
-   type Rec_El_Type is record
-      Off : Uns32;
-      Typ : Type_Acc;
-   end record;
-
-   type Rec_El_Array_Type is array (Iir_Index32 range <>) of Rec_El_Type;
-   type Rec_El_Array (Len : Iir_Index32) is record
-      E : Rec_El_Array_Type (1 .. Len);
-   end record;
-
-   type Rec_El_Array_Acc is access Rec_El_Array;
-
-   type Type_Type (Kind : Type_Kind) is record
-      W : Width;
-      case Kind is
-         when Type_Bit
-           | Type_Logic =>
-            null;
-         when Type_Discrete =>
-            Drange : Discrete_Range_Type;
-         when Type_Float =>
-            Frange : Float_Range_Type;
-         when Type_Vector =>
-            Vbound : Bound_Type;
-            Vec_El : Type_Acc;
-         when Type_Unbounded_Vector =>
-            Uvec_El : Type_Acc;
-         when Type_Slice =>
-            Slice_El : Type_Acc;
-         when Type_Array =>
-            Abounds : Bound_Array_Acc;
-            Arr_El : Type_Acc;
-         when Type_Unbounded_Array =>
-            Uarr_Ndim : Iir_Index32;
-            Uarr_El : Type_Acc;
-         when Type_Record =>
-            Rec : Rec_El_Array_Acc;
-         when Type_Access =>
-            Acc_Acc : Type_Acc;
-         when Type_File =>
-            File_Typ : Type_Acc;
-      end case;
-   end record;
-
    --  Values is how signals and variables are decomposed.  This is similar to
    --  values in simulation, but simplified (no need to handle files,
    --  accesses...)
@@ -154,24 +45,10 @@ package Synth.Values is
       --  into a net.
       Value_Wire,
 
-      --  A discrete value (integer or enumeration).
-      Value_Discrete,
+      --  Any kind of constant value, raw stored in memory.
+      Value_Memory,
 
-      Value_Float,
-
-      --  An array (const if all elements are constants).
-      Value_Array,
-      Value_Const_Array,
-
-      --  A record (const if all elements are constants).
-      Value_Record,
-      Value_Const_Record,
-
-      Value_Access,
       Value_File,
-
-      --  A package.
-      Value_Instance,
 
       --  A constant.  This is a named value.  One purpose is to avoid to
       --  create many times the same net for the same value.
@@ -179,26 +56,12 @@ package Synth.Values is
 
       --  An alias.  This is a reference to another value with a different
       --  (but compatible) type.
-      Value_Alias,
-
-      --  A subtype.  Contains only a type.
-      Value_Subtype
+      Value_Alias
      );
 
    type Value_Type (Kind : Value_Kind);
 
    type Value_Acc is access Value_Type;
-
-   type Value_Type_Array is array (Iir_Index32 range <>) of Value_Acc;
-
-   type Value_Array_Type (Len : Iir_Index32) is record
-      --  Values are from left to right.  So V(1) is at index 'Left.
-      V : Value_Type_Array (1 .. Len);
-   end record;
-
-   type Value_Array_Acc is access Value_Array_Type;
-
-   type Instance_Id is new Nat32;
 
    type Heap_Index is new Uns32;
    Null_Heap_Index : constant Heap_Index := 0;
@@ -206,77 +69,39 @@ package Synth.Values is
    subtype File_Index is Grt.Files_Operations.Ghdl_File_Index;
 
    type Value_Type (Kind : Value_Kind) is record
-      Typ : Type_Acc;
       case Kind is
          when Value_Net =>
             N : Net;
          when Value_Wire =>
             W : Wire_Id;
-         when Value_Discrete =>
-            Scal : Int64;
-         when Value_Float =>
-            Fp : Fp64;
-         when Value_Array
-           | Value_Const_Array =>
-            Arr : Value_Array_Acc;
-         when Value_Record
-           | Value_Const_Record =>
-            Rec : Value_Array_Acc;
-         when Value_Access =>
-            Acc : Heap_Index;
+         when Value_Memory =>
+            Mem : Memory_Ptr;
          when Value_File =>
             File : File_Index;
-         when Value_Instance =>
-            Instance : Instance_Id;
-         when Value_Subtype =>
-            null;
          when Value_Const =>
             C_Val : Value_Acc;
             C_Loc : Syn_Src;
             C_Net : Net;
          when Value_Alias =>
             A_Obj : Value_Acc;
-            A_Off : Uns32;
+            A_Typ : Type_Acc;  --  The type of A_Obj.
+            A_Off : Value_Offsets;
       end case;
    end record;
 
-   Global_Pool : aliased Areapool;
-   Expr_Pool : aliased Areapool;
+   --  A tuple of type and value.
+   type Valtyp is record
+      Typ : Type_Acc;
+      Val : Value_Acc;
+   end record;
 
-   --  Areapool used by Create_*_Value
-   Current_Pool : Areapool_Acc := Expr_Pool'Access;
+   No_Valtyp : constant Valtyp := (null, null);
 
-   --  Pool for objects allocated in the current instance.
-   Instance_Pool : Areapool_Acc;
+   type Valtyp_Array is array (Nat32 range <>) of Valtyp;
+   type Valtyp_Array_Acc is access Valtyp_Array;
 
-   --  Types.
-   function Create_Discrete_Type (Rng : Discrete_Range_Type; W : Width)
-                                 return Type_Acc;
-   function Create_Float_Type (Rng : Float_Range_Type) return Type_Acc;
-   function Create_Vec_Type_By_Length (Len : Width; El : Type_Acc)
-                                      return Type_Acc;
-   function Create_Vector_Type (Bnd : Bound_Type; El_Type : Type_Acc)
-                               return Type_Acc;
-   function Create_Unbounded_Vector (El_Type : Type_Acc) return Type_Acc;
-   function Create_Slice_Type (W : Width; El_Type : Type_Acc) return Type_Acc;
-   function Create_Bound_Array (Ndims : Iir_Index32) return Bound_Array_Acc;
-   function Create_Array_Type (Bnd : Bound_Array_Acc; El_Type : Type_Acc)
-                              return Type_Acc;
-   function Create_Unbounded_Array (Ndim : Iir_Index32; El_Type : Type_Acc)
-                                   return Type_Acc;
-   function Create_Rec_El_Array (Nels : Iir_Index32) return Rec_El_Array_Acc;
-
-   function Create_Record_Type (Els : Rec_El_Array_Acc; W : Width)
-                               return Type_Acc;
-
-   function Create_Access_Type (Acc_Type : Type_Acc) return Type_Acc;
-
-   function Create_File_Type (File_Type : Type_Acc) return Type_Acc;
-
-   --  Return the element of a vector/array/unbounded_array.
-   function Get_Array_Element (Arr_Type : Type_Acc) return Type_Acc;
-
-   function Is_Bounded_Type (Typ : Type_Acc) return Boolean;
+   procedure Free_Valtyp_Array is new Ada.Unchecked_Deallocation
+     (Valtyp_Array, Valtyp_Array_Acc);
 
    --  True if VAL is static, ie contains neither nets nor wires.
    function Is_Static (Val : Value_Acc) return Boolean;
@@ -284,77 +109,68 @@ package Synth.Values is
    --  Can also return true for nets and wires.
    function Is_Static_Val (Val : Value_Acc) return Boolean;
 
-   function Is_Equal (L, R : Value_Acc) return Boolean;
+   function Is_Equal (L, R : Valtyp) return Boolean;
+
+   function Create_Value_Memtyp (Mt : Memtyp) return Valtyp;
 
    --  Create a Value_Net.
-   function Create_Value_Net (N : Net; Ntype : Type_Acc) return Value_Acc;
+   function Create_Value_Net (N : Net; Ntype : Type_Acc) return Valtyp;
 
    --  Create a Value_Wire.  For a bit wire, RNG must be null.
-   function Create_Value_Wire (W : Wire_Id; Wtype : Type_Acc) return Value_Acc;
+   function Create_Value_Wire (W : Wire_Id; Wtype : Type_Acc) return Valtyp;
 
+   function Create_Value_Memory (Vtype : Type_Acc) return Valtyp;
+   function Create_Value_Memory (Mt : Memtyp) return Valtyp;
+
+   function Create_Value_Uns (Val : Uns64; Vtype : Type_Acc) return Valtyp;
+   function Create_Value_Int (Val : Int64; Vtype : Type_Acc) return Valtyp;
    function Create_Value_Discrete (Val : Int64; Vtype : Type_Acc)
-                                  return Value_Acc;
+                                  return Valtyp;
 
-   function Create_Value_Float (Val : Fp64; Vtype : Type_Acc) return Value_Acc;
+   function Create_Value_Access (Val : Heap_Index; Acc_Typ : Type_Acc)
+                                return Valtyp;
 
-   function Create_Value_Access (Vtype : Type_Acc; Acc : Heap_Index)
-                                return Value_Acc;
+   function Create_Value_Float (Val : Fp64; Vtype : Type_Acc) return Valtyp;
 
    function Create_Value_File (Vtype : Type_Acc; File : File_Index)
-                              return Value_Acc;
+                              return Valtyp;
 
-   function Create_Value_Subtype (Typ : Type_Acc) return Value_Acc;
+   function Create_Value_Alias
+     (Obj : Valtyp; Off : Value_Offsets; Typ : Type_Acc) return Valtyp;
 
-   function Create_Value_Array (Len : Iir_Index32) return Value_Array_Acc;
-
-   --  Create a Value_Array.
-   function Create_Value_Array (Bounds : Type_Acc; Arr : Value_Array_Acc)
-                               return Value_Acc;
-   function Create_Value_Const_Array (Bounds : Type_Acc; Arr : Value_Array_Acc)
-                                     return Value_Acc;
-
-   --  Like the previous one but automatically build the array.
-   function Create_Value_Array (Bounds : Type_Acc) return Value_Acc;
-
-   --  Allocate the ARR component of the Value_Type ARR, using BOUNDS.
-   procedure Create_Array_Data (Arr : Value_Acc);
-
-   function Create_Value_Record (Typ : Type_Acc; Els : Value_Array_Acc)
-                                return Value_Acc;
-   function Create_Value_Const_Record (Typ : Type_Acc; Els : Value_Array_Acc)
-                                      return Value_Acc;
-
-   function Create_Value_Instance (Inst : Instance_Id) return Value_Acc;
-
-   function Create_Value_Alias (Obj : Value_Acc; Off : Uns32; Typ : Type_Acc)
-                               return Value_Acc;
-   function Create_Value_Const (Val : Value_Acc; Loc : Syn_Src)
-                               return Value_Acc;
+   function Create_Value_Const (Val : Valtyp; Loc : Syn_Src)
+                               return Valtyp;
 
    --  If VAL is a const, replace it by its value.
-   procedure Strip_Const (Val : in out Value_Acc);
+   procedure Strip_Const (Vt : in out Valtyp);
 
-   function Unshare (Src : Value_Acc; Pool : Areapool_Acc)
-                    return Value_Acc;
+   --  If VAL is a const or an alias, replace it by its value.
+   --  Used to extract the real data of a static value.  Note that the type
+   --  is not correct anymore.
+   function Strip_Alias_Const (V : Valtyp) return Valtyp;
 
-   --  Get the number of indexes in array type TYP without counting
-   --  sub-elements.
-   function Get_Array_Flat_Length (Typ : Type_Acc) return Width;
+   --  Return the memtyp of V; also strip const and aliases.
+   function Get_Memtyp (V : Valtyp) return Memtyp;
 
-   --  Return length of dimension DIM of type T.
-   function Get_Bound_Length (T : Type_Acc; Dim : Iir_Index32) return Width;
-
-   function Is_Matching_Bounds (L, R : Type_Acc) return Boolean;
-
-   function Get_Type_Width (Atype : Type_Acc) return Width;
+   function Unshare (Src : Valtyp; Pool : Areapool_Acc) return Valtyp;
 
    --  Create a default initial value for TYP.
-   function Create_Value_Default (Typ : Type_Acc) return Value_Acc;
+   function Create_Value_Default (Typ : Type_Acc) return Valtyp;
+   procedure Write_Value_Default (M : Memory_Ptr; Typ : Type_Acc);
 
-   procedure Init;
+   --  Convert a value to a string.  The value must be a const_array of scalar,
+   --  which represent characters.
+   function Value_To_String (Val : Valtyp) return String;
 
-   --  Set by Init.
-   Boolean_Type : Type_Acc := null;
-   Logic_Type : Type_Acc := null;
-   Bit_Type : Type_Acc := null;
+   --  Memory access.
+   procedure Write_Discrete (Vt : Valtyp; Val : Int64);
+   function Read_Discrete (Vt : Valtyp) return Int64;
+
+   procedure Write_Access (Mem : Memory_Ptr; Val : Heap_Index);
+   function Read_Access (Mt : Memtyp) return Heap_Index;
+   function Read_Access (Vt : Valtyp) return Heap_Index;
+
+   function Read_Fp64 (Vt : Valtyp) return Fp64;
+
+   procedure Write_Value (Dest : Memory_Ptr; Vt : Valtyp);
 end Synth.Values;

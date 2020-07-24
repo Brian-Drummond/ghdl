@@ -44,18 +44,21 @@ is
    function To_Argv_Type is new Ada.Unchecked_Conversion
      (Source => System.Address, Target => Grt.Options.Argv_Type);
 
-   Default_Progname : constant String := "ghdl_design" & NUL;
+   Args : Grt.Options.Argv_Type := To_Argv_Type (Argv);
+   Progname : Ghdl_C_String := null;
 begin
-   --  Set program name.
-   if Argc > 0 then
-      Grt.Options.Progname := To_Argv_Type (Argv)(0);
-   else
-      Grt.Options.Progname := To_Ghdl_C_String (Default_Progname'Address);
-   end if;
-   Grt.Options.Argc := Argc;
-   Grt.Options.Argv := To_Argv_Type (Argv);
-
+   --  Ada elaboration.
    Grt_Init;
+
+   --  Set the options.
+   if not (Argc = 0 and Args = null) then
+     Progname := Args (0);
+   end if;
+   Grt.Main.Run_Options (Progname, Argc, Args);
+
+   --  Initialize, elaborate and simulate.
    Grt.Main.Run;
+
+   --  Return the status.
    return Grt.Errors.Exit_Status;
 end Ghdl_Main;

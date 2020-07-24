@@ -23,7 +23,7 @@
 --  however invalidate any other reasons why the executable file might be
 --  covered by the GNU Public License.
 with Grt.Types; use Grt.Types;
-with Grt.Lib; use Grt.Lib;
+with Grt.Severity;
 
 package Grt.Options is
    pragma Preelaborate (Grt.Options);
@@ -119,8 +119,12 @@ package Grt.Options is
    --  Set by --checks to do internal checks.
    Checks : Boolean := False;
 
+   --  For --assert-level
    --  Level at which an assert stop the simulation.
-   Severity_Level : Integer := Failure_Severity;
+   Severity_Level : Integer := Grt.Severity.Failure_Severity;
+
+   --  Level at which an assert displays a backtrace.
+   Backtrace_Severity : Integer := Grt.Severity.None_Severity;
 
    --  How assertions are handled.
    type Assert_Handling is
@@ -130,6 +134,9 @@ package Grt.Options is
 
    --  Handling of assertions from IEEE library.
    Ieee_Asserts : Assert_Handling := Enable_Asserts;
+
+   --  Handling of assertions (except from IEEE library).
+   Asserts_Policy : Assert_Handling := Enable_Asserts;
 
    --  Set by --stop-delta=XXX to stop the simulation after XXX delta cycles.
    Stop_Delta : Natural := 5000;
@@ -156,6 +163,9 @@ package Grt.Options is
    -- If true, writes are made without buffering on a file opened in write_mode
    -- or append_mode (TEXTIO)
    Unbuffered_Writes : Boolean := False;
+
+   --  Set maximum dynamic stack allocation.
+   Max_Stack_Allocation : Ghdl_Index_Type := 128 * 1024;
 
    --  Helper: extract time from STR (a number followed by a unit, without
    --  spaces; the number is optionnal).  In case of error, display an error

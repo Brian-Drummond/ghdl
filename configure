@@ -23,7 +23,7 @@
 # place.
 # Note the absence of spaces and the quotes.
 # Suffix "-dev" is used during development.
-ghdl_version="0.37-dev"
+ghdl_version="1.0-dev"
 
 backend=mcode
 CC=${CC:-gcc}
@@ -38,14 +38,14 @@ libdirreverse=../..
 gcc_src_dir=
 llvm_config=
 backtrace_lib=
-llvm_be=llvm
+llvm_be=llvm6
 build=
 build_mode=
 enable_werror=true
 enable_checks=true
 enable_openieee=unknown
 enable_libghdl=true
-enable_synth=false
+enable_synth=true
 default_pic=false
 EXEEXT=
 SOEXT=.so
@@ -129,7 +129,7 @@ Options [defaults in brackets]:
   --prefix=PREFIX             install in PREFIX [$prefix]
   --srcdir=SRCDIR             source code path [$srcdir]
   --with-gcc=DIR              use gcc backend from DIR
-  --with-llvm-config=PATH     use llvm from PATH (needs llvm 3.5 - 3.9)
+  --with-llvm-config[=LLVM-CONFIG]  use llvm backend [llvm-config]
   --with-backtrace-lib=LIB.a  link with libbacktrace LIB.a to display a
                               backtrace on errors (only for llvm).
   --disable-werror            warnings don't stop build
@@ -137,7 +137,7 @@ Options [defaults in brackets]:
   --disable-libghdl           do not build libghdl shared library
   --enable-openieee           use gpl-compatible sources for ieee library
   --enable-libghdl            also build the libghdl shared library
-  --enable-synth              build with synthesis feature
+  --disable-synth             do not build with synthesis feature
 EOF
   exit 0
 fi
@@ -225,8 +225,7 @@ echo "Build machine is: $build"
 
 # For mcode, check that gcc emits i386
 if test $backend = mcode; then
-  gcc_machine=`$CC $CFLAGS -dumpmachine`
-  case "$gcc_machine" in
+  case "$build" in
     i[3-6]86*) mcode64="" ;;
     x86_64*) mcode64="64" ;;
     *)
@@ -255,30 +254,30 @@ fi
 
 # For llvm backend, check llvm-config
 if test $backend = llvm; then
-  llvm_version=`"$llvm_config" --version 2>/dev/null`
+  # No quotes for llvm_config, so that options (like --link-static) can be
+  # added.  As a consequence, spaces in --with-llvm-config= are not allowed
+  # for the path.
+  llvm_version=`$llvm_config --version 2>/dev/null`
   if [ $? != 0 ]; then
     echo "cannot run $llvm_config"
     exit 1
   fi
-  if check_version 3.5 $llvm_version; then
-    llvm_be=llvm35
-  elif check_version 3.6 $llvm_version ||
-       check_version 3.7 $llvm_version ||
-       check_version 3.8 $llvm_version ||
+  if   check_version  3.5 $llvm_version ||
+       check_version  3.6 $llvm_version ||
+       check_version  3.7 $llvm_version ||
+       check_version  3.8 $llvm_version ||
+       check_version  3.9 $llvm_version ||
+       check_version  4.0 $llvm_version ||
+       check_version  5.0 $llvm_version ||
        false; then
     echo "Debugging is not enabled with llvm $llvm_version"
-    llvm_be=llvm-nodebug
-    # Tested with llvm 3.5, so assume 3.6, 3.7 and 3.8
-  elif check_version 3.9 $llvm_version ||
-       check_version 4.0 $llvm_version ||
-       check_version 5.0 $llvm_version ||
-       check_version 6.0 $llvm_version ||
-       check_version 7.0 $llvm_version ||
-       check_version 8.0 $llvm_version ||
-       check_version 9.0 $llvm_version ||
+  elif check_version  6.0 $llvm_version ||
+       check_version  7.0 $llvm_version ||
+       check_version  8.0 $llvm_version ||
+       check_version  9.0 $llvm_version ||
+       check_version 10.0 $llvm_version ||
        false; then
     echo "Debugging is not enabled with llvm $llvm_version"
-    llvm_be=llvm4-nodebug
   else
     echo "Unhandled version llvm $llvm_version"
     exit 1

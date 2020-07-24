@@ -18,12 +18,17 @@
 --  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
 --  MA 02110-1301, USA.
 
-with Synth.Environment; use Synth.Environment;
-with Synth.Values; use Synth.Values;
-with Vhdl.Annotations; use Vhdl.Annotations;
+with Types; use Types;
+
 with Netlists; use Netlists;
-with Netlists.Builders;
+with Netlists.Builders; use Netlists.Builders;
+
+with Vhdl.Annotations; use Vhdl.Annotations;
 with Vhdl.Nodes; use Vhdl.Nodes;
+
+with Synth.Environment; use Synth.Environment;
+with Synth.Objtypes; use Synth.Objtypes;
+with Synth.Values; use Synth.Values;
 
 package Synth.Context is
    --  Values are stored into Synth_Instance, which is parallel to simulation
@@ -31,9 +36,6 @@ package Synth.Context is
 
    type Synth_Instance_Type (<>) is limited private;
    type Synth_Instance_Acc is access Synth_Instance_Type;
-
-   --  Global context.
-   Build_Context : Netlists.Builders.Context_Acc;
 
    function Get_Instance_By_Scope
      (Syn_Inst: Synth_Instance_Acc; Scope: Sim_Info_Acc)
@@ -50,25 +52,29 @@ package Synth.Context is
                            Blk : Node;
                            Name : Sname := No_Sname)
                           return Synth_Instance_Acc;
+
+   --  Only useful for subprograms: set the base (which can be different from
+   --  the parent).  Ideally it should be part of Make_Instance, but in most
+   --  cases they are the same (except sometimes for subprograms).
+   procedure Set_Instance_Base (Inst : Synth_Instance_Acc;
+                                Base : Synth_Instance_Acc);
    procedure Free_Instance (Synth_Inst : in out Synth_Instance_Acc);
+
+   function Is_Error (Inst : Synth_Instance_Acc) return Boolean;
+   pragma Inline (Is_Error);
+
+   procedure Set_Error (Inst : Synth_Instance_Acc);
 
    function Get_Sname (Inst : Synth_Instance_Acc) return Sname;
    pragma Inline (Get_Sname);
 
-   function Get_Build (Inst : Synth_Instance_Acc)
-                      return Netlists.Builders.Context_Acc;
+   function Get_Build (Inst : Synth_Instance_Acc) return Context_Acc;
    pragma Inline (Get_Build);
 
    function Get_Top_Module (Inst : Synth_Instance_Acc) return Module;
 
    function Get_Instance_Module (Inst : Synth_Instance_Acc) return Module;
    pragma Inline (Get_Instance_Module);
-
-   --  Each base instance creates bit0 and bit1, which are used for control
-   --  flow.
-   function Get_Inst_Bit0 (Inst : Synth_Instance_Acc) return Net;
-   function Get_Inst_Bit1 (Inst : Synth_Instance_Acc) return Net;
-   pragma Inline (Get_Inst_Bit0, Get_Inst_Bit1);
 
    --  Start the definition of module M (using INST).
    procedure Set_Instance_Module (Inst : Synth_Instance_Acc; M : Module);
@@ -80,15 +86,20 @@ package Synth.Context is
    function Get_Source_Scope (Inst : Synth_Instance_Acc) return Node;
 
    procedure Create_Object
-     (Syn_Inst : Synth_Instance_Acc; Decl : Node; Val : Value_Acc);
+     (Syn_Inst : Synth_Instance_Acc; Decl : Node; Vt : Valtyp);
 
-   procedure Create_Package_Object
-     (Syn_Inst : Synth_Instance_Acc; Decl : Node; Val : Value_Acc);
+   procedure Create_Package_Object (Syn_Inst : Synth_Instance_Acc;
+                                    Decl : Node;
+                                    Inst : Synth_Instance_Acc;
+                                    Is_Global : Boolean);
+
+   procedure Create_Subtype_Object
+     (Syn_Inst : Synth_Instance_Acc; Decl : Node; Typ : Type_Acc);
 
    --  Force the value of DECL, without checking for elaboration order.
    --  It is for deferred constants.
    procedure Create_Object_Force
-     (Syn_Inst : Synth_Instance_Acc; Decl : Node; Val : Value_Acc);
+     (Syn_Inst : Synth_Instance_Acc; Decl : Node; Vt : Valtyp);
 
    procedure Destroy_Object
      (Syn_Inst : Synth_Instance_Acc; Decl : Node);
@@ -101,31 +112,56 @@ package Synth.Context is
 
    --  Get the value of OBJ.
    function Get_Value (Syn_Inst : Synth_Instance_Acc; Obj : Node)
-                      return Value_Acc;
-   --  Wrapper around Get_Value for types.
-   function Get_Value_Type (Syn_Inst : Synth_Instance_Acc; Atype : Node)
-                           return Type_Acc;
+                      return Valtyp;
 
    --  Get a net from a scalar/vector value.  This will automatically create
    --  a net for literals.
-   function Get_Net (Val : Value_Acc) return Net;
-
-   function Create_Value_Instance (Inst : Synth_Instance_Acc)
-                                  return Value_Acc;
-   function Get_Value_Instance (Inst : Instance_Id) return Synth_Instance_Acc;
+   function Get_Net (Ctxt : Context_Acc; Val : Valtyp) return Net;
+   function Get_Partial_Memtyp_Net
+     (Ctxt : Context_Acc; Val : Memtyp; Off : Uns32; Wd : Width) return Net;
+   function Get_Memtyp_Net (Ctxt : Context_Acc; Val : Memtyp) return Net;
 
    function Get_Package_Object
-     (Syn_Inst : Synth_Instance_Acc; Pkg : Node) return Value_Acc;
+     (Syn_Inst : Synth_Instance_Acc; Pkg : Node) return Synth_Instance_Acc;
+
+   --  Return the type for DECL (a subtype indication).
+   function Get_Subtype_Object
+     (Syn_Inst : Synth_Instance_Acc; Decl : Node) return Type_Acc;
+
+   --  Return the scope of the parent of BLK.  Deals with architecture bodies.
+   function Get_Parent_Scope (Blk : Node) return Sim_Info_Acc;
+
+   procedure Set_Uninstantiated_Scope
+     (Syn_Inst : Synth_Instance_Acc; Bod : Node);
 private
-   type Objects_Array is array (Object_Slot_Type range <>) of Value_Acc;
+   type Obj_Kind is
+     (
+      Obj_None,
+      Obj_Object,
+      Obj_Subtype,
+      Obj_Instance
+     );
+
+   type Obj_Type (Kind : Obj_Kind := Obj_None) is record
+      case Kind is
+         when Obj_None =>
+            null;
+         when Obj_Object =>
+            Obj : Valtyp;
+         when Obj_Subtype =>
+            T_Typ : Type_Acc;
+         when Obj_Instance =>
+            I_Inst : Synth_Instance_Acc;
+      end case;
+   end record;
+
+   type Objects_Array is array (Object_Slot_Type range <>) of Obj_Type;
 
    type Base_Instance_Type is limited record
-      Builder : Netlists.Builders.Context_Acc;
+      Builder : Context_Acc;
       Top_Module : Module;
 
       Cur_Module : Module;
-      Bit0 : Net;
-      Bit1 : Net;
    end record;
 
    type Base_Instance_Acc is access Base_Instance_Type;
@@ -133,13 +169,25 @@ private
    type Synth_Instance_Type (Max_Objs : Object_Slot_Type) is limited record
       Is_Const : Boolean;
 
+      --  True if a fatal error has been detected that aborts the synthesis
+      --  of this instance.
+      Is_Error : Boolean;
+
       Base : Base_Instance_Acc;
 
       --  Name prefix for declarations.
       Name : Sname;
 
-      --  The corresponding info for this instance.  This is used for lookup.
+      --  The corresponding info for this instance.
+      --  This is used for lookup.
       Block_Scope : Sim_Info_Acc;
+
+      --  The corresponding info the the uninstantiated specification of
+      --  an instantiated package.  When an object is looked for from the
+      --  uninstantiated body, the scope of the uninstantiated specification
+      --  is used.  And it is different from Block_Scope.
+      --  This is used for lookup of uninstantiated specification.
+      Uninst_Scope : Sim_Info_Acc;
 
       --  Instance of the parent scope.
       Up_Block : Synth_Instance_Acc;

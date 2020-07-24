@@ -1262,18 +1262,20 @@ package body Vhdl.Scanner is
    end Scan_Psl_Keyword_Em_Un;
    pragma Inline (Scan_Psl_Keyword_Em_Un);
 
-   procedure Identifier_To_Token is
+   procedure Identifier_To_Token
+   is
+      use Std_Names;
    begin
-      if Current_Identifier in Std_Names.Name_Id_Keywords then
+      if Current_Identifier in Name_Id_Keywords then
          -- LRM93 13.9
          --   The identifiers listed below are called reserved words and are
          --   reserved for signifiances in the language.
          -- IN: this is also achieved in packages std_names and tokens.
          Current_Token := Token_Type'Val
            (Token_Type'Pos (Tok_First_Keyword)
-              + Current_Identifier - Std_Names.Name_First_Keyword);
+              + Current_Identifier - Name_First_Keyword);
          case Current_Identifier is
-            when Std_Names.Name_Id_AMS_Reserved_Words =>
+            when Name_Id_AMS_Reserved_Words =>
                if not AMS_Vhdl then
                   if Is_Warning_Enabled (Warnid_Reserved_Word) then
                      Warning_Msg_Scan
@@ -1283,30 +1285,38 @@ package body Vhdl.Scanner is
                   end if;
                   Current_Token := Tok_Identifier;
                end if;
-            when Std_Names.Name_Id_Vhdl08_Reserved_Words =>
+            when Name_Id_Vhdl08_Reserved_Words =>
                if Vhdl_Std < Vhdl_08 then
                   --  Some vhdl08 reserved words are PSL keywords.
                   if Flag_Psl then
                      case Current_Identifier is
-                        when Std_Names.Name_Sequence =>
+                        when Name_Prev =>
+                           Current_Token := Tok_Prev;
+                        when Name_Stable =>
+                           Current_Token := Tok_Stable;
+                        when Name_Rose =>
+                           Current_Token := Tok_Rose;
+                        when Name_Fell =>
+                           Current_Token := Tok_Fell;
+                        when Name_Sequence =>
                            Current_Token := Tok_Sequence;
-                        when Std_Names.Name_Property =>
+                        when Name_Property =>
                            Current_Token := Tok_Property;
-                        when Std_Names.Name_Assume =>
+                        when Name_Assume =>
                            Current_Token := Tok_Assume;
-                        when Std_Names.Name_Cover =>
+                        when Name_Cover =>
                            Current_Token := Tok_Cover;
-                        when Std_Names.Name_Default =>
+                        when Name_Default =>
                            Current_Token := Tok_Default;
-                        when Std_Names.Name_Restrict =>
+                        when Name_Restrict =>
                            Current_Token := Tok_Restrict;
-                        when Std_Names.Name_Restrict_Guarantee =>
+                        when Name_Restrict_Guarantee =>
                            Current_Token := Tok_Restrict_Guarantee;
-                        when Std_Names.Name_Vmode =>
+                        when Name_Vmode =>
                            Current_Token := Tok_Vmode;
-                        when Std_Names.Name_Vprop =>
+                        when Name_Vprop =>
                            Current_Token := Tok_Vprop;
-                        when Std_Names.Name_Vunit =>
+                        when Name_Vunit =>
                            Current_Token := Tok_Vunit;
                         when others =>
                            Current_Token := Tok_Identifier;
@@ -1323,7 +1333,7 @@ package body Vhdl.Scanner is
                         +Current_Identifier);
                   end if;
                end if;
-            when Std_Names.Name_Id_Vhdl00_Reserved_Words =>
+            when Name_Id_Vhdl00_Reserved_Words =>
                if Vhdl_Std < Vhdl_00 then
                   if Is_Warning_Enabled (Warnid_Reserved_Word) then
                      Warning_Msg_Scan
@@ -1333,7 +1343,7 @@ package body Vhdl.Scanner is
                   end if;
                   Current_Token := Tok_Identifier;
                end if;
-            when Std_Names.Name_Id_Vhdl93_Reserved_Words =>
+            when Name_Id_Vhdl93_Reserved_Words =>
                if Vhdl_Std = Vhdl_87 then
                   if Is_Warning_Enabled (Warnid_Reserved_Word) then
                      Report_Start_Group;
@@ -1348,7 +1358,7 @@ package body Vhdl.Scanner is
                   end if;
                   Current_Token := Tok_Identifier;
                end if;
-            when Std_Names.Name_Id_Vhdl87_Reserved_Words =>
+            when Name_Id_Vhdl87_Reserved_Words =>
                if Flag_Psl then
                   if Current_Token = Tok_Until then
                      Scan_Psl_Keyword_Em_Un (Tok_Until, Tok_Until_Em,
@@ -1362,59 +1372,67 @@ package body Vhdl.Scanner is
          end case;
       elsif Flag_Psl then
          case Current_Identifier is
-            when Std_Names.Name_Clock =>
+            when Name_Prev =>
+               Current_Token := Tok_Prev;
+            when Name_Stable =>
+               Current_Token := Tok_Stable;
+            when Name_Rose =>
+               Current_Token := Tok_Rose;
+            when Name_Fell =>
+               Current_Token := Tok_Fell;
+            when Name_Clock =>
                Current_Token := Tok_Psl_Clock;
-            when Std_Names.Name_Const =>
+            when Name_Const =>
                Current_Token := Tok_Psl_Const;
-            when Std_Names.Name_Boolean =>
+            when Name_Boolean =>
                Current_Token := Tok_Psl_Boolean;
-            when Std_Names.Name_Sequence =>
+            when Name_Sequence =>
                Current_Token := Tok_Sequence;
-            when Std_Names.Name_Property =>
+            when Name_Property =>
                Current_Token := Tok_Property;
-            when Std_Names.Name_Endpoint =>
+            when Name_Endpoint =>
                Current_Token := Tok_Psl_Endpoint;
-            when Std_Names.Name_Assume =>
+            when Name_Assume =>
                Current_Token := Tok_Assume;
-            when Std_Names.Name_Cover =>
+            when Name_Cover =>
                Current_Token := Tok_Cover;
-            when Std_Names.Name_Default =>
+            when Name_Default =>
                Current_Token := Tok_Default;
-            when Std_Names.Name_Restrict =>
+            when Name_Restrict =>
                Current_Token := Tok_Restrict;
-            when Std_Names.Name_Restrict_Guarantee =>
+            when Name_Restrict_Guarantee =>
                Current_Token := Tok_Restrict_Guarantee;
-            when Std_Names.Name_Inf =>
+            when Name_Inf =>
                Current_Token := Tok_Inf;
-            when Std_Names.Name_Within =>
+            when Name_Within =>
                Current_Token := Tok_Within;
-            when Std_Names.Name_Abort =>
+            when Name_Abort =>
                Current_Token := Tok_Abort;
-            when Std_Names.Name_Before =>
+            when Name_Before =>
                Scan_Psl_Keyword_Em_Un (Tok_Before, Tok_Before_Em,
                                        Tok_Before_Un, Tok_Before_Em_Un);
-            when Std_Names.Name_Always =>
+            when Name_Always =>
                Current_Token := Tok_Always;
-            when Std_Names.Name_Never =>
+            when Name_Never =>
                Current_Token := Tok_Never;
-            when Std_Names.Name_Eventually =>
+            when Name_Eventually =>
                if Source (Pos) = '!' then
                   Pos := Pos + 1;
                else
                   Error_Msg_Scan ("'!' expected after 'eventually'");
                end if;
                Current_Token := Tok_Eventually_Em;
-            when Std_Names.Name_Next_A =>
+            when Name_Next_A =>
                Scan_Psl_Keyword_Em (Tok_Next_A, Tok_Next_A_Em);
-            when Std_Names.Name_Next_E =>
+            when Name_Next_E =>
                Scan_Psl_Keyword_Em (Tok_Next_E, Tok_Next_E_Em);
-            when Std_Names.Name_Next_Event =>
+            when Name_Next_Event =>
                Scan_Psl_Keyword_Em (Tok_Next_Event, Tok_Next_Event_Em);
-            when Std_Names.Name_Next_Event_A =>
+            when Name_Next_Event_A =>
                Scan_Psl_Keyword_Em (Tok_Next_Event_A, Tok_Next_Event_A_Em);
-            when Std_Names.Name_Next_Event_E =>
+            when Name_Next_Event_E =>
                Scan_Psl_Keyword_Em (Tok_Next_Event_E, Tok_Next_Event_E_Em);
-            when Std_Names.Name_Until =>
+            when Name_Until =>
                raise Internal_Error;
             when others =>
                Current_Token := Tok_Identifier;
@@ -1537,6 +1555,8 @@ package body Vhdl.Scanner is
 
    procedure Convert_Identifier (Str : in out String; Err : out Boolean)
    is
+      F : constant Integer := Str'First;
+
       procedure Error_Bad is
       begin
          Error_Msg_Option ("bad character in identifier");
@@ -1548,41 +1568,39 @@ package body Vhdl.Scanner is
       end Error_8bit;
 
       C : Character;
-      subtype Id_Subtype is String (1 .. Str'Length);
-      Id : Id_Subtype renames Str;
    begin
       Err := True;
 
-      if Id'Length = 0 then
+      if Str'Length = 0 then
          Error_Msg_Option ("identifier required");
          return;
       end if;
 
-      if Id (1) = '\' then
+      if Str (F) = '\' then
          --  Extended identifier.
          if Vhdl_Std = Vhdl_87 then
             Error_Msg_Option ("extended identifiers not allowed in vhdl87");
             return;
          end if;
 
-         if Id'Length < 3 then
+         if Str'Last < F + 2 then
             Error_Msg_Option ("extended identifier is too short");
             return;
          end if;
-         if Id (Id'Last) /= '\' then
+         if Str (Str'Last) /= '\' then
             Error_Msg_Option ("extended identifier must finish with a '\'");
             return;
          end if;
-         for I in 2 .. Id'Last - 1 loop
-            C := Id (I);
+         for I in F + 1 .. Str'Last - 1 loop
+            C := Str (I);
             case Characters_Kind (C) is
                when Format_Effector =>
                   Error_Msg_Option ("format effector in extended identifier");
                   return;
                when Graphic_Character =>
                   if C = '\' then
-                     if Id (I + 1) /= '\'
-                       or else I = Id'Last - 1
+                     if Str (I + 1) /= '\'
+                       or else I = Str'Last - 1
                      then
                         Error_Msg_Option ("anti-slash must be doubled "
                                             & "in extended identifier");
@@ -1596,15 +1614,15 @@ package body Vhdl.Scanner is
          end loop;
       else
          --  Identifier
-         for I in 1 .. Id'Length loop
-            C := Id (I);
+         for I in F .. Str'Last loop
+            C := Str (I);
             case Characters_Kind (C) is
                when Upper_Case_Letter =>
                   if Vhdl_Std = Vhdl_87 and C > 'Z' then
                      Error_8bit;
                      return;
                   end if;
-                  Id (I) := To_Lower_Map (C);
+                  Str (I) := To_Lower_Map (C);
                when Lower_Case_Letter | Digit =>
                   if Vhdl_Std = Vhdl_87 and C > 'z' then
                      Error_8bit;
@@ -1618,12 +1636,12 @@ package body Vhdl.Scanner is
                           ("an identifier cannot start with an underscore");
                         return;
                      end if;
-                     if Id (I - 1) = '_' then
+                     if Str (I - 1) = '_' then
                         Error_Msg_Option
                           ("two underscores can't be consecutive");
                         return;
                      end if;
-                     if I = Id'Last then
+                     if I = Str'Last then
                         Error_Msg_Option
                           ("an identifier cannot finish with an underscore");
                         return;
@@ -1684,16 +1702,29 @@ package body Vhdl.Scanner is
       Id := Null_Identifier;
       Skip_Spaces;
 
-      --  The identifier shall start with a lower case letter.
-      if Source (Pos) not in 'a' .. 'z' then
-         return;
-      end if;
+      --  The identifier shall start with a letter.
+      case Source (Pos) is
+         when 'a' .. 'z'
+            | 'A' .. 'Z' =>
+            null;
+         when others =>
+            return;
+      end case;
 
-      --  Scan the identifier (in lower cases).
+      --  Scan the identifier.
       Len := 0;
       loop
          C := Source (Pos);
-         exit when C not in 'a' .. 'z' and C /= '_';
+         case C is
+            when 'a' .. 'z' =>
+               null;
+            when 'A' .. 'Z' =>
+               C := Character'Val (Character'Pos (C) + 32);
+            when '_' =>
+               null;
+            when others =>
+               exit;
+         end case;
          Len := Len + 1;
          Buffer (Len) := C;
          Pos := Pos + 1;
@@ -1777,6 +1808,11 @@ package body Vhdl.Scanner is
 
    procedure Scan_Translate_Off is
    begin
+      if Current_Context.Translate_Off then
+         Warning_Msg_Scan (Warnid_Pragma, "nested 'translate_off' ignored");
+         return;
+      end if;
+
       --  'pragma translate_off' has just been scanned.
       Scan_Translate_On_Off (Std_Names.Name_Translate_Off);
 
@@ -1804,6 +1840,13 @@ package body Vhdl.Scanner is
 
    procedure Scan_Translate_On is
    begin
+      if not Current_Context.Translate_Off then
+         Warning_Msg_Scan
+           (Warnid_Pragma,
+            "'translate_on' without coresponding 'translate_off'");
+         return;
+      end if;
+
       --  'pragma translate_off' has just been scanned.
       Scan_Translate_On_Off (Std_Names.Name_Translate_On);
 
@@ -1812,6 +1855,48 @@ package body Vhdl.Scanner is
       --  Return a token that will be discarded.
       Flag_Comment := True;
    end Scan_Translate_On;
+
+   procedure Scan_Comment_Pragma
+   is
+      use Std_Names;
+      Id : Name_Id;
+   begin
+      Scan_Comment_Identifier (Id, True);
+      case Id is
+         when Null_Identifier =>
+            Warning_Msg_Scan
+              (Warnid_Pragma, "incomplete pragma directive ignored");
+         when Name_Translate =>
+            Scan_Comment_Identifier (Id, True);
+            case Id is
+               when Name_On =>
+                  Scan_Translate_On;
+               when Name_Off =>
+                  Scan_Translate_Off;
+               when others =>
+                  Warning_Msg_Scan
+                    (Warnid_Pragma,
+                     "pragma translate must be followed by 'on' or 'off'");
+            end case;
+         when Name_Translate_Off
+           |  Name_Synthesis_Off =>
+            Scan_Translate_Off;
+         when Name_Translate_On
+           |  Name_Synthesis_On =>
+            Scan_Translate_On;
+         when Name_Label
+           |  Name_Label_Applies_To
+           |  Name_Return_Port_Name
+           |  Name_Map_To_Operator
+           |  Name_Type_Function
+           |  Name_Built_In =>
+            --  Used by synopsys, discarded.
+            Skip_Until_EOL;
+         when others =>
+            Warning_Msg_Scan
+              (Warnid_Pragma, "unknown pragma %i ignored", +Id);
+      end case;
+   end Scan_Comment_Pragma;
 
    --  Scan tokens within a comment.  Return TRUE if Current_Token was set,
    --  return FALSE to discard the comment (ie treat it like a real comment).
@@ -1838,38 +1923,7 @@ package body Vhdl.Scanner is
            | Name_Synthesis
            | Name_Synopsys =>
             if Flag_Pragma_Comment then
-               Scan_Comment_Identifier (Id, True);
-               case Id is
-                  when Null_Identifier =>
-                     Warning_Msg_Scan
-                       (Warnid_Pragma, "incomplete pragma directive ignored");
-                  when Name_Translate_Off =>
-                     if Current_Context.Translate_Off then
-                        Warning_Msg_Scan
-                          (Warnid_Pragma, "nested 'translate_off' ignored");
-                     else
-                        Scan_Translate_Off;
-                     end if;
-                  when Name_Translate_On =>
-                     if Current_Context.Translate_Off then
-                        Scan_Translate_On;
-                     else
-                        Warning_Msg_Scan
-                          (Warnid_Pragma, "'translate_on' without "
-                             & "coresponding 'translate_off'");
-                     end if;
-                  when Name_Label
-                    | Name_Label_Applies_To
-                    | Name_Return_Port_Name
-                    | Name_Map_To_Operator
-                    | Name_Type_Function
-                    | Name_Built_In =>
-                     --  Used by synopsys, discarded.
-                     Skip_Until_EOL;
-                  when others =>
-                     Warning_Msg_Scan
-                       (Warnid_Pragma, "unknown pragma %i ignored", +Id);
-               end case;
+               Scan_Comment_Pragma;
                return False;
             end if;
          when others =>
@@ -2015,7 +2069,9 @@ package body Vhdl.Scanner is
                   --  A comment [...] may contain any character except the
                   --  format effectors vertical tab, carriage return, line
                   --  feed and form feed.
-                  if not (Flags.Mb_Comment or Vhdl_Std >= Vhdl_02)
+                  if not (Flags.Mb_Comment
+                          or Flags.Flag_Relaxed_Rules
+                          or Vhdl_Std >= Vhdl_02)
                     and then Characters_Kind (Source (Pos)) = Invalid
                   then
                      Error_Msg_Scan ("invalid character, even in a comment");
@@ -2214,6 +2270,14 @@ package body Vhdl.Scanner is
                when '<' =>
                   Current_Token := Tok_Double_Less;
                   Pos := Pos + 2;
+               when '-' =>
+                  if Flag_Psl and then Source (Pos + 2) = '>' then
+                     Current_Token := Tok_Equiv_Arrow;
+                     Pos := Pos + 3;
+                  else
+                     Current_Token := Tok_Less;
+                     Pos := Pos + 1;
+                  end if;
                when others =>
                   Current_Token := Tok_Less;
                   Pos := Pos + 1;
@@ -2274,6 +2338,12 @@ package body Vhdl.Scanner is
                Current_Context.Identifier :=
                  Name_Table.Get_Identifier (Source (Pos + 1));
                Pos := Pos + 3;
+               return;
+            elsif Source (Pos + 1) = ''' then
+               Error_Msg_Scan ("empty quote is not allowed in vhdl");
+               Current_Token := Tok_Character;
+               Current_Context.Identifier := Name_Table.Get_Identifier (' ');
+               Pos := Pos + 2;
                return;
             else
                Current_Token := Tok_Tick;
@@ -2378,21 +2448,11 @@ package body Vhdl.Scanner is
             Pos := Pos + 1;
             return;
          when '{' =>
-            if Flag_Psl then
-               Current_Token := Tok_Left_Curly;
-            else
-               Error_Msg_Scan ("'{' is an invalid character, replaced by '('");
-               Current_Token := Tok_Left_Paren;
-            end if;
+            Current_Token := Tok_Left_Curly;
             Pos := Pos + 1;
             return;
          when '}' =>
-            if Flag_Psl then
-               Current_Token := Tok_Right_Curly;
-            else
-               Error_Msg_Scan ("'}' is an invalid character, replaced by ')'");
-               Current_Token := Tok_Right_Paren;
-            end if;
+            Current_Token := Tok_Right_Curly;
             Pos := Pos + 1;
             return;
          when '\' =>

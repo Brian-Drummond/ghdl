@@ -38,6 +38,7 @@ package Grt.Vpi is
    vpiSize :          constant Integer :=  4;
    vpiFile :          constant Integer :=  5;
    vpiLineNo :        constant Integer :=  6;
+   vpiConstant :      constant Integer :=  7;
 
    vpiDefName :       constant Integer :=  9;
    vpiTimePrecision : constant Integer := 12;
@@ -155,7 +156,8 @@ package Grt.Vpi is
             Scalar : Integer;
          when vpiIntVal =>
             Integer_m : Integer;
-            --when vpiRealVal=>     null; -- what is the equivalent to double?
+         when vpiRealVal=>
+            Real_M : Ghdl_F64;
             --when vpiTimeVal=>     mTime:     p_vpi_time;
             --when vpiVectorVal=>   mVector:   p_vpi_vecval;
             --when vpiStrengthVal=> mStrength: p_vpi_strengthval;
@@ -333,6 +335,8 @@ private
             Cb_Prev, Cb_Next : vpiHandle;
             Cb_Wire : Grt.Vcd.Verilog_Wire_Info;
             Cb_Handle : Callbacks.Callback_Handle;
+            --  Number of reference to the handler by the simulation kernel.
+            Cb_Refcnt : Natural;
          when others =>
             Ref : VhpiHandleT;
       end case;

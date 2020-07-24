@@ -374,7 +374,8 @@ package body Simul.Simulation.Main is
       use PSL.Nodes;
    begin
       case Get_Kind (Expr) is
-         when N_HDL_Expr =>
+         when N_HDL_Expr
+           | N_HDL_Bool =>
             declare
                E : constant Iir := Get_HDL_Node (Expr);
                Rtype : constant Iir := Get_Base_Type (Get_Type (E));
@@ -1211,7 +1212,7 @@ package body Simul.Simulation.Main is
    procedure Simulation_Entity (Top_Conf : Iir_Design_Unit)
    is
       use Grt.Errors;
-      Stop : Boolean;
+      Ok : C_Boolean;
       Status : Integer;
    begin
       Break_Time := Std_Time'Last;
@@ -1224,8 +1225,8 @@ package body Simul.Simulation.Main is
          Debug (Reason_Start);
       end if;
 
-      Grt.Main.Run_Elab (Stop);
-      if Stop then
+      Ok := Grt.Main.Run_Elab;
+      if not Ok then
          return;
       end if;
 

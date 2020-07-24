@@ -266,7 +266,9 @@ package body Trans.Chap7 is
       Res       : O_Cnode;
    begin
       Chap3.Translate_Anonymous_Subtype_Definition (Aggr_Type, False);
-      Start_Array_Aggr (List, Get_Ortho_Type (Aggr_Type, Mode_Value));
+      Start_Array_Aggr
+        (List, Get_Ortho_Type (Aggr_Type, Mode_Value),
+         Unsigned_32 (Chap3.Get_Static_Array_Length (Aggr_Type)));
 
       Translate_Static_Array_Aggregate_1 (List, Aggr, Aggr_Type, 1);
       Finish_Array_Aggr (List, Res);
@@ -283,7 +285,9 @@ package body Trans.Chap7 is
       Res       : O_Cnode;
    begin
       Chap3.Translate_Anonymous_Subtype_Definition (Aggr_Type, False);
-      Start_Array_Aggr (List, Get_Ortho_Type (Aggr_Type, Mode_Value));
+      Start_Array_Aggr (List,
+                        Get_Ortho_Type (Aggr_Type, Mode_Value),
+                        Unsigned_32 (Get_Nbr_Elements (El_List)));
 
       for I in Flist_First .. Flist_Last (El_List) loop
          El := Get_Nth_Element (El_List, I);
@@ -306,7 +310,9 @@ package body Trans.Chap7 is
       Chap3.Translate_Anonymous_Subtype_Definition (Lit_Type, False);
       Arr_Type := Get_Ortho_Type (Lit_Type, Mode_Value);
 
-      Start_Array_Aggr (List, Arr_Type);
+      Start_Array_Aggr
+        (List, Arr_Type,
+         Unsigned_32 (Chap3.Get_Static_Array_Length (Lit_Type)));
 
       Translate_Static_String_Literal8_Inner (List, Str, Element_Type);
 
@@ -318,12 +324,13 @@ package body Trans.Chap7 is
    --  The type of the literal element is ELEMENT_TYPE, and the ortho type
    --  of the string (a constrained array type) is STR_TYPE.
    function Create_String_Literal_Var_Inner
-     (Str : Iir; Element_Type : Iir; Str_Type : O_Tnode) return Var_Type
+     (Str : Iir; Element_Type : Iir; Arr_Type : O_Tnode) return Var_Type
    is
       Val_Aggr : O_Array_Aggr_List;
       Res      : O_Cnode;
    begin
-      Start_Array_Aggr (Val_Aggr, Str_Type);
+      Start_Array_Aggr
+        (Val_Aggr, Arr_Type, Unsigned_32 (Get_String_Length (Str)));
       case Get_Kind (Str) is
          when Iir_Kind_String_Literal8 =>
             Translate_Static_String_Literal8_Inner
@@ -334,7 +341,7 @@ package body Trans.Chap7 is
       Finish_Array_Aggr (Val_Aggr, Res);
 
       return Create_Global_Const
-        (Create_Uniq_Identifier, Str_Type, O_Storage_Private, Res);
+        (Create_Uniq_Identifier, Arr_Type, O_Storage_Private, Res);
    end Create_String_Literal_Var_Inner;
 
    --  Create a variable (constant) for string or bit string literal STR.
@@ -344,11 +351,7 @@ package body Trans.Chap7 is
       Arr_Type : O_Tnode;
    begin
       --  Create the string value.
-      Arr_Type := New_Constrained_Array_Type
-        (Get_Info (Str_Type).B.Base_Type (Mode_Value),
-         New_Unsigned_Literal (Ghdl_Index_Type,
-           Unsigned_64 (Get_String_Length (Str))));
-
+      Arr_Type := Get_Info (Str_Type).B.Base_Type (Mode_Value);
       return Create_String_Literal_Var_Inner
         (Str, Get_Element_Subtype (Str_Type), Arr_Type);
    end Create_String_Literal_Var;
@@ -422,7 +425,7 @@ package body Trans.Chap7 is
                New_Lit (New_Index_Lit (Unsigned_64 (Len))),
                Chap3.Get_Array_Type_Length (Lit_Type),
                Ghdl_Bool_Type),
-            Str, 1);
+            Str);
       else
          raise Internal_Error;
       end if;
@@ -445,7 +448,8 @@ package body Trans.Chap7 is
    begin
       Chap3.Translate_Anonymous_Subtype_Definition (Str_Type, False);
 
-      Start_Array_Aggr (List, Get_Ortho_Type (Str_Type, Mode_Value));
+      Start_Array_Aggr
+        (List, Get_Ortho_Type (Str_Type, Mode_Value), Img'Length);
 
       for I in Img'Range loop
          Lit := Get_Nth_Element (Literal_List, Character'Pos (Img (I)));
@@ -639,9 +643,9 @@ package body Trans.Chap7 is
    function Translate_Static_Range_Dir (Expr : Iir) return O_Cnode is
    begin
       case Get_Direction (Expr) is
-         when Iir_To =>
+         when Dir_To =>
             return Ghdl_Dir_To_Node;
-         when Iir_Downto =>
+         when Dir_Downto =>
             return Ghdl_Dir_Downto_Node;
       end case;
    end Translate_Static_Range_Dir;
@@ -682,7 +686,7 @@ package body Trans.Chap7 is
 
    --  Compute the length of LEFT DIR (to/downto) RIGHT.
    function Compute_Range_Length
-     (Left : O_Enode; Right : O_Enode; Dir : Iir_Direction) return O_Enode
+     (Left : O_Enode; Right : O_Enode; Dir : Direction_Type) return O_Enode
    is
       Rng_Type : constant O_Tnode := Ghdl_I32_Type;
       L        : constant O_Enode := New_Convert_Ov (Left, Rng_Type);
@@ -693,9 +697,9 @@ package body Trans.Chap7 is
       If_Blk   : O_If_Block;
    begin
       case Dir is
-         when Iir_To =>
+         when Dir_To =>
             Val := New_Dyadic_Op (ON_Sub_Ov, R, L);
-         when Iir_Downto =>
+         when Dir_Downto =>
             Val := New_Dyadic_Op (ON_Sub_Ov, L, R);
       end case;
 
@@ -861,10 +865,23 @@ package body Trans.Chap7 is
    function Convert_To_Constrained
      (Expr : Mnode; Expr_Type : Iir; Atype : Iir; Loc : Iir) return Mnode
    is
+      Parent_Type : Iir;
       Expr_Stable   : Mnode;
       Success_Label : O_Snode;
       Failure_Label : O_Snode;
    begin
+      --  If ATYPE is a parent type of EXPR_TYPE, then all the constrained
+      --  are inherited and there is nothing to check.
+      Parent_Type := Expr_Type;
+      loop
+         if Parent_Type = Atype then
+            return Expr;
+         end if;
+         exit when (Get_Kind (Parent_Type)
+                    not in Iir_Kinds_Composite_Subtype_Definition);
+         Parent_Type := Get_Parent_Type (Parent_Type);
+      end loop;
+
       Expr_Stable := Stabilize (Expr);
 
       Open_Temp;
@@ -980,18 +997,7 @@ package body Trans.Chap7 is
             end case;
          when Type_Mode_Bounded_Records =>
             --  X to bounded
-            case Einfo.Type_Mode is
-               when Type_Mode_Unbounded_Record =>
-                  --  unbounded to bounded.
-                  return Convert_To_Constrained
-                    (Expr, Expr_Type, Res_Type, Loc);
-               when Type_Mode_Bounded_Records =>
-                  --  bounded to bounded.
-                  --  TODO: likewise ? check bounds ?
-                  return Expr;
-               when others =>
-                  raise Internal_Error;
-            end case;
+            return Convert_To_Constrained (Expr, Expr_Type, Res_Type, Loc);
          when others =>
             raise Internal_Error;
       end case;
@@ -1092,7 +1098,7 @@ package body Trans.Chap7 is
 
       others => ON_Nil);
 
-   function Translate_Shortcut_Operator
+   function Translate_Shortcircuit_Operator
      (Imp : Iir_Function_Declaration; Left, Right : Iir) return O_Enode
    is
       Rtype    : Iir;
@@ -1132,7 +1138,7 @@ package body Trans.Chap7 is
             Invert := True;
             Val := 0;
          when others =>
-            Error_Kind ("translate_shortcut_operator", Kind);
+            Error_Kind ("translate_shortcircuit_operator", Kind);
       end case;
 
       V := Get_Ortho_Literal
@@ -1150,7 +1156,7 @@ package body Trans.Chap7 is
       else
          return New_Obj_Value (Res);
       end if;
-   end Translate_Shortcut_Operator;
+   end Translate_Shortcircuit_Operator;
 
    function Translate_Lib_Operator (Left, Right : O_Enode; Func : O_Dnode)
                                    return O_Enode
@@ -2180,8 +2186,8 @@ package body Trans.Chap7 is
             | Iir_Predefined_Boolean_Or
             | Iir_Predefined_Boolean_Nand
             | Iir_Predefined_Boolean_Nor =>
-            --  Right operand of shortcur operators may not be evaluated.
-            return Translate_Shortcut_Operator (Imp, Left, Right);
+            --  Right operand of shortcircuit operators may not be evaluated.
+            return Translate_Shortcircuit_Operator (Imp, Left, Right);
 
          when Iir_Predefined_Array_Array_Concat
            | Iir_Predefined_Element_Array_Concat
@@ -2812,14 +2818,8 @@ package body Trans.Chap7 is
    is
       Chain : Iir;
       Aggr1 : Iir;
-      --Type_Info : Type_Info_Acc;
    begin
       Aggr1 := Aggr;
-      --  Do not use translate_aggregate_others for a complex type.
-      --Type_Info := Get_Info (Get_Type (Aggr));
-      --if Type_Info.C /= null and then Type_Info.C.Builder_Need_Func then
-      --   return Null_Iir;
-      --end if;
       loop
          Chain := Get_Association_Choices_Chain (Aggr1);
          if not Is_Chain_Length_One (Chain) then
@@ -2911,9 +2911,6 @@ package body Trans.Chap7 is
       --  Type of the unconstrained array type.
       Arr_Type : O_Tnode;
 
-      --  Type of the constrained array type.
-      Str_Type : O_Tnode;
-
       Cst   : Var_Type;
       Var_I : O_Dnode;
       Label : O_Snode;
@@ -2926,9 +2923,7 @@ package body Trans.Chap7 is
       Arr_Type := New_Array_Type
         (Get_Ortho_Type (Expr_Type, Mode_Value), Ghdl_Index_Type);
       New_Type_Decl (Create_Uniq_Identifier, Arr_Type);
-      Str_Type := New_Constrained_Array_Type
-        (Arr_Type, New_Index_Lit (Unsigned_64 (Len)));
-      Cst := Create_String_Literal_Var_Inner (Aggr, Expr_Type, Str_Type);
+      Cst := Create_String_Literal_Var_Inner (Aggr, Expr_Type, Arr_Type);
 
       --  Copy it.
       Open_Temp;
@@ -3397,7 +3392,7 @@ package body Trans.Chap7 is
                             (Chap3.Bounds_To_Range
                                (Bounds, Target_Type, I + 1))),
                      Ghdl_Bool_Type),
-                  Aggr, I);
+                  Aggr);
             end;
             Close_Temp;
          elsif Get_Type_Staticness (Subaggr_Type) /= Locally
@@ -3470,7 +3465,7 @@ package body Trans.Chap7 is
                   end if;
                   New_Assign_Stmt (New_Obj (Var_Err), E);
                end if;
-               Chap6.Check_Bound_Error (New_Obj_Value (Var_Err), Aggr, I);
+               Chap6.Check_Bound_Error (New_Obj_Value (Var_Err), Aggr);
                Close_Temp;
             end if;
          end if;
@@ -3629,7 +3624,9 @@ package body Trans.Chap7 is
             --  There are corresponding bounds.
             Expr := Get_Associated_Expr (Assoc);
             Expr_Type := Get_Type (Expr);
-            if Get_Constraint_State (Expr_Type) = Fully_Constrained then
+            if False
+              and then Get_Constraint_State (Expr_Type) = Fully_Constrained
+            then
                --  Translate subtype, and copy bounds.
                raise Internal_Error;
             else
@@ -3705,7 +3702,8 @@ package body Trans.Chap7 is
 
    function Translate_Allocator_By_Expression (Expr : Iir) return O_Enode
    is
-      A_Type : constant Iir := Get_Type (Expr);
+      --  TODO: the constraint from an access subtype is ignored.
+      A_Type : constant Iir := Get_Base_Type (Get_Type (Expr));
       A_Info : constant Type_Info_Acc := Get_Info (A_Type);
       D_Type : constant Iir := Get_Designated_Type (A_Type);
       D_Info : constant Type_Info_Acc := Get_Info (D_Type);
@@ -4174,14 +4172,15 @@ package body Trans.Chap7 is
                                  return Mnode
    is
       Res_Type : Iir;
+      Res : O_Enode;
    begin
       if Rtype = Null_Iir then
          Res_Type := Get_Type (Expr);
       else
          Res_Type := Rtype;
       end if;
-      return E2M (Translate_Expression (Expr, Res_Type),
-                  Get_Info (Res_Type), Mode_Value);
+      Res := Translate_Expression (Expr, Res_Type);
+      return E2M (Res, Get_Info (Res_Type), Mode_Value);
    end Translate_Expression;
 
    function Translate_Expression (Expr : Iir; Rtype : Iir := Null_Iir)
@@ -4249,6 +4248,12 @@ package body Trans.Chap7 is
                   if Get_Constraint_State (Aggr_Type) /= Fully_Constrained
                   then
                      Tinfo := Get_Info (Aggr_Type);
+                     if Tinfo = null then
+                        --  AGGR_TYPE may be a subtype that has not been
+                        --  translated.  Use the base type in that case.
+                        Aggr_Type := Get_Base_Type (Aggr_Type);
+                        Tinfo := Get_Info (Aggr_Type);
+                     end if;
 
                      Mres := Create_Temp (Tinfo);
                      Bounds := Create_Temp_Bounds (Tinfo);
@@ -4571,13 +4576,13 @@ package body Trans.Chap7 is
          return Null_Iir;
       end if;
       case Get_Direction (Rng) is
-         when Iir_To =>
+         when Dir_To =>
             if (Left_Pat = Pat_1 and Right_Pat = Pat_Length)
               or else (Left_Pat = Pat_0 and Right_Pat = Pat_Length_1)
             then
                return Length_Attr;
             end if;
-         when Iir_Downto =>
+         when Dir_Downto =>
             if (Left_Pat = Pat_Length and Right_Pat = Pat_1)
               or else (Left_Pat = Pat_Length_1 and Right_Pat = Pat_0)
             then
@@ -4960,46 +4965,46 @@ package body Trans.Chap7 is
    function Translate_Equality (L, R : Mnode; Etype : Iir) return O_Enode
    is
       Tinfo : Type_Info_Acc;
+      Eq : Iir_Predefined_Functions;
    begin
       Tinfo := Get_Type_Info (L);
       case Tinfo.Type_Mode is
          when Type_Mode_Scalar
-           | Type_Mode_Bounds_Acc
-           | Type_Mode_Acc =>
+            | Type_Mode_Bounds_Acc
+            | Type_Mode_Acc =>
+            --  Direct comparison.
             return New_Compare_Op (ON_Eq, M2E (L), M2E (R),
                                    Ghdl_Bool_Type);
 
          when Type_Mode_Arrays =>
-            declare
-               Base_Type : constant Iir_Array_Type_Definition
-                 := Get_Base_Type (Etype);
-               Lc, Rc    : O_Enode;
-               Func      : Iir;
-            begin
-               Func := Find_Predefined_Function
-                 (Base_Type, Iir_Predefined_Array_Equality);
-               Lc := Translate_Implicit_Conv
-                 (M2E (L), Etype, Base_Type, Mode_Value, Null_Iir);
-               Rc := Translate_Implicit_Conv
-                 (M2E (R), Etype, Base_Type, Mode_Value, Null_Iir);
-               return Translate_Predefined_Lib_Operator (Lc, Rc, Func);
-            end;
+            Eq := Iir_Predefined_Array_Equality;
 
          when Type_Mode_Records =>
-            declare
-               Func : Iir;
-            begin
-               Func := Find_Predefined_Function
-                 (Get_Base_Type (Etype), Iir_Predefined_Record_Equality);
-               return Translate_Predefined_Lib_Operator
-                 (M2E (L), M2E (R), Func);
-            end;
+            Eq := Iir_Predefined_Record_Equality;
 
          when Type_Mode_Unknown
-           | Type_Mode_File
-           | Type_Mode_Protected =>
+            | Type_Mode_File
+            | Type_Mode_Protected =>
             raise Internal_Error;
       end case;
+
+      --  Common code for arrays and records: use the equality function
+      --  defined for the base type.
+      declare
+         Base_Type : constant Iir := Get_Base_Type (Etype);
+         Lc, Rc    : O_Enode;
+         Func      : Iir;
+      begin
+         Func := Find_Predefined_Function (Base_Type, Eq);
+         --  Note: no location is passed as the conversion goes to the base
+         --  type (which is always OK).
+         --  If the location is used, compilation will fail.
+         Lc := Translate_Implicit_Conv
+           (M2E (L), Etype, Base_Type, Mode_Value, Null_Iir);
+         Rc := Translate_Implicit_Conv
+           (M2E (R), Etype, Base_Type, Mode_Value, Null_Iir);
+         return Translate_Predefined_Lib_Operator (Lc, Rc, Func);
+      end;
    end Translate_Equality;
 
    procedure Translate_Predefined_Array_Equality_Spec (Subprg : Iir)
@@ -5308,7 +5313,7 @@ package body Trans.Chap7 is
                  (Dp2M (F_Info.Operator_Right, Tinfo, Mode_Value),
                   Arr_Type, 1),
                Ghdl_Bool_Type),
-            Subprg, 0);
+            Subprg);
       end if;
 
       --  Create the result from LEFT bound.
@@ -5815,9 +5820,9 @@ package body Trans.Chap7 is
          Gen_Exit_When
            (Label,
             New_Compare_Op (ON_Eq,
-              New_Obj_Value (Var_It),
-              New_Obj_Value (Var_Max),
-              Ghdl_Bool_Type));
+                            New_Obj_Value (Var_It),
+                            New_Obj_Value (Var_Max),
+                            Ghdl_Bool_Type));
          Translate_Rw
            (Chap3.Index_Base (Val, Val_Type, New_Obj_Value (Var_It)),
             Get_Element_Subtype (Val_Type), Proc);
@@ -5940,22 +5945,81 @@ package body Trans.Chap7 is
 
          when Iir_Predefined_Read_Length =>
             declare
+               El_Type  : constant Iir := Get_Element_Subtype (Etype);
+               El_Tinfo : constant Type_Info_Acc := Get_Info (El_Type);
                Var_Len : O_Dnode;
+               Var_Max : O_Dnode;
+               Var_It  : O_Dnode;
+               Label   : O_Snode;
+               If_Blk  : O_If_Block;
+               Targ    : O_Dnode;
+               Dummy   : Mnode;
             begin
                Open_Temp;
+               Var_Max := Create_Temp (Ghdl_Index_Type);
+               New_Assign_Stmt (New_Obj (Var_Max),
+                                Chap3.Get_Array_Length (Var, Etype));
+               --  TODO: complex element type.
+               pragma Assert (Is_Static_Type (El_Tinfo));
+               Dummy := Create_Temp (El_Tinfo);
+               Targ := Create_Temp (El_Tinfo.Ortho_Ptr_Type (Mode_Value));
+
+               --  Read length.
                Var_Len := Create_Temp (Ghdl_Index_Type);
                Translate_Rw_Length (Var_Len, Ghdl_Read_Scalar);
 
-               Chap6.Check_Bound_Error
-                 (New_Compare_Op (ON_Gt,
-                  New_Obj_Value (Var_Len),
-                  Chap3.Get_Array_Length (Var, Etype),
-                  Ghdl_Bool_Type),
-                  Subprg, 1);
-               Translate_Rw_Array (Chap3.Get_Composite_Base (Var), Etype,
-                                   Var_Len, Ghdl_Read_Scalar);
-               New_Return_Stmt (New_Convert_Ov (New_Obj_Value (Var_Len),
+               --  LRM08 5.5.2 File Operations
+               --  If the object associated with formal parameter VALUE is
+               --  shorter than this length, then only that portion of the
+               --  array value read by the operation that can be contained in
+               --  the object is returned by the READ operation, and the rest
+               --  of the value is lost.  If the object associated with formal
+               --  parameter VALUE is longer than this length, then the entire
+               --  value is returned and remaining elements of the object are
+               --  unaffected.
+
+               --  Iterate on length.
+               Var_It := Create_Temp (Ghdl_Index_Type);
+               Init_Var (Var_It);
+               Start_Loop_Stmt (Label);
+               Gen_Exit_When
+                 (Label,
+                  New_Compare_Op (ON_Eq,
+                                  New_Obj_Value (Var_It),
+                                  New_Obj_Value (Var_Len),
+                                  Ghdl_Bool_Type));
+               Start_If_Stmt
+                 (If_Blk, New_Compare_Op (ON_Gt,
+                                          New_Obj_Value (Var_It),
+                                          New_Obj_Value (Var_Max),
+                                          Ghdl_Bool_Type));
+               New_Assign_Stmt (New_Obj (Targ), M2Addr (Dummy));
+               New_Else_Stmt (If_Blk);
+               New_Assign_Stmt
+                 (New_Obj (Targ),
+                  M2Addr (Chap3.Index_Base (Chap3.Get_Composite_Base (Var),
+                                            Etype,
+                                            New_Obj_Value (Var_It))));
+               Finish_If_Stmt (If_Blk);
+
+               Translate_Rw (Dp2M (Targ, El_Tinfo, Mode_Value),
+                             El_Type, Ghdl_Read_Scalar);
+               Inc_Var (Var_It);
+               Finish_Loop_Stmt (Label);
+
+               --  Return the length (the minimum of len, max)
+               Start_If_Stmt
+                 (If_Blk, New_Compare_Op (ON_Gt,
+                                          New_Obj_Value (Var_Len),
+                                          New_Obj_Value (Var_Max),
+                                          Ghdl_Bool_Type));
+               New_Assign_Stmt (New_Obj (Var_It), New_Obj_Value (Var_Max));
+               New_Else_Stmt (If_Blk);
+               New_Assign_Stmt (New_Obj (Var_It), New_Obj_Value (Var_Len));
+               Finish_If_Stmt (If_Blk);
+               New_Return_Stmt (New_Convert_Ov (New_Obj_Value (Var_It),
                                 Std_Integer_Otype));
+
                Close_Temp;
             end;
          when others =>
@@ -6248,7 +6312,9 @@ package body Trans.Chap7 is
             | Iir_Predefined_Std_Ulogic_Array_Match_Inequality =>
             null;
 
-         when Iir_Predefined_Now_Function =>
+         when Iir_Predefined_Now_Function
+           | Iir_Predefined_Real_Now_Function
+           | Iir_Predefined_Frequency_Function =>
             null;
 
             --  when others =>

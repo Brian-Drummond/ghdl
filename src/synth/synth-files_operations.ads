@@ -28,12 +28,23 @@ package Synth.Files_Operations is
    --  Raised in case of un-recoverable error.
    File_Execution_Error : exception;
 
+   --  Set the current design unit, so that its path can be used to search
+   --  files.
+   procedure Set_Design_Unit (Unit : Node);
+
    function Elaborate_File_Declaration
      (Syn_Inst : Synth_Instance_Acc; Decl : Node) return File_Index;
 
    function Endfile (F : File_Index; Loc : Syn_Src) return Boolean;
 
-   procedure Synth_Untruncated_Text_Read (Syn_Inst : Synth_Instance_Acc;
-                                          Imp : Node;
-                                          Loc : Node);
+   procedure Synth_File_Open
+     (Syn_Inst : Synth_Instance_Acc; Imp : Node; Loc : Node);
+   procedure Synth_File_Close
+     (Syn_Inst : Synth_Instance_Acc; Imp : Node; Loc : Node);
+
+   procedure Synth_Untruncated_Text_Read
+     (Syn_Inst : Synth_Instance_Acc; Imp : Node; Loc : Node);
+
+   procedure Synth_File_Read
+     (Syn_Inst : Synth_Instance_Acc; Imp : Node; Loc : Node);
 end Synth.Files_Operations;

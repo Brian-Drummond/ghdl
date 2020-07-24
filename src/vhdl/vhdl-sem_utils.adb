@@ -55,10 +55,16 @@ package body Vhdl.Sem_Utils is
       if Kind /= Iir_Kind_Enumeration_Literal then
          Inter := Get_Interface_Declaration_Chain (Subprg);
          while Inter /= Null_Iir loop
-            Itype := Get_Base_Type (Get_Type (Inter));
-            Sig := Sig + 1;
-            Hash := Hash * 7 + To_Hash (Itype);
-            Hash := Hash + Hash / 2**28;
+            if Get_Kind (Inter) in Iir_Kinds_Interface_Object_Declaration then
+               Itype := Get_Base_Type (Get_Type (Inter));
+               Sig := Sig + 1;
+               Hash := Hash * 7 + To_Hash (Itype);
+               Hash := Hash + Hash / 2**28;
+            else
+               --  Non-object parameter are not allowed.
+               pragma Assert (Flags.Flag_Force_Analysis);
+               null;
+            end if;
             Inter := Get_Chain (Inter);
          end loop;
       end if;
@@ -141,7 +147,7 @@ package body Vhdl.Sem_Utils is
       Last := Decl;
       Loc := Get_Location (Decl);
 
-      if Flags.Vhdl_Std >= Vhdl_93c then
+      if Flags.Vhdl_Std >= Vhdl_93 then
          for I in 1 .. 2 loop
             --  Create the implicit file_open (form 1) declaration.
             --  Create the implicit file_open (form 2) declaration.

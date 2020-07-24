@@ -371,6 +371,8 @@ package body Ghdlxml is
                when Type_Iir_Staticness =>
                   Put_Field (F, Image_Iir_Staticness
                                (Get_Iir_Staticness (N, F)));
+               when Type_Scalar_Size =>
+                  Put_Field (F, Image_Scalar_Size (Get_Scalar_Size (N, F)));
                when Type_Date_State_Type =>
                   Put_Field (F, Image_Date_State_Type
                                (Get_Date_State_Type (N, F)));
@@ -392,9 +394,9 @@ package body Ghdlxml is
                when Type_Iir_Predefined_Functions =>
                   Put_Field (F, Image_Iir_Predefined_Functions
                                (Get_Iir_Predefined_Functions (N, F)));
-               when Type_Iir_Direction =>
-                  Put_Field (F, Image_Iir_Direction
-                               (Get_Iir_Direction (N, F)));
+               when Type_Direction_Type =>
+                  Put_Field (F, Image_Direction_Type
+                               (Get_Direction_Type (N, F)));
                when Type_Iir_Int32 =>
                   Put_Field
                     (F, Strip (Iir_Int32'Image (Get_Iir_Int32 (N, F))));
@@ -510,7 +512,7 @@ package body Ghdlxml is
                            return Boolean;
    function Get_Short_Help (Cmd : Command_File_To_Xml) return String;
 
-   procedure Perform_Action (Cmd : Command_File_To_Xml;
+   procedure Perform_Action (Cmd : in out Command_File_To_Xml;
                              Files_Name : Argument_List);
 
    function Decode_Command (Cmd : Command_File_To_Xml; Name : String)
@@ -529,7 +531,7 @@ package body Ghdlxml is
    end Get_Short_Help;
 
    procedure Perform_Action
-     (Cmd : Command_File_To_Xml; Files_Name : Argument_List)
+     (Cmd : in out Command_File_To_Xml; Files_Name : Argument_List)
    is
       pragma Unreferenced (Cmd);
 

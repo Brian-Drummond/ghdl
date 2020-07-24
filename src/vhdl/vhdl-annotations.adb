@@ -144,72 +144,6 @@ package body Vhdl.Annotations is
       end if;
    end Annotate_Anonymous_Type_Definition;
 
-   function Get_File_Signature_Length (Def : Iir) return Natural is
-   begin
-      case Get_Kind (Def) is
-         when Iir_Kinds_Scalar_Type_And_Subtype_Definition =>
-            return 1;
-         when Iir_Kind_Array_Type_Definition
-           | Iir_Kind_Array_Subtype_Definition =>
-            return 2
-              + Get_File_Signature_Length (Get_Element_Subtype (Def));
-         when Iir_Kind_Record_Type_Definition
-           | Iir_Kind_Record_Subtype_Definition =>
-            declare
-               List : constant Iir_Flist :=
-                 Get_Elements_Declaration_List (Get_Base_Type (Def));
-               El : Iir;
-               Res : Natural;
-            begin
-               Res := 2;
-               for I in Flist_First .. Flist_Last (List) loop
-                  El := Get_Nth_Element (List, I);
-                  Res := Res + Get_File_Signature_Length (Get_Type (El));
-               end loop;
-               return Res;
-            end;
-         when others =>
-            Error_Kind ("get_file_signature_length", Def);
-      end case;
-   end Get_File_Signature_Length;
-
-   procedure Get_File_Signature (Def : Iir;
-                                 Res : in out String;
-                                 Off : in out Natural)
-   is
-      Scalar_Map : constant array (Kind_Scalar_Types) of Character := "beeEIF";
-   begin
-      case Get_Kind (Def) is
-         when Iir_Kinds_Scalar_Type_And_Subtype_Definition =>
-            Res (Off) := Scalar_Map (Get_Info (Get_Base_Type (Def)).Kind);
-            Off := Off + 1;
-         when Iir_Kind_Array_Type_Definition
-           | Iir_Kind_Array_Subtype_Definition =>
-            Res (Off) := '[';
-            Off := Off + 1;
-            Get_File_Signature (Get_Element_Subtype (Def), Res, Off);
-            Res (Off) := ']';
-            Off := Off + 1;
-         when Iir_Kind_Record_Type_Definition
-           | Iir_Kind_Record_Subtype_Definition =>
-            declare
-               List : constant Iir_Flist :=
-                 Get_Elements_Declaration_List (Get_Base_Type (Def));
-               El : Iir;
-            begin
-               Res (Off) := '<';
-               Off := Off + 1;
-               for I in Flist_First .. Flist_Last (List) loop
-                  El := Get_Nth_Element (List, I);
-                  Get_File_Signature (Get_Type (El), Res, Off);
-               end loop;
-               Res (Off) := '>';
-               Off := Off + 1;
-            end;
-         when others =>
-            Error_Kind ("get_file_signature", Def);
-      end case;
-   end Get_File_Signature;
 
    procedure Annotate_Protected_Type_Declaration (Block_Info : Sim_Info_Acc;
                                                   Prot: Iir)
@@ -412,21 +346,22 @@ package body Vhdl.Annotations is
             end if;
 
          when Iir_Kind_Record_Type_Definition =>
-            declare
-               List : constant Iir_Flist :=
-                 Get_Elements_Declaration_List (Def);
-            begin
-               for I in Flist_First .. Flist_Last (List) loop
-                  El := Get_Nth_Element (List, I);
-                  if Get_Subtype_Indication (El) /= Null_Iir then
-                     Annotate_Anonymous_Type_Definition
-                       (Block_Info, Get_Type (El));
-                  end if;
-               end loop;
-            end;
             if Flag_Synthesis then
                --  For the offsets.
                Create_Object_Info (Block_Info, Def, Kind_Type);
+            else
+               declare
+                  List : constant Iir_Flist :=
+                    Get_Elements_Declaration_List (Def);
+               begin
+                  for I in Flist_First .. Flist_Last (List) loop
+                     El := Get_Nth_Element (List, I);
+                     if Get_Subtype_Indication (El) /= Null_Iir then
+                        Annotate_Anonymous_Type_Definition
+                          (Block_Info, Get_Type (El));
+                     end if;
+                  end loop;
+               end;
             end if;
 
          when Iir_Kind_Record_Subtype_Definition =>
@@ -504,7 +439,7 @@ package body Vhdl.Annotations is
               | Iir_Kind_Interface_Variable_Declaration
               | Iir_Kind_Interface_Constant_Declaration
               | Iir_Kind_Interface_File_Declaration =>
-               if Get_Subtype_Indication (El) /= Null_Iir then
+               if not Get_Is_Ref (El) then
                   Annotate_Anonymous_Type_Definition
                     (Block_Info, Get_Type (El));
                end if;
@@ -543,7 +478,7 @@ package body Vhdl.Annotations is
       while Decl /= Null_Iir loop
          if With_Types
            and then Get_Kind (Decl) in Iir_Kinds_Interface_Object_Declaration
-           and then Get_Subtype_Indication (Decl) /= Null_Iir
+           and then not Get_Is_Ref (Decl)
          then
             Annotate_Anonymous_Type_Definition (Block_Info, Get_Type (Decl));
          end if;
@@ -706,9 +641,13 @@ package body Vhdl.Annotations is
 
    procedure Annotate_Declaration_Type (Block_Info: Sim_Info_Acc; Decl: Iir)
    is
-      Ind : constant Iir := Get_Subtype_Indication (Decl);
+      Ind : Iir;
    begin
-      if Ind = Null_Iir or else Get_Kind (Ind) in Iir_Kinds_Denoting_Name then
+      if Get_Is_Ref (Decl) then
+         return;
+      end if;
+      Ind := Get_Subtype_Indication (Decl);
+      if Get_Kind (Ind) in Iir_Kinds_Denoting_Name then
          return;
       end if;
       Annotate_Type_Definition (Block_Info, Ind);
@@ -741,7 +680,9 @@ package body Vhdl.Annotations is
             Annotate_Declaration_Type (Block_Info, Decl);
             Create_Signal_Info (Block_Info, Decl);
          when Iir_Kind_Anonymous_Signal_Declaration =>
-            Create_Signal_Info (Block_Info, Decl);
+            if not Flag_Synthesis then
+               Create_Signal_Info (Block_Info, Decl);
+            end if;
 
          when Iir_Kind_Variable_Declaration
            | Iir_Kind_Iterator_Declaration =>
@@ -756,6 +697,9 @@ package body Vhdl.Annotations is
                --  declaration.
                Annotate_Declaration_Type (Block_Info, Decl);
                Create_Object_Info (Block_Info, Decl);
+            elsif Flag_Synthesis then
+               --  Always create the slot for the subtype.
+               Annotate_Declaration_Type (Block_Info, Decl);
             end if;
 
          when Iir_Kind_File_Declaration =>
@@ -794,7 +738,10 @@ package body Vhdl.Annotations is
             Annotate_Subprogram_Body (Block_Info, Decl);
 
          when Iir_Kind_Object_Alias_Declaration =>
-            Annotate_Anonymous_Type_Definition (Block_Info, Get_Type (Decl));
+            if Get_Subtype_Indication (Decl) /= Null_Iir then
+               Annotate_Anonymous_Type_Definition
+                 (Block_Info, Get_Type (Decl));
+            end if;
             Create_Object_Info (Block_Info, Decl);
 
          when Iir_Kind_Non_Object_Alias_Declaration =>
@@ -1212,7 +1159,12 @@ package body Vhdl.Annotations is
               | Iir_Kind_Attribute_Declaration
               | Iir_Kind_Attribute_Specification =>
                Annotate_Declaration (Vunit_Info, Item);
-            when Iir_Kind_Concurrent_Simple_Signal_Assignment =>
+            when Iir_Kinds_Concurrent_Signal_Assignment
+               | Iir_Kinds_Process_Statement
+               | Iir_Kinds_Generate_Statement
+               | Iir_Kind_Block_Statement
+               | Iir_Kind_Concurrent_Procedure_Call_Statement
+               | Iir_Kind_Component_Instantiation_Statement =>
                Annotate_Concurrent_Statement (Vunit_Info, Item);
             when others =>
                Error_Kind ("annotate_vunit_declaration", Item);

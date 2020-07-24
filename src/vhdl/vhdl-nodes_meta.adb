@@ -65,6 +65,7 @@ package body Vhdl.Nodes_Meta is
       Field_Attribute_Specification_Chain => Type_Iir,
       Field_Attribute_Specification => Type_Iir,
       Field_Signal_List => Type_Iir_Flist,
+      Field_Quantity_List => Type_Iir_Flist,
       Field_Designated_Entity => Type_Iir,
       Field_Formal => Type_Iir,
       Field_Actual => Type_Iir,
@@ -104,6 +105,7 @@ package body Vhdl.Nodes_Meta is
       Field_Inherit_Spec_Chain => Type_Iir,
       Field_Vunit_Item_Chain => Type_Iir,
       Field_Bound_Vunit_Chain => Type_Iir,
+      Field_Verification_Block_Configuration => Type_Iir,
       Field_Block_Configuration => Type_Iir,
       Field_Concurrent_Statement_Chain => Type_Iir,
       Field_Chain => Type_Iir,
@@ -116,7 +118,9 @@ package body Vhdl.Nodes_Meta is
       Field_Subtype_Definition => Type_Iir,
       Field_Incomplete_Type_Declaration => Type_Iir,
       Field_Interface_Type_Subprograms => Type_Iir,
+      Field_Nature_Definition => Type_Iir,
       Field_Nature => Type_Iir,
+      Field_Subnature_Indication => Type_Iir,
       Field_Mode => Type_Iir_Mode,
       Field_Guarded_Signal_Flag => Type_Boolean,
       Field_Signal_Kind => Type_Iir_Signal_Kind,
@@ -124,6 +128,7 @@ package body Vhdl.Nodes_Meta is
       Field_Interface_Declaration_Chain => Type_Iir,
       Field_Subprogram_Specification => Type_Iir,
       Field_Sequential_Statement_Chain => Type_Iir,
+      Field_Simultaneous_Statement_Chain => Type_Iir,
       Field_Subprogram_Body => Type_Iir,
       Field_Overload_Number => Type_Iir_Int32,
       Field_Subprogram_Depth => Type_Iir_Int32,
@@ -158,28 +163,38 @@ package body Vhdl.Nodes_Meta is
       Field_Label => Type_Name_Id,
       Field_Visible_Flag => Type_Boolean,
       Field_Range_Constraint => Type_Iir,
-      Field_Direction => Type_Iir_Direction,
+      Field_Direction => Type_Direction_Type,
       Field_Left_Limit => Type_Iir,
       Field_Right_Limit => Type_Iir,
       Field_Left_Limit_Expr => Type_Iir,
       Field_Right_Limit_Expr => Type_Iir,
-      Field_Base_Type => Type_Iir,
+      Field_Parent_Type => Type_Iir,
+      Field_Simple_Nature => Type_Iir,
+      Field_Base_Nature => Type_Iir,
       Field_Resolution_Indication => Type_Iir,
       Field_Record_Element_Resolution_Chain => Type_Iir,
       Field_Tolerance => Type_Iir,
+      Field_Plus_Terminal_Name => Type_Iir,
+      Field_Minus_Terminal_Name => Type_Iir,
       Field_Plus_Terminal => Type_Iir,
       Field_Minus_Terminal => Type_Iir,
+      Field_Magnitude_Expression => Type_Iir,
+      Field_Phase_Expression => Type_Iir,
+      Field_Power_Expression => Type_Iir,
       Field_Simultaneous_Left => Type_Iir,
       Field_Simultaneous_Right => Type_Iir,
       Field_Text_File_Flag => Type_Boolean,
       Field_Only_Characters_Flag => Type_Boolean,
       Field_Is_Character_Type => Type_Boolean,
+      Field_Nature_Staticness => Type_Iir_Staticness,
       Field_Type_Staticness => Type_Iir_Staticness,
       Field_Constraint_State => Type_Iir_Constraint,
       Field_Index_Subtype_List => Type_Iir_Flist,
       Field_Index_Subtype_Definition_List => Type_Iir_Flist,
       Field_Element_Subtype_Indication => Type_Iir,
       Field_Element_Subtype => Type_Iir,
+      Field_Element_Subnature_Indication => Type_Iir,
+      Field_Element_Subnature => Type_Iir,
       Field_Index_Constraint_List => Type_Iir_Flist,
       Field_Array_Element_Constraint => Type_Iir,
       Field_Elements_Declaration_List => Type_Iir_Flist,
@@ -189,6 +204,10 @@ package body Vhdl.Nodes_Meta is
       Field_Index_List => Type_Iir_Flist,
       Field_Reference => Type_Iir,
       Field_Nature_Declarator => Type_Iir,
+      Field_Across_Type_Mark => Type_Iir,
+      Field_Through_Type_Mark => Type_Iir,
+      Field_Across_Type_Definition => Type_Iir,
+      Field_Through_Type_Definition => Type_Iir,
       Field_Across_Type => Type_Iir,
       Field_Through_Type => Type_Iir,
       Field_Target => Type_Iir,
@@ -200,6 +219,9 @@ package body Vhdl.Nodes_Meta is
       Field_Process_Origin => Type_Iir,
       Field_Package_Origin => Type_Iir,
       Field_Condition_Clause => Type_Iir,
+      Field_Break_Element => Type_Iir,
+      Field_Selector_Quantity => Type_Iir,
+      Field_Break_Quantity => Type_Iir,
       Field_Timeout_Clause => Type_Iir,
       Field_Postponed_Flag => Type_Boolean,
       Field_Callees_List => Type_Iir_List,
@@ -215,6 +237,7 @@ package body Vhdl.Nodes_Meta is
       Field_Has_Signal_Flag => Type_Boolean,
       Field_Purity_State => Type_Iir_Pure_State,
       Field_Elab_Flag => Type_Boolean,
+      Field_Vendor_Library_Flag => Type_Boolean,
       Field_Configuration_Mark_Flag => Type_Boolean,
       Field_Configuration_Done_Flag => Type_Boolean,
       Field_Index_Constraint_Flag => Type_Boolean,
@@ -265,6 +288,7 @@ package body Vhdl.Nodes_Meta is
       Field_Alias_Declaration => Type_Iir,
       Field_Referenced_Name => Type_Iir,
       Field_Expr_Staticness => Type_Iir_Staticness,
+      Field_Scalar_Size => Type_Scalar_Size,
       Field_Error_Origin => Type_Iir,
       Field_Operand => Type_Iir,
       Field_Left => Type_Iir,
@@ -283,6 +307,9 @@ package body Vhdl.Nodes_Meta is
       Field_Suffix => Type_Iir,
       Field_Index_Subtype => Type_Iir,
       Field_Parameter => Type_Iir,
+      Field_Parameter_2 => Type_Iir,
+      Field_Parameter_3 => Type_Iir,
+      Field_Parameter_4 => Type_Iir,
       Field_Attr_Chain => Type_Iir,
       Field_Signal_Attribute_Declaration => Type_Iir,
       Field_Actual_Type => Type_Iir,
@@ -307,6 +334,7 @@ package body Vhdl.Nodes_Meta is
       Field_Parameter_Association_Chain => Type_Iir,
       Field_Method_Object => Type_Iir,
       Field_Subtype_Type_Mark => Type_Iir,
+      Field_Subnature_Nature_Mark => Type_Iir,
       Field_Type_Conversion_Subtype => Type_Iir,
       Field_Type_Mark => Type_Iir,
       Field_File_Type_Mark => Type_Iir,
@@ -338,6 +366,7 @@ package body Vhdl.Nodes_Meta is
       Field_Has_Identifier_List => Type_Boolean,
       Field_Has_Mode => Type_Boolean,
       Field_Has_Class => Type_Boolean,
+      Field_Has_Delay_Mechanism => Type_Boolean,
       Field_Suspend_Flag => Type_Boolean,
       Field_Is_Ref => Type_Boolean,
       Field_Is_Forward_Ref => Type_Boolean,
@@ -350,7 +379,10 @@ package body Vhdl.Nodes_Meta is
       Field_PSL_NFA => Type_PSL_NFA,
       Field_PSL_Nbr_States => Type_Int32,
       Field_PSL_Clock_Sensitivity => Type_Iir_List,
-      Field_PSL_EOS_Flag => Type_Boolean
+      Field_PSL_EOS_Flag => Type_Boolean,
+      Field_Count_Expression => Type_Iir,
+      Field_Clock_Expression => Type_Iir,
+      Field_Default_Clock => Type_Iir
      );
 
    function Get_Field_Type (F : Fields_Enum) return Types_Enum is
@@ -453,6 +485,8 @@ package body Vhdl.Nodes_Meta is
             return "attribute_specification";
          when Field_Signal_List =>
             return "signal_list";
+         when Field_Quantity_List =>
+            return "quantity_list";
          when Field_Designated_Entity =>
             return "designated_entity";
          when Field_Formal =>
@@ -531,6 +565,8 @@ package body Vhdl.Nodes_Meta is
             return "vunit_item_chain";
          when Field_Bound_Vunit_Chain =>
             return "bound_vunit_chain";
+         when Field_Verification_Block_Configuration =>
+            return "verification_block_configuration";
          when Field_Block_Configuration =>
             return "block_configuration";
          when Field_Concurrent_Statement_Chain =>
@@ -555,8 +591,12 @@ package body Vhdl.Nodes_Meta is
             return "incomplete_type_declaration";
          when Field_Interface_Type_Subprograms =>
             return "interface_type_subprograms";
+         when Field_Nature_Definition =>
+            return "nature_definition";
          when Field_Nature =>
             return "nature";
+         when Field_Subnature_Indication =>
+            return "subnature_indication";
          when Field_Mode =>
             return "mode";
          when Field_Guarded_Signal_Flag =>
@@ -571,6 +611,8 @@ package body Vhdl.Nodes_Meta is
             return "subprogram_specification";
          when Field_Sequential_Statement_Chain =>
             return "sequential_statement_chain";
+         when Field_Simultaneous_Statement_Chain =>
+            return "simultaneous_statement_chain";
          when Field_Subprogram_Body =>
             return "subprogram_body";
          when Field_Overload_Number =>
@@ -649,18 +691,32 @@ package body Vhdl.Nodes_Meta is
             return "left_limit_expr";
          when Field_Right_Limit_Expr =>
             return "right_limit_expr";
-         when Field_Base_Type =>
-            return "base_type";
+         when Field_Parent_Type =>
+            return "parent_type";
+         when Field_Simple_Nature =>
+            return "simple_nature";
+         when Field_Base_Nature =>
+            return "base_nature";
          when Field_Resolution_Indication =>
             return "resolution_indication";
          when Field_Record_Element_Resolution_Chain =>
             return "record_element_resolution_chain";
          when Field_Tolerance =>
             return "tolerance";
+         when Field_Plus_Terminal_Name =>
+            return "plus_terminal_name";
+         when Field_Minus_Terminal_Name =>
+            return "minus_terminal_name";
          when Field_Plus_Terminal =>
             return "plus_terminal";
          when Field_Minus_Terminal =>
             return "minus_terminal";
+         when Field_Magnitude_Expression =>
+            return "magnitude_expression";
+         when Field_Phase_Expression =>
+            return "phase_expression";
+         when Field_Power_Expression =>
+            return "power_expression";
          when Field_Simultaneous_Left =>
             return "simultaneous_left";
          when Field_Simultaneous_Right =>
@@ -671,6 +727,8 @@ package body Vhdl.Nodes_Meta is
             return "only_characters_flag";
          when Field_Is_Character_Type =>
             return "is_character_type";
+         when Field_Nature_Staticness =>
+            return "nature_staticness";
          when Field_Type_Staticness =>
             return "type_staticness";
          when Field_Constraint_State =>
@@ -683,6 +741,10 @@ package body Vhdl.Nodes_Meta is
             return "element_subtype_indication";
          when Field_Element_Subtype =>
             return "element_subtype";
+         when Field_Element_Subnature_Indication =>
+            return "element_subnature_indication";
+         when Field_Element_Subnature =>
+            return "element_subnature";
          when Field_Index_Constraint_List =>
             return "index_constraint_list";
          when Field_Array_Element_Constraint =>
@@ -701,6 +763,14 @@ package body Vhdl.Nodes_Meta is
             return "reference";
          when Field_Nature_Declarator =>
             return "nature_declarator";
+         when Field_Across_Type_Mark =>
+            return "across_type_mark";
+         when Field_Through_Type_Mark =>
+            return "through_type_mark";
+         when Field_Across_Type_Definition =>
+            return "across_type_definition";
+         when Field_Through_Type_Definition =>
+            return "through_type_definition";
          when Field_Across_Type =>
             return "across_type";
          when Field_Through_Type =>
@@ -723,6 +793,12 @@ package body Vhdl.Nodes_Meta is
             return "package_origin";
          when Field_Condition_Clause =>
             return "condition_clause";
+         when Field_Break_Element =>
+            return "break_element";
+         when Field_Selector_Quantity =>
+            return "selector_quantity";
+         when Field_Break_Quantity =>
+            return "break_quantity";
          when Field_Timeout_Clause =>
             return "timeout_clause";
          when Field_Postponed_Flag =>
@@ -753,6 +829,8 @@ package body Vhdl.Nodes_Meta is
             return "purity_state";
          when Field_Elab_Flag =>
             return "elab_flag";
+         when Field_Vendor_Library_Flag =>
+            return "vendor_library_flag";
          when Field_Configuration_Mark_Flag =>
             return "configuration_mark_flag";
          when Field_Configuration_Done_Flag =>
@@ -853,6 +931,8 @@ package body Vhdl.Nodes_Meta is
             return "referenced_name";
          when Field_Expr_Staticness =>
             return "expr_staticness";
+         when Field_Scalar_Size =>
+            return "scalar_size";
          when Field_Error_Origin =>
             return "error_origin";
          when Field_Operand =>
@@ -889,6 +969,12 @@ package body Vhdl.Nodes_Meta is
             return "index_subtype";
          when Field_Parameter =>
             return "parameter";
+         when Field_Parameter_2 =>
+            return "parameter_2";
+         when Field_Parameter_3 =>
+            return "parameter_3";
+         when Field_Parameter_4 =>
+            return "parameter_4";
          when Field_Attr_Chain =>
             return "attr_chain";
          when Field_Signal_Attribute_Declaration =>
@@ -937,6 +1023,8 @@ package body Vhdl.Nodes_Meta is
             return "method_object";
          when Field_Subtype_Type_Mark =>
             return "subtype_type_mark";
+         when Field_Subnature_Nature_Mark =>
+            return "subnature_nature_mark";
          when Field_Type_Conversion_Subtype =>
             return "type_conversion_subtype";
          when Field_Type_Mark =>
@@ -999,6 +1087,8 @@ package body Vhdl.Nodes_Meta is
             return "has_mode";
          when Field_Has_Class =>
             return "has_class";
+         when Field_Has_Delay_Mechanism =>
+            return "has_delay_mechanism";
          when Field_Suspend_Flag =>
             return "suspend_flag";
          when Field_Is_Ref =>
@@ -1025,6 +1115,12 @@ package body Vhdl.Nodes_Meta is
             return "psl_clock_sensitivity";
          when Field_PSL_EOS_Flag =>
             return "psl_eos_flag";
+         when Field_Count_Expression =>
+            return "count_expression";
+         when Field_Clock_Expression =>
+            return "clock_expression";
+         when Field_Default_Clock =>
+            return "default_clock";
       end case;
    end Get_Field_Image;
 
@@ -1081,6 +1177,8 @@ package body Vhdl.Nodes_Meta is
             return "association_element_type";
          when Iir_Kind_Association_Element_Subprogram =>
             return "association_element_subprogram";
+         when Iir_Kind_Association_Element_Terminal =>
+            return "association_element_terminal";
          when Iir_Kind_Choice_By_Range =>
             return "choice_by_range";
          when Iir_Kind_Choice_By_Expression =>
@@ -1125,10 +1223,14 @@ package body Vhdl.Nodes_Meta is
             return "record_resolution";
          when Iir_Kind_Record_Element_Resolution =>
             return "record_element_resolution";
+         when Iir_Kind_Break_Element =>
+            return "break_element";
          when Iir_Kind_Attribute_Specification =>
             return "attribute_specification";
          when Iir_Kind_Disconnection_Specification =>
             return "disconnection_specification";
+         when Iir_Kind_Step_Limit_Specification =>
+            return "step_limit_specification";
          when Iir_Kind_Configuration_Specification =>
             return "configuration_specification";
          when Iir_Kind_Access_Type_Definition =>
@@ -1177,6 +1279,12 @@ package body Vhdl.Nodes_Meta is
             return "subtype_definition";
          when Iir_Kind_Scalar_Nature_Definition =>
             return "scalar_nature_definition";
+         when Iir_Kind_Record_Nature_Definition =>
+            return "record_nature_definition";
+         when Iir_Kind_Array_Nature_Definition =>
+            return "array_nature_definition";
+         when Iir_Kind_Array_Subnature_Definition =>
+            return "array_subnature_definition";
          when Iir_Kind_Overload_List =>
             return "overload_list";
          when Iir_Kind_Entity_Declaration =>
@@ -1225,20 +1333,14 @@ package body Vhdl.Nodes_Meta is
             return "group_declaration";
          when Iir_Kind_Element_Declaration =>
             return "element_declaration";
+         when Iir_Kind_Nature_Element_Declaration =>
+            return "nature_element_declaration";
          when Iir_Kind_Non_Object_Alias_Declaration =>
             return "non_object_alias_declaration";
          when Iir_Kind_Psl_Declaration =>
             return "psl_declaration";
          when Iir_Kind_Psl_Endpoint_Declaration =>
             return "psl_endpoint_declaration";
-         when Iir_Kind_Terminal_Declaration =>
-            return "terminal_declaration";
-         when Iir_Kind_Free_Quantity_Declaration =>
-            return "free_quantity_declaration";
-         when Iir_Kind_Across_Quantity_Declaration =>
-            return "across_quantity_declaration";
-         when Iir_Kind_Through_Quantity_Declaration =>
-            return "through_quantity_declaration";
          when Iir_Kind_Enumeration_Literal =>
             return "enumeration_literal";
          when Iir_Kind_Function_Declaration =>
@@ -1249,8 +1351,20 @@ package body Vhdl.Nodes_Meta is
             return "function_body";
          when Iir_Kind_Procedure_Body =>
             return "procedure_body";
+         when Iir_Kind_Terminal_Declaration =>
+            return "terminal_declaration";
          when Iir_Kind_Object_Alias_Declaration =>
             return "object_alias_declaration";
+         when Iir_Kind_Free_Quantity_Declaration =>
+            return "free_quantity_declaration";
+         when Iir_Kind_Spectrum_Quantity_Declaration =>
+            return "spectrum_quantity_declaration";
+         when Iir_Kind_Noise_Quantity_Declaration =>
+            return "noise_quantity_declaration";
+         when Iir_Kind_Across_Quantity_Declaration =>
+            return "across_quantity_declaration";
+         when Iir_Kind_Through_Quantity_Declaration =>
+            return "through_quantity_declaration";
          when Iir_Kind_File_Declaration =>
             return "file_declaration";
          when Iir_Kind_Guard_Signal_Declaration =>
@@ -1271,6 +1385,10 @@ package body Vhdl.Nodes_Meta is
             return "interface_signal_declaration";
          when Iir_Kind_Interface_File_Declaration =>
             return "interface_file_declaration";
+         when Iir_Kind_Interface_Quantity_Declaration =>
+            return "interface_quantity_declaration";
+         when Iir_Kind_Interface_Terminal_Declaration =>
+            return "interface_terminal_declaration";
          when Iir_Kind_Interface_Type_Declaration =>
             return "interface_type_declaration";
          when Iir_Kind_Interface_Package_Declaration =>
@@ -1395,6 +1513,14 @@ package body Vhdl.Nodes_Meta is
             return "slice_name";
          when Iir_Kind_Indexed_Name =>
             return "indexed_name";
+         when Iir_Kind_Psl_Prev =>
+            return "psl_prev";
+         when Iir_Kind_Psl_Stable =>
+            return "psl_stable";
+         when Iir_Kind_Psl_Rose =>
+            return "psl_rose";
+         when Iir_Kind_Psl_Fell =>
+            return "psl_fell";
          when Iir_Kind_Psl_Expression =>
             return "psl_expression";
          when Iir_Kind_Sensitized_Process_Statement =>
@@ -1411,6 +1537,8 @@ package body Vhdl.Nodes_Meta is
             return "concurrent_assertion_statement";
          when Iir_Kind_Concurrent_Procedure_Call_Statement =>
             return "concurrent_procedure_call_statement";
+         when Iir_Kind_Concurrent_Break_Statement =>
+            return "concurrent_break_statement";
          when Iir_Kind_Psl_Assert_Directive =>
             return "psl_assert_directive";
          when Iir_Kind_Psl_Assume_Directive =>
@@ -1431,12 +1559,22 @@ package body Vhdl.Nodes_Meta is
             return "component_instantiation_statement";
          when Iir_Kind_Psl_Default_Clock =>
             return "psl_default_clock";
-         when Iir_Kind_Simple_Simultaneous_Statement =>
-            return "simple_simultaneous_statement";
          when Iir_Kind_Generate_Statement_Body =>
             return "generate_statement_body";
          when Iir_Kind_If_Generate_Else_Clause =>
             return "if_generate_else_clause";
+         when Iir_Kind_Simple_Simultaneous_Statement =>
+            return "simple_simultaneous_statement";
+         when Iir_Kind_Simultaneous_Null_Statement =>
+            return "simultaneous_null_statement";
+         when Iir_Kind_Simultaneous_Procedural_Statement =>
+            return "simultaneous_procedural_statement";
+         when Iir_Kind_Simultaneous_Case_Statement =>
+            return "simultaneous_case_statement";
+         when Iir_Kind_Simultaneous_If_Statement =>
+            return "simultaneous_if_statement";
+         when Iir_Kind_Simultaneous_Elsif =>
+            return "simultaneous_elsif";
          when Iir_Kind_Simple_Signal_Assignment_Statement =>
             return "simple_signal_assignment_statement";
          when Iir_Kind_Conditional_Signal_Assignment_Statement =>
@@ -1469,6 +1607,8 @@ package body Vhdl.Nodes_Meta is
             return "case_statement";
          when Iir_Kind_Procedure_Call_Statement =>
             return "procedure_call_statement";
+         when Iir_Kind_Break_Statement =>
+            return "break_statement";
          when Iir_Kind_If_Statement =>
             return "if_statement";
          when Iir_Kind_Elsif =>
@@ -1507,6 +1647,12 @@ package body Vhdl.Nodes_Meta is
             return "subtype_attribute";
          when Iir_Kind_Element_Attribute =>
             return "element_attribute";
+         when Iir_Kind_Across_Attribute =>
+            return "across_attribute";
+         when Iir_Kind_Through_Attribute =>
+            return "through_attribute";
+         when Iir_Kind_Nature_Reference_Attribute =>
+            return "nature_reference_attribute";
          when Iir_Kind_Left_Type_Attribute =>
             return "left_type_attribute";
          when Iir_Kind_Right_Type_Attribute =>
@@ -1533,6 +1679,26 @@ package body Vhdl.Nodes_Meta is
             return "leftof_attribute";
          when Iir_Kind_Rightof_Attribute =>
             return "rightof_attribute";
+         when Iir_Kind_Signal_Slew_Attribute =>
+            return "signal_slew_attribute";
+         when Iir_Kind_Quantity_Slew_Attribute =>
+            return "quantity_slew_attribute";
+         when Iir_Kind_Ramp_Attribute =>
+            return "ramp_attribute";
+         when Iir_Kind_Zoh_Attribute =>
+            return "zoh_attribute";
+         when Iir_Kind_Ltf_Attribute =>
+            return "ltf_attribute";
+         when Iir_Kind_Ztf_Attribute =>
+            return "ztf_attribute";
+         when Iir_Kind_Dot_Attribute =>
+            return "dot_attribute";
+         when Iir_Kind_Integ_Attribute =>
+            return "integ_attribute";
+         when Iir_Kind_Above_Attribute =>
+            return "above_attribute";
+         when Iir_Kind_Quantity_Delayed_Attribute =>
+            return "quantity_delayed_attribute";
          when Iir_Kind_Delayed_Attribute =>
             return "delayed_attribute";
          when Iir_Kind_Stable_Attribute =>
@@ -1681,6 +1847,8 @@ package body Vhdl.Nodes_Meta is
             return Attr_Ref;
          when Field_Signal_List =>
             return Attr_Of_Maybe_Ref;
+         when Field_Quantity_List =>
+            return Attr_Of_Maybe_Ref;
          when Field_Designated_Entity =>
             return Attr_Forward_Ref;
          when Field_Formal =>
@@ -1759,6 +1927,8 @@ package body Vhdl.Nodes_Meta is
             return Attr_Chain;
          when Field_Bound_Vunit_Chain =>
             return Attr_Chain;
+         when Field_Verification_Block_Configuration =>
+            return Attr_None;
          when Field_Block_Configuration =>
             return Attr_None;
          when Field_Concurrent_Statement_Chain =>
@@ -1772,7 +1942,7 @@ package body Vhdl.Nodes_Meta is
          when Field_Type =>
             return Attr_Ref;
          when Field_Subtype_Indication =>
-            return Attr_None;
+            return Attr_Maybe_Ref;
          when Field_Discrete_Range =>
             return Attr_None;
          when Field_Type_Definition =>
@@ -1783,7 +1953,11 @@ package body Vhdl.Nodes_Meta is
             return Attr_Ref;
          when Field_Interface_Type_Subprograms =>
             return Attr_Chain;
+         when Field_Nature_Definition =>
+            return Attr_None;
          when Field_Nature =>
+            return Attr_Ref;
+         when Field_Subnature_Indication =>
             return Attr_None;
          when Field_Mode =>
             return Attr_None;
@@ -1798,6 +1972,8 @@ package body Vhdl.Nodes_Meta is
          when Field_Subprogram_Specification =>
             return Attr_Ref;
          when Field_Sequential_Statement_Chain =>
+            return Attr_Chain;
+         when Field_Simultaneous_Statement_Chain =>
             return Attr_Chain;
          when Field_Subprogram_Body =>
             return Attr_Forward_Ref;
@@ -1877,7 +2053,11 @@ package body Vhdl.Nodes_Meta is
             return Attr_None;
          when Field_Right_Limit_Expr =>
             return Attr_None;
-         when Field_Base_Type =>
+         when Field_Parent_Type =>
+            return Attr_Ref;
+         when Field_Simple_Nature =>
+            return Attr_Ref;
+         when Field_Base_Nature =>
             return Attr_Ref;
          when Field_Resolution_Indication =>
             return Attr_None;
@@ -1885,9 +2065,19 @@ package body Vhdl.Nodes_Meta is
             return Attr_Chain;
          when Field_Tolerance =>
             return Attr_None;
-         when Field_Plus_Terminal =>
+         when Field_Plus_Terminal_Name =>
             return Attr_None;
+         when Field_Minus_Terminal_Name =>
+            return Attr_None;
+         when Field_Plus_Terminal =>
+            return Attr_Ref;
          when Field_Minus_Terminal =>
+            return Attr_Ref;
+         when Field_Magnitude_Expression =>
+            return Attr_None;
+         when Field_Phase_Expression =>
+            return Attr_None;
+         when Field_Power_Expression =>
             return Attr_None;
          when Field_Simultaneous_Left =>
             return Attr_None;
@@ -1898,6 +2088,8 @@ package body Vhdl.Nodes_Meta is
          when Field_Only_Characters_Flag =>
             return Attr_None;
          when Field_Is_Character_Type =>
+            return Attr_None;
+         when Field_Nature_Staticness =>
             return Attr_None;
          when Field_Type_Staticness =>
             return Attr_None;
@@ -1910,6 +2102,10 @@ package body Vhdl.Nodes_Meta is
          when Field_Element_Subtype_Indication =>
             return Attr_None;
          when Field_Element_Subtype =>
+            return Attr_Ref;
+         when Field_Element_Subnature_Indication =>
+            return Attr_None;
+         when Field_Element_Subnature =>
             return Attr_Ref;
          when Field_Index_Constraint_List =>
             return Attr_None;
@@ -1926,13 +2122,21 @@ package body Vhdl.Nodes_Meta is
          when Field_Index_List =>
             return Attr_None;
          when Field_Reference =>
-            return Attr_None;
+            return Attr_Forward_Ref;
          when Field_Nature_Declarator =>
+            return Attr_Ref;
+         when Field_Across_Type_Mark =>
+            return Attr_None;
+         when Field_Through_Type_Mark =>
+            return Attr_None;
+         when Field_Across_Type_Definition =>
+            return Attr_None;
+         when Field_Through_Type_Definition =>
             return Attr_None;
          when Field_Across_Type =>
-            return Attr_None;
+            return Attr_Ref;
          when Field_Through_Type =>
-            return Attr_None;
+            return Attr_Ref;
          when Field_Target =>
             return Attr_Maybe_Ref;
          when Field_Waveform_Chain =>
@@ -1950,6 +2154,12 @@ package body Vhdl.Nodes_Meta is
          when Field_Package_Origin =>
             return Attr_None;
          when Field_Condition_Clause =>
+            return Attr_None;
+         when Field_Break_Element =>
+            return Attr_Chain;
+         when Field_Selector_Quantity =>
+            return Attr_None;
+         when Field_Break_Quantity =>
             return Attr_None;
          when Field_Timeout_Clause =>
             return Attr_None;
@@ -1980,6 +2190,8 @@ package body Vhdl.Nodes_Meta is
          when Field_Purity_State =>
             return Attr_None;
          when Field_Elab_Flag =>
+            return Attr_None;
+         when Field_Vendor_Library_Flag =>
             return Attr_None;
          when Field_Configuration_Mark_Flag =>
             return Attr_None;
@@ -2081,6 +2293,8 @@ package body Vhdl.Nodes_Meta is
             return Attr_Ref;
          when Field_Expr_Staticness =>
             return Attr_None;
+         when Field_Scalar_Size =>
+            return Attr_None;
          when Field_Error_Origin =>
             return Attr_None;
          when Field_Operand =>
@@ -2116,6 +2330,12 @@ package body Vhdl.Nodes_Meta is
          when Field_Index_Subtype =>
             return Attr_Ref;
          when Field_Parameter =>
+            return Attr_None;
+         when Field_Parameter_2 =>
+            return Attr_None;
+         when Field_Parameter_3 =>
+            return Attr_None;
+         when Field_Parameter_4 =>
             return Attr_None;
          when Field_Attr_Chain =>
             return Attr_Forward_Ref;
@@ -2164,6 +2384,8 @@ package body Vhdl.Nodes_Meta is
          when Field_Method_Object =>
             return Attr_Ref;
          when Field_Subtype_Type_Mark =>
+            return Attr_None;
+         when Field_Subnature_Nature_Mark =>
             return Attr_None;
          when Field_Type_Conversion_Subtype =>
             return Attr_None;
@@ -2227,6 +2449,8 @@ package body Vhdl.Nodes_Meta is
             return Attr_None;
          when Field_Has_Class =>
             return Attr_None;
+         when Field_Has_Delay_Mechanism =>
+            return Attr_None;
          when Field_Suspend_Flag =>
             return Attr_None;
          when Field_Is_Ref =>
@@ -2253,6 +2477,12 @@ package body Vhdl.Nodes_Meta is
             return Attr_None;
          when Field_PSL_EOS_Flag =>
             return Attr_None;
+         when Field_Count_Expression =>
+            return Attr_None;
+         when Field_Clock_Expression =>
+            return Attr_None;
+         when Field_Default_Clock =>
+            return Attr_Ref;
       end case;
    end Get_Field_Attribute;
 
@@ -2267,7 +2497,6 @@ package body Vhdl.Nodes_Meta is
       Field_Type,
       Field_Error_Origin,
       Field_Type_Declarator,
-      Field_Base_Type,
       --  Iir_Kind_Design_File
       Field_Design_File_Directory,
       Field_Design_File_Filename,
@@ -2429,6 +2658,13 @@ package body Vhdl.Nodes_Meta is
       Field_Formal,
       Field_Chain,
       Field_Actual,
+      --  Iir_Kind_Association_Element_Terminal
+      Field_Whole_Association_Flag,
+      Field_Collapse_Signal_Flag,
+      Field_In_Formal_Flag,
+      Field_Formal,
+      Field_Chain,
+      Field_Actual,
       --  Iir_Kind_Choice_By_Range
       Field_Same_Alternative_Flag,
       Field_Element_Type_Flag,
@@ -2535,10 +2771,12 @@ package body Vhdl.Nodes_Meta is
       --  Iir_Kind_Record_Element_Constraint
       Field_Identifier,
       Field_Element_Position,
+      Field_Is_Ref,
       Field_Visible_Flag,
       Field_Parent,
-      Field_Type,
       Field_Chain,
+      Field_Subtype_Indication,
+      Field_Type,
       --  Iir_Kind_Array_Element_Resolution
       Field_Resolution_Indication,
       Field_Element_Subtype_Indication,
@@ -2548,6 +2786,11 @@ package body Vhdl.Nodes_Meta is
       Field_Identifier,
       Field_Chain,
       Field_Resolution_Indication,
+      --  Iir_Kind_Break_Element
+      Field_Chain,
+      Field_Selector_Quantity,
+      Field_Break_Quantity,
+      Field_Expression,
       --  Iir_Kind_Attribute_Specification
       Field_Entity_Class,
       Field_Parent,
@@ -2561,6 +2804,13 @@ package body Vhdl.Nodes_Meta is
       Field_Is_Ref,
       Field_Parent,
       Field_Signal_List,
+      Field_Type_Mark,
+      Field_Expression,
+      Field_Chain,
+      --  Iir_Kind_Step_Limit_Specification
+      Field_Is_Ref,
+      Field_Parent,
+      Field_Quantity_List,
       Field_Type_Mark,
       Field_Expression,
       Field_Chain,
@@ -2578,7 +2828,6 @@ package body Vhdl.Nodes_Meta is
       Field_Designated_Subtype_Indication,
       Field_Designated_Type,
       Field_Type_Declarator,
-      Field_Base_Type,
       Field_Incomplete_Type_Ref_Chain,
       --  Iir_Kind_Incomplete_Type_Definition
       Field_Resolved_Flag,
@@ -2587,7 +2836,6 @@ package body Vhdl.Nodes_Meta is
       Field_Type_Staticness,
       Field_Incomplete_Type_Ref_Chain,
       Field_Type_Declarator,
-      Field_Base_Type,
       Field_Complete_Type_Definition,
       --  Iir_Kind_Interface_Type_Definition
       Field_Resolved_Flag,
@@ -2595,7 +2843,6 @@ package body Vhdl.Nodes_Meta is
       Field_Has_Signal_Flag,
       Field_Type_Staticness,
       Field_Type_Declarator,
-      Field_Base_Type,
       Field_Associated_Type,
       --  Iir_Kind_File_Type_Definition
       Field_Resolved_Flag,
@@ -2604,7 +2851,6 @@ package body Vhdl.Nodes_Meta is
       Field_Type_Staticness,
       Field_File_Type_Mark,
       Field_Type_Declarator,
-      Field_Base_Type,
       --  Iir_Kind_Protected_Type_Declaration
       Field_Resolved_Flag,
       Field_Signal_Type_Flag,
@@ -2614,7 +2860,7 @@ package body Vhdl.Nodes_Meta is
       Field_Declaration_Chain,
       Field_Protected_Type_Body,
       Field_Type_Declarator,
-      Field_Base_Type,
+      Field_Attribute_Value_Chain,
       --  Iir_Kind_Record_Type_Definition
       Field_Resolved_Flag,
       Field_Is_Ref,
@@ -2626,7 +2872,6 @@ package body Vhdl.Nodes_Meta is
       Field_Constraint_State,
       Field_Elements_Declaration_List,
       Field_Type_Declarator,
-      Field_Base_Type,
       --  Iir_Kind_Array_Type_Definition
       Field_Resolved_Flag,
       Field_Signal_Type_Flag,
@@ -2639,7 +2884,6 @@ package body Vhdl.Nodes_Meta is
       Field_Index_Subtype_List,
       Field_Element_Subtype,
       Field_Type_Declarator,
-      Field_Base_Type,
       --  Iir_Kind_Array_Subtype_Definition
       Field_Resolved_Flag,
       Field_Signal_Type_Flag,
@@ -2655,7 +2899,7 @@ package body Vhdl.Nodes_Meta is
       Field_Tolerance,
       Field_Element_Subtype,
       Field_Type_Declarator,
-      Field_Base_Type,
+      Field_Parent_Type,
       --  Iir_Kind_Record_Subtype_Definition
       Field_Resolved_Flag,
       Field_Is_Ref,
@@ -2667,7 +2911,7 @@ package body Vhdl.Nodes_Meta is
       Field_Elements_Declaration_List,
       Field_Subtype_Type_Mark,
       Field_Type_Declarator,
-      Field_Base_Type,
+      Field_Parent_Type,
       Field_Resolution_Indication,
       Field_Tolerance,
       --  Iir_Kind_Access_Subtype_Definition
@@ -2677,7 +2921,7 @@ package body Vhdl.Nodes_Meta is
       Field_Designated_Type,
       Field_Subtype_Type_Mark,
       Field_Type_Declarator,
-      Field_Base_Type,
+      Field_Parent_Type,
       Field_Designated_Subtype_Indication,
       --  Iir_Kind_Physical_Subtype_Definition
       Field_Resolved_Flag,
@@ -2688,7 +2932,7 @@ package body Vhdl.Nodes_Meta is
       Field_Range_Constraint,
       Field_Subtype_Type_Mark,
       Field_Type_Declarator,
-      Field_Base_Type,
+      Field_Parent_Type,
       Field_Resolution_Indication,
       --  Iir_Kind_Floating_Subtype_Definition
       Field_Resolved_Flag,
@@ -2699,7 +2943,7 @@ package body Vhdl.Nodes_Meta is
       Field_Range_Constraint,
       Field_Subtype_Type_Mark,
       Field_Type_Declarator,
-      Field_Base_Type,
+      Field_Parent_Type,
       Field_Resolution_Indication,
       Field_Tolerance,
       --  Iir_Kind_Integer_Subtype_Definition
@@ -2711,7 +2955,7 @@ package body Vhdl.Nodes_Meta is
       Field_Range_Constraint,
       Field_Subtype_Type_Mark,
       Field_Type_Declarator,
-      Field_Base_Type,
+      Field_Parent_Type,
       Field_Resolution_Indication,
       --  Iir_Kind_Enumeration_Subtype_Definition
       Field_Resolved_Flag,
@@ -2722,7 +2966,7 @@ package body Vhdl.Nodes_Meta is
       Field_Range_Constraint,
       Field_Subtype_Type_Mark,
       Field_Type_Declarator,
-      Field_Base_Type,
+      Field_Parent_Type,
       Field_Resolution_Indication,
       --  Iir_Kind_Enumeration_Type_Definition
       Field_Resolved_Flag,
@@ -2731,44 +2975,44 @@ package body Vhdl.Nodes_Meta is
       Field_Has_Signal_Flag,
       Field_Only_Characters_Flag,
       Field_Is_Character_Type,
+      Field_Scalar_Size,
       Field_Type_Staticness,
       Field_Enumeration_Literal_List,
       Field_Range_Constraint,
       Field_Type_Declarator,
-      Field_Base_Type,
       --  Iir_Kind_Integer_Type_Definition
       Field_Resolved_Flag,
       Field_Is_Ref,
       Field_Signal_Type_Flag,
       Field_Has_Signal_Flag,
+      Field_Scalar_Size,
       Field_Type_Staticness,
       Field_Range_Constraint,
       Field_Type_Declarator,
-      Field_Base_Type,
       --  Iir_Kind_Floating_Type_Definition
       Field_Resolved_Flag,
       Field_Is_Ref,
       Field_Signal_Type_Flag,
       Field_Has_Signal_Flag,
+      Field_Scalar_Size,
       Field_Type_Staticness,
       Field_Range_Constraint,
       Field_Type_Declarator,
-      Field_Base_Type,
       --  Iir_Kind_Physical_Type_Definition
       Field_Resolved_Flag,
       Field_Is_Ref,
       Field_Signal_Type_Flag,
       Field_Has_Signal_Flag,
+      Field_Scalar_Size,
       Field_End_Has_Reserved_Id,
       Field_End_Has_Identifier,
       Field_Type_Staticness,
       Field_Range_Constraint,
       Field_Unit_Chain,
       Field_Type_Declarator,
-      Field_Base_Type,
       --  Iir_Kind_Range_Expression
-      Field_Expr_Staticness,
       Field_Direction,
+      Field_Expr_Staticness,
       Field_Left_Limit_Expr,
       Field_Right_Limit_Expr,
       Field_Range_Origin,
@@ -2783,23 +3027,72 @@ package body Vhdl.Nodes_Meta is
       Field_Declaration_Chain,
       Field_Chain,
       Field_Protected_Type_Declaration,
+      Field_Attribute_Value_Chain,
       --  Iir_Kind_Wildcard_Type_Definition
       Field_Resolved_Flag,
       Field_Signal_Type_Flag,
       Field_Type_Staticness,
       Field_Type_Declarator,
-      Field_Base_Type,
       --  Iir_Kind_Subtype_Definition
       Field_Is_Ref,
       Field_Range_Constraint,
       Field_Subtype_Type_Mark,
       Field_Type_Declarator,
-      Field_Base_Type,
+      Field_Parent_Type,
       Field_Resolution_Indication,
       Field_Tolerance,
       --  Iir_Kind_Scalar_Nature_Definition
+      Field_Nature_Staticness,
       Field_Reference,
       Field_Nature_Declarator,
+      Field_Base_Nature,
+      Field_Across_Type_Mark,
+      Field_Through_Type_Mark,
+      Field_Across_Type,
+      Field_Through_Type,
+      --  Iir_Kind_Record_Nature_Definition
+      Field_Is_Ref,
+      Field_End_Has_Reserved_Id,
+      Field_End_Has_Identifier,
+      Field_Nature_Staticness,
+      Field_Constraint_State,
+      Field_Elements_Declaration_List,
+      Field_Nature_Declarator,
+      Field_Base_Nature,
+      Field_Across_Type_Definition,
+      Field_Through_Type_Definition,
+      Field_Across_Type,
+      Field_Through_Type,
+      Field_Simple_Nature,
+      --  Iir_Kind_Array_Nature_Definition
+      Field_Index_Constraint_Flag,
+      Field_Nature_Staticness,
+      Field_Constraint_State,
+      Field_Index_Subtype_Definition_List,
+      Field_Element_Subnature_Indication,
+      Field_Index_Subtype_List,
+      Field_Element_Subnature,
+      Field_Nature_Declarator,
+      Field_Base_Nature,
+      Field_Simple_Nature,
+      Field_Across_Type_Definition,
+      Field_Through_Type_Definition,
+      Field_Across_Type,
+      Field_Through_Type,
+      --  Iir_Kind_Array_Subnature_Definition
+      Field_Index_Constraint_Flag,
+      Field_Nature_Staticness,
+      Field_Constraint_State,
+      Field_Subnature_Nature_Mark,
+      Field_Index_Constraint_List,
+      Field_Index_Subtype_List,
+      Field_Array_Element_Constraint,
+      Field_Tolerance,
+      Field_Element_Subnature,
+      Field_Nature_Declarator,
+      Field_Base_Nature,
+      Field_Across_Type_Definition,
+      Field_Through_Type_Definition,
       Field_Across_Type,
       Field_Through_Type,
       --  Iir_Kind_Overload_List
@@ -2878,6 +3171,7 @@ package body Vhdl.Nodes_Meta is
       Field_Inherit_Spec_Chain,
       Field_Attribute_Value_Chain,
       Field_Vunit_Item_Chain,
+      Field_Verification_Block_Configuration,
       --  Iir_Kind_Vprop_Declaration
       Field_Identifier,
       Field_Has_Begin,
@@ -2890,6 +3184,7 @@ package body Vhdl.Nodes_Meta is
       Field_Inherit_Spec_Chain,
       Field_Attribute_Value_Chain,
       Field_Vunit_Item_Chain,
+      Field_Verification_Block_Configuration,
       --  Iir_Kind_Vunit_Declaration
       Field_Identifier,
       Field_Has_Begin,
@@ -2902,6 +3197,7 @@ package body Vhdl.Nodes_Meta is
       Field_Inherit_Spec_Chain,
       Field_Attribute_Value_Chain,
       Field_Vunit_Item_Chain,
+      Field_Verification_Block_Configuration,
       Field_Bound_Vunit_Chain,
       --  Iir_Kind_Package_Body
       Field_Identifier,
@@ -2943,6 +3239,7 @@ package body Vhdl.Nodes_Meta is
       Field_Incomplete_Type_Declaration,
       --  Iir_Kind_Subtype_Declaration
       Field_Identifier,
+      Field_Is_Ref,
       Field_Visible_Flag,
       Field_Use_Flag,
       Field_Parent,
@@ -2954,13 +3251,14 @@ package body Vhdl.Nodes_Meta is
       Field_Visible_Flag,
       Field_Use_Flag,
       Field_Parent,
-      Field_Nature,
+      Field_Nature_Definition,
       Field_Chain,
       --  Iir_Kind_Subnature_Declaration
       Field_Identifier,
       Field_Visible_Flag,
       Field_Use_Flag,
       Field_Parent,
+      Field_Subnature_Indication,
       Field_Nature,
       Field_Chain,
       --  Iir_Kind_Package_Header
@@ -2980,6 +3278,7 @@ package body Vhdl.Nodes_Meta is
       Field_Identifier,
       Field_Date,
       Field_Library_Directory,
+      Field_Vendor_Library_Flag,
       Field_Elab_Flag,
       Field_Visible_Flag,
       Field_Design_File_Chain,
@@ -3021,11 +3320,20 @@ package body Vhdl.Nodes_Meta is
       --  Iir_Kind_Element_Declaration
       Field_Identifier,
       Field_Element_Position,
+      Field_Is_Ref,
       Field_Has_Identifier_List,
       Field_Visible_Flag,
       Field_Parent,
       Field_Subtype_Indication,
       Field_Type,
+      --  Iir_Kind_Nature_Element_Declaration
+      Field_Identifier,
+      Field_Element_Position,
+      Field_Has_Identifier_List,
+      Field_Visible_Flag,
+      Field_Parent,
+      Field_Subnature_Indication,
+      Field_Nature,
       --  Iir_Kind_Non_Object_Alias_Declaration
       Field_Identifier,
       Field_Implicit_Alias_Flag,
@@ -3059,52 +3367,6 @@ package body Vhdl.Nodes_Meta is
       Field_Type,
       Field_Chain,
       Field_PSL_Clock_Sensitivity,
-      --  Iir_Kind_Terminal_Declaration
-      Field_Identifier,
-      Field_Has_Identifier_List,
-      Field_Visible_Flag,
-      Field_Use_Flag,
-      Field_Parent,
-      Field_Nature,
-      Field_Chain,
-      --  Iir_Kind_Free_Quantity_Declaration
-      Field_Identifier,
-      Field_Is_Ref,
-      Field_Visible_Flag,
-      Field_Use_Flag,
-      Field_Expr_Staticness,
-      Field_Name_Staticness,
-      Field_Parent,
-      Field_Type,
-      Field_Chain,
-      Field_Subtype_Indication,
-      Field_Default_Value,
-      --  Iir_Kind_Across_Quantity_Declaration
-      Field_Identifier,
-      Field_Visible_Flag,
-      Field_Use_Flag,
-      Field_Expr_Staticness,
-      Field_Name_Staticness,
-      Field_Parent,
-      Field_Type,
-      Field_Chain,
-      Field_Default_Value,
-      Field_Tolerance,
-      Field_Plus_Terminal,
-      Field_Minus_Terminal,
-      --  Iir_Kind_Through_Quantity_Declaration
-      Field_Identifier,
-      Field_Visible_Flag,
-      Field_Use_Flag,
-      Field_Expr_Staticness,
-      Field_Name_Staticness,
-      Field_Parent,
-      Field_Type,
-      Field_Chain,
-      Field_Default_Value,
-      Field_Tolerance,
-      Field_Plus_Terminal,
-      Field_Minus_Terminal,
       --  Iir_Kind_Enumeration_Literal
       Field_Identifier,
       Field_Subprogram_Hash,
@@ -3126,12 +3388,12 @@ package body Vhdl.Nodes_Meta is
       Field_Seen_Flag,
       Field_Has_Parameter,
       Field_Hide_Implicit_Flag,
+      Field_Resolution_Function_Flag,
       Field_Pure_Flag,
       Field_Foreign_Flag,
       Field_Visible_Flag,
       Field_Is_Within_Flag,
       Field_Use_Flag,
-      Field_Resolution_Function_Flag,
       Field_Has_Pure,
       Field_Has_Body,
       Field_Wait_State,
@@ -3191,8 +3453,19 @@ package body Vhdl.Nodes_Meta is
       Field_Sequential_Statement_Chain,
       Field_Subprogram_Specification,
       Field_Callees_List,
+      --  Iir_Kind_Terminal_Declaration
+      Field_Identifier,
+      Field_Has_Identifier_List,
+      Field_Visible_Flag,
+      Field_Use_Flag,
+      Field_Name_Staticness,
+      Field_Parent,
+      Field_Chain,
+      Field_Subnature_Indication,
+      Field_Nature,
       --  Iir_Kind_Object_Alias_Declaration
       Field_Identifier,
+      Field_Is_Ref,
       Field_Visible_Flag,
       Field_After_Drivers_Flag,
       Field_Use_Flag,
@@ -3203,9 +3476,84 @@ package body Vhdl.Nodes_Meta is
       Field_Name,
       Field_Subtype_Indication,
       Field_Type,
+      --  Iir_Kind_Free_Quantity_Declaration
+      Field_Identifier,
+      Field_Is_Ref,
+      Field_Has_Identifier_List,
+      Field_Visible_Flag,
+      Field_Use_Flag,
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Parent,
+      Field_Chain,
+      Field_Subtype_Indication,
+      Field_Default_Value,
+      Field_Type,
+      --  Iir_Kind_Spectrum_Quantity_Declaration
+      Field_Identifier,
+      Field_Is_Ref,
+      Field_Has_Identifier_List,
+      Field_Visible_Flag,
+      Field_Use_Flag,
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Parent,
+      Field_Chain,
+      Field_Subtype_Indication,
+      Field_Magnitude_Expression,
+      Field_Phase_Expression,
+      Field_Type,
+      --  Iir_Kind_Noise_Quantity_Declaration
+      Field_Identifier,
+      Field_Is_Ref,
+      Field_Has_Identifier_List,
+      Field_Visible_Flag,
+      Field_Use_Flag,
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Parent,
+      Field_Chain,
+      Field_Subtype_Indication,
+      Field_Power_Expression,
+      Field_Type,
+      --  Iir_Kind_Across_Quantity_Declaration
+      Field_Identifier,
+      Field_Is_Ref,
+      Field_Has_Identifier_List,
+      Field_Visible_Flag,
+      Field_Use_Flag,
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Parent,
+      Field_Type,
+      Field_Chain,
+      Field_Default_Value,
+      Field_Tolerance,
+      Field_Plus_Terminal_Name,
+      Field_Minus_Terminal_Name,
+      Field_Plus_Terminal,
+      Field_Minus_Terminal,
+      --  Iir_Kind_Through_Quantity_Declaration
+      Field_Identifier,
+      Field_Is_Ref,
+      Field_Has_Identifier_List,
+      Field_Visible_Flag,
+      Field_Use_Flag,
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Parent,
+      Field_Type,
+      Field_Chain,
+      Field_Default_Value,
+      Field_Tolerance,
+      Field_Plus_Terminal_Name,
+      Field_Minus_Terminal_Name,
+      Field_Plus_Terminal,
+      Field_Minus_Terminal,
       --  Iir_Kind_File_Declaration
       Field_Identifier,
       Field_Has_Mode,
+      Field_Is_Ref,
       Field_Mode,
       Field_Has_Identifier_List,
       Field_Visible_Flag,
@@ -3281,6 +3629,7 @@ package body Vhdl.Nodes_Meta is
       Field_Deferred_Declaration,
       --  Iir_Kind_Iterator_Declaration
       Field_Identifier,
+      Field_Is_Ref,
       Field_Has_Identifier_List,
       Field_Visible_Flag,
       Field_Use_Flag,
@@ -3301,6 +3650,7 @@ package body Vhdl.Nodes_Meta is
       Field_Visible_Flag,
       Field_After_Drivers_Flag,
       Field_Use_Flag,
+      Field_Open_Flag,
       Field_Expr_Staticness,
       Field_Name_Staticness,
       Field_Parent,
@@ -3364,12 +3714,43 @@ package body Vhdl.Nodes_Meta is
       Field_Subtype_Indication,
       Field_Default_Value,
       Field_Type,
+      --  Iir_Kind_Interface_Quantity_Declaration
+      Field_Identifier,
+      Field_Has_Mode,
+      Field_Has_Class,
+      Field_Is_Ref,
+      Field_Mode,
+      Field_Has_Identifier_List,
+      Field_Visible_Flag,
+      Field_After_Drivers_Flag,
+      Field_Use_Flag,
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Parent,
+      Field_Chain,
+      Field_Subtype_Indication,
+      Field_Default_Value,
+      Field_Type,
+      --  Iir_Kind_Interface_Terminal_Declaration
+      Field_Identifier,
+      Field_Has_Mode,
+      Field_Has_Class,
+      Field_Is_Ref,
+      Field_Has_Identifier_List,
+      Field_Visible_Flag,
+      Field_Use_Flag,
+      Field_Name_Staticness,
+      Field_Parent,
+      Field_Chain,
+      Field_Subnature_Indication,
+      Field_Nature,
       --  Iir_Kind_Interface_Type_Declaration
       Field_Identifier,
       Field_Is_Ref,
       Field_Has_Identifier_List,
       Field_Visible_Flag,
       Field_Use_Flag,
+      Field_Open_Flag,
       Field_Name_Staticness,
       Field_Parent,
       Field_Type,
@@ -3380,6 +3761,7 @@ package body Vhdl.Nodes_Meta is
       Field_Identifier,
       Field_Visible_Flag,
       Field_Is_Within_Flag,
+      Field_Open_Flag,
       Field_Parent,
       Field_Uninstantiated_Package_Name,
       Field_Uninstantiated_Package_Decl,
@@ -3394,11 +3776,12 @@ package body Vhdl.Nodes_Meta is
       Field_Subprogram_Hash,
       Field_Seen_Flag,
       Field_Has_Parameter,
+      Field_Resolution_Function_Flag,
       Field_Pure_Flag,
       Field_Foreign_Flag,
       Field_Visible_Flag,
       Field_Use_Flag,
-      Field_Resolution_Function_Flag,
+      Field_Open_Flag,
       Field_Has_Pure,
       Field_All_Sensitized_State,
       Field_Parent,
@@ -3415,6 +3798,7 @@ package body Vhdl.Nodes_Meta is
       Field_Foreign_Flag,
       Field_Visible_Flag,
       Field_Use_Flag,
+      Field_Open_Flag,
       Field_All_Sensitized_State,
       Field_Parent,
       Field_Chain,
@@ -3719,11 +4103,13 @@ package body Vhdl.Nodes_Meta is
       Field_Type_Mark,
       Field_Expression,
       --  Iir_Kind_Allocator_By_Expression
+      Field_Is_Ref,
       Field_Expr_Staticness,
       Field_Type,
       Field_Expression,
       Field_Allocator_Designated_Type,
       --  Iir_Kind_Allocator_By_Subtype
+      Field_Is_Ref,
       Field_Expr_Staticness,
       Field_Type,
       Field_Subtype_Indication,
@@ -3765,6 +4151,31 @@ package body Vhdl.Nodes_Meta is
       Field_Type,
       Field_Index_List,
       Field_Base_Name,
+      --  Iir_Kind_Psl_Prev
+      Field_Expr_Staticness,
+      Field_Type,
+      Field_Expression,
+      Field_Count_Expression,
+      Field_Clock_Expression,
+      Field_Default_Clock,
+      --  Iir_Kind_Psl_Stable
+      Field_Expr_Staticness,
+      Field_Type,
+      Field_Expression,
+      Field_Clock_Expression,
+      Field_Default_Clock,
+      --  Iir_Kind_Psl_Rose
+      Field_Expr_Staticness,
+      Field_Type,
+      Field_Expression,
+      Field_Clock_Expression,
+      Field_Default_Clock,
+      --  Iir_Kind_Psl_Fell
+      Field_Expr_Staticness,
+      Field_Type,
+      Field_Expression,
+      Field_Clock_Expression,
+      Field_Default_Clock,
       --  Iir_Kind_Psl_Expression
       Field_Psl_Expression,
       Field_Type,
@@ -3815,6 +4226,7 @@ package body Vhdl.Nodes_Meta is
       Field_Label,
       Field_Delay_Mechanism,
       Field_Is_Ref,
+      Field_Has_Delay_Mechanism,
       Field_Postponed_Flag,
       Field_Visible_Flag,
       Field_Guarded_Target_State,
@@ -3828,6 +4240,7 @@ package body Vhdl.Nodes_Meta is
       Field_Label,
       Field_Delay_Mechanism,
       Field_Is_Ref,
+      Field_Has_Delay_Mechanism,
       Field_Postponed_Flag,
       Field_Visible_Flag,
       Field_Guarded_Target_State,
@@ -3841,6 +4254,7 @@ package body Vhdl.Nodes_Meta is
       Field_Label,
       Field_Delay_Mechanism,
       Field_Is_Ref,
+      Field_Has_Delay_Mechanism,
       Field_Postponed_Flag,
       Field_Visible_Flag,
       Field_Guarded_Target_State,
@@ -3868,6 +4282,15 @@ package body Vhdl.Nodes_Meta is
       Field_Parent,
       Field_Procedure_Call,
       Field_Chain,
+      --  Iir_Kind_Concurrent_Break_Statement
+      Field_Label,
+      Field_Is_Ref,
+      Field_Visible_Flag,
+      Field_Parent,
+      Field_Condition,
+      Field_Chain,
+      Field_Sensitivity_List,
+      Field_Break_Element,
       --  Iir_Kind_Psl_Assert_Directive
       Field_Psl_Property,
       Field_Label,
@@ -3983,14 +4406,6 @@ package body Vhdl.Nodes_Meta is
       Field_Label,
       Field_Parent,
       Field_Chain,
-      --  Iir_Kind_Simple_Simultaneous_Statement
-      Field_Label,
-      Field_Visible_Flag,
-      Field_Parent,
-      Field_Chain,
-      Field_Simultaneous_Left,
-      Field_Simultaneous_Right,
-      Field_Tolerance,
       --  Iir_Kind_Generate_Statement_Body
       Field_Alternative_Label,
       Field_Has_Begin,
@@ -4010,10 +4425,63 @@ package body Vhdl.Nodes_Meta is
       Field_Condition,
       Field_Generate_Statement_Body,
       Field_Generate_Else_Clause,
+      --  Iir_Kind_Simple_Simultaneous_Statement
+      Field_Label,
+      Field_Visible_Flag,
+      Field_Parent,
+      Field_Chain,
+      Field_Simultaneous_Left,
+      Field_Simultaneous_Right,
+      Field_Tolerance,
+      --  Iir_Kind_Simultaneous_Null_Statement
+      Field_Label,
+      Field_Visible_Flag,
+      Field_Parent,
+      Field_Chain,
+      --  Iir_Kind_Simultaneous_Procedural_Statement
+      Field_Label,
+      Field_Visible_Flag,
+      Field_Is_Within_Flag,
+      Field_Has_Is,
+      Field_End_Has_Reserved_Id,
+      Field_End_Has_Identifier,
+      Field_Parent,
+      Field_Chain,
+      Field_Declaration_Chain,
+      Field_Sequential_Statement_Chain,
+      Field_Attribute_Value_Chain,
+      --  Iir_Kind_Simultaneous_Case_Statement
+      Field_Label,
+      Field_Visible_Flag,
+      Field_Is_Within_Flag,
+      Field_End_Has_Reserved_Id,
+      Field_End_Has_Identifier,
+      Field_Parent,
+      Field_Case_Statement_Alternative_Chain,
+      Field_Chain,
+      Field_Expression,
+      --  Iir_Kind_Simultaneous_If_Statement
+      Field_Label,
+      Field_Is_Ref,
+      Field_Visible_Flag,
+      Field_End_Has_Identifier,
+      Field_Parent,
+      Field_Condition,
+      Field_Simultaneous_Statement_Chain,
+      Field_Else_Clause,
+      Field_Chain,
+      --  Iir_Kind_Simultaneous_Elsif
+      Field_Is_Ref,
+      Field_End_Has_Identifier,
+      Field_Parent,
+      Field_Condition,
+      Field_Simultaneous_Statement_Chain,
+      Field_Else_Clause,
       --  Iir_Kind_Simple_Signal_Assignment_Statement
       Field_Label,
       Field_Delay_Mechanism,
       Field_Is_Ref,
+      Field_Has_Delay_Mechanism,
       Field_Visible_Flag,
       Field_Guarded_Target_State,
       Field_Parent,
@@ -4025,6 +4493,7 @@ package body Vhdl.Nodes_Meta is
       Field_Label,
       Field_Delay_Mechanism,
       Field_Is_Ref,
+      Field_Has_Delay_Mechanism,
       Field_Visible_Flag,
       Field_Guarded_Target_State,
       Field_Parent,
@@ -4036,6 +4505,7 @@ package body Vhdl.Nodes_Meta is
       Field_Label,
       Field_Delay_Mechanism,
       Field_Is_Ref,
+      Field_Has_Delay_Mechanism,
       Field_Visible_Flag,
       Field_Guarded_Target_State,
       Field_Parent,
@@ -4142,9 +4612,9 @@ package body Vhdl.Nodes_Meta is
       Field_Visible_Flag,
       Field_End_Has_Identifier,
       Field_Parent,
+      Field_Expression,
       Field_Case_Statement_Alternative_Chain,
       Field_Chain,
-      Field_Expression,
       --  Iir_Kind_Procedure_Call_Statement
       Field_Label,
       Field_Suspend_Flag,
@@ -4152,6 +4622,14 @@ package body Vhdl.Nodes_Meta is
       Field_Parent,
       Field_Procedure_Call,
       Field_Chain,
+      --  Iir_Kind_Break_Statement
+      Field_Label,
+      Field_Is_Ref,
+      Field_Visible_Flag,
+      Field_Parent,
+      Field_Condition,
+      Field_Chain,
+      Field_Break_Element,
       --  Iir_Kind_If_Statement
       Field_Label,
       Field_Suspend_Flag,
@@ -4212,6 +4690,7 @@ package body Vhdl.Nodes_Meta is
       Field_Named_Entity,
       Field_Referenced_Name,
       --  Iir_Kind_External_Constant_Name
+      Field_Is_Ref,
       Field_Expr_Staticness,
       Field_Name_Staticness,
       Field_Parent,
@@ -4221,6 +4700,7 @@ package body Vhdl.Nodes_Meta is
       Field_Named_Entity,
       Field_Subtype_Indication,
       --  Iir_Kind_External_Signal_Name
+      Field_Is_Ref,
       Field_Expr_Staticness,
       Field_Name_Staticness,
       Field_Parent,
@@ -4230,6 +4710,7 @@ package body Vhdl.Nodes_Meta is
       Field_Named_Entity,
       Field_Subtype_Indication,
       --  Iir_Kind_External_Variable_Name
+      Field_Is_Ref,
       Field_Shared_Flag,
       Field_Expr_Staticness,
       Field_Name_Staticness,
@@ -4281,6 +4762,23 @@ package body Vhdl.Nodes_Meta is
       Field_Name_Staticness,
       Field_Prefix,
       Field_Type,
+      Field_Base_Name,
+      --  Iir_Kind_Across_Attribute
+      Field_Type_Staticness,
+      Field_Name_Staticness,
+      Field_Prefix,
+      Field_Type,
+      Field_Base_Name,
+      --  Iir_Kind_Through_Attribute
+      Field_Type_Staticness,
+      Field_Name_Staticness,
+      Field_Prefix,
+      Field_Type,
+      Field_Base_Name,
+      --  Iir_Kind_Nature_Reference_Attribute
+      Field_Name_Staticness,
+      Field_Prefix,
+      Field_Nature,
       Field_Base_Name,
       --  Iir_Kind_Left_Type_Attribute
       Field_Expr_Staticness,
@@ -4366,6 +4864,96 @@ package body Vhdl.Nodes_Meta is
       Field_Name_Staticness,
       Field_Prefix,
       Field_Type,
+      Field_Parameter,
+      Field_Base_Name,
+      --  Iir_Kind_Signal_Slew_Attribute
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Prefix,
+      Field_Type,
+      Field_Attr_Chain,
+      Field_Parameter,
+      Field_Parameter_2,
+      Field_Base_Name,
+      --  Iir_Kind_Quantity_Slew_Attribute
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Prefix,
+      Field_Type,
+      Field_Attr_Chain,
+      Field_Parameter,
+      Field_Parameter_2,
+      Field_Base_Name,
+      --  Iir_Kind_Ramp_Attribute
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Prefix,
+      Field_Type,
+      Field_Attr_Chain,
+      Field_Parameter,
+      Field_Parameter_2,
+      Field_Base_Name,
+      --  Iir_Kind_Zoh_Attribute
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Prefix,
+      Field_Type,
+      Field_Attr_Chain,
+      Field_Parameter,
+      Field_Parameter_2,
+      Field_Base_Name,
+      --  Iir_Kind_Ltf_Attribute
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Prefix,
+      Field_Type,
+      Field_Attr_Chain,
+      Field_Parameter,
+      Field_Parameter_2,
+      Field_Base_Name,
+      --  Iir_Kind_Ztf_Attribute
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Prefix,
+      Field_Type,
+      Field_Attr_Chain,
+      Field_Parameter,
+      Field_Parameter_2,
+      Field_Parameter_3,
+      Field_Parameter_4,
+      Field_Base_Name,
+      --  Iir_Kind_Dot_Attribute
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Prefix,
+      Field_Type,
+      Field_Attr_Chain,
+      Field_Signal_Attribute_Declaration,
+      Field_Base_Name,
+      --  Iir_Kind_Integ_Attribute
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Prefix,
+      Field_Type,
+      Field_Attr_Chain,
+      Field_Signal_Attribute_Declaration,
+      Field_Base_Name,
+      --  Iir_Kind_Above_Attribute
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Prefix,
+      Field_Type,
+      Field_Attr_Chain,
+      Field_Signal_Attribute_Declaration,
+      Field_Parameter,
+      Field_Base_Name,
+      --  Iir_Kind_Quantity_Delayed_Attribute
+      Field_Expr_Staticness,
+      Field_Name_Staticness,
+      Field_Prefix,
+      Field_Type,
+      Field_Attr_Chain,
+      Field_Signal_Attribute_Declaration,
       Field_Parameter,
       Field_Base_Name,
       --  Iir_Kind_Delayed_Attribute
@@ -4544,281 +5132,316 @@ package body Vhdl.Nodes_Meta is
    Fields_Of_Iir_Last : constant array (Iir_Kind) of Fields_Index_Extended :=
      (
       Iir_Kind_Unused => -1,
-      Iir_Kind_Error => 7,
-      Iir_Kind_Design_File => 18,
-      Iir_Kind_Design_Unit => 34,
-      Iir_Kind_Library_Clause => 39,
-      Iir_Kind_Use_Clause => 43,
-      Iir_Kind_Context_Reference => 47,
-      Iir_Kind_Integer_Literal => 52,
-      Iir_Kind_Floating_Point_Literal => 57,
-      Iir_Kind_Null_Literal => 59,
-      Iir_Kind_String_Literal8 => 70,
-      Iir_Kind_Physical_Int_Literal => 76,
-      Iir_Kind_Physical_Fp_Literal => 82,
-      Iir_Kind_Simple_Aggregate => 87,
-      Iir_Kind_Overflow_Literal => 90,
-      Iir_Kind_Unaffected_Waveform => 91,
-      Iir_Kind_Waveform_Element => 94,
-      Iir_Kind_Conditional_Waveform => 98,
-      Iir_Kind_Conditional_Expression => 102,
-      Iir_Kind_Association_Element_By_Expression => 110,
-      Iir_Kind_Association_Element_By_Individual => 119,
-      Iir_Kind_Association_Element_Open => 125,
-      Iir_Kind_Association_Element_Package => 131,
-      Iir_Kind_Association_Element_Type => 139,
-      Iir_Kind_Association_Element_Subprogram => 145,
-      Iir_Kind_Choice_By_Range => 153,
-      Iir_Kind_Choice_By_Expression => 161,
-      Iir_Kind_Choice_By_Others => 167,
-      Iir_Kind_Choice_By_None => 173,
-      Iir_Kind_Choice_By_Name => 180,
-      Iir_Kind_Entity_Aspect_Entity => 182,
-      Iir_Kind_Entity_Aspect_Configuration => 183,
-      Iir_Kind_Entity_Aspect_Open => 183,
-      Iir_Kind_Psl_Hierarchical_Name => 185,
-      Iir_Kind_Block_Configuration => 191,
-      Iir_Kind_Block_Header => 195,
-      Iir_Kind_Component_Configuration => 202,
-      Iir_Kind_Binding_Indication => 206,
-      Iir_Kind_Entity_Class => 208,
-      Iir_Kind_Attribute_Value => 216,
-      Iir_Kind_Signature => 219,
-      Iir_Kind_Aggregate_Info => 226,
-      Iir_Kind_Procedure_Call => 230,
-      Iir_Kind_Record_Element_Constraint => 236,
-      Iir_Kind_Array_Element_Resolution => 238,
-      Iir_Kind_Record_Resolution => 239,
-      Iir_Kind_Record_Element_Resolution => 242,
-      Iir_Kind_Attribute_Specification => 250,
-      Iir_Kind_Disconnection_Specification => 256,
-      Iir_Kind_Configuration_Specification => 262,
-      Iir_Kind_Access_Type_Definition => 270,
-      Iir_Kind_Incomplete_Type_Definition => 278,
-      Iir_Kind_Interface_Type_Definition => 285,
-      Iir_Kind_File_Type_Definition => 292,
-      Iir_Kind_Protected_Type_Declaration => 301,
-      Iir_Kind_Record_Type_Definition => 312,
-      Iir_Kind_Array_Type_Definition => 324,
-      Iir_Kind_Array_Subtype_Definition => 339,
-      Iir_Kind_Record_Subtype_Definition => 352,
-      Iir_Kind_Access_Subtype_Definition => 360,
-      Iir_Kind_Physical_Subtype_Definition => 370,
-      Iir_Kind_Floating_Subtype_Definition => 381,
-      Iir_Kind_Integer_Subtype_Definition => 391,
-      Iir_Kind_Enumeration_Subtype_Definition => 401,
-      Iir_Kind_Enumeration_Type_Definition => 412,
-      Iir_Kind_Integer_Type_Definition => 420,
-      Iir_Kind_Floating_Type_Definition => 428,
-      Iir_Kind_Physical_Type_Definition => 439,
-      Iir_Kind_Range_Expression => 447,
-      Iir_Kind_Protected_Type_Body => 454,
-      Iir_Kind_Wildcard_Type_Definition => 459,
-      Iir_Kind_Subtype_Definition => 466,
-      Iir_Kind_Scalar_Nature_Definition => 470,
-      Iir_Kind_Overload_List => 471,
-      Iir_Kind_Entity_Declaration => 484,
-      Iir_Kind_Configuration_Declaration => 493,
-      Iir_Kind_Context_Declaration => 499,
-      Iir_Kind_Package_Declaration => 514,
-      Iir_Kind_Package_Instantiation_Declaration => 528,
-      Iir_Kind_Vmode_Declaration => 539,
-      Iir_Kind_Vprop_Declaration => 550,
-      Iir_Kind_Vunit_Declaration => 562,
-      Iir_Kind_Package_Body => 570,
-      Iir_Kind_Architecture_Body => 583,
-      Iir_Kind_Type_Declaration => 590,
-      Iir_Kind_Anonymous_Type_Declaration => 596,
-      Iir_Kind_Subtype_Declaration => 603,
-      Iir_Kind_Nature_Declaration => 609,
-      Iir_Kind_Subnature_Declaration => 615,
-      Iir_Kind_Package_Header => 617,
-      Iir_Kind_Unit_Declaration => 626,
-      Iir_Kind_Library_Declaration => 633,
-      Iir_Kind_Component_Declaration => 643,
-      Iir_Kind_Attribute_Declaration => 650,
-      Iir_Kind_Group_Template_Declaration => 656,
-      Iir_Kind_Group_Declaration => 663,
-      Iir_Kind_Element_Declaration => 670,
-      Iir_Kind_Non_Object_Alias_Declaration => 678,
-      Iir_Kind_Psl_Declaration => 686,
-      Iir_Kind_Psl_Endpoint_Declaration => 700,
-      Iir_Kind_Terminal_Declaration => 707,
-      Iir_Kind_Free_Quantity_Declaration => 718,
-      Iir_Kind_Across_Quantity_Declaration => 730,
-      Iir_Kind_Through_Quantity_Declaration => 742,
-      Iir_Kind_Enumeration_Literal => 753,
-      Iir_Kind_Function_Declaration => 778,
-      Iir_Kind_Procedure_Declaration => 802,
-      Iir_Kind_Function_Body => 812,
-      Iir_Kind_Procedure_Body => 823,
-      Iir_Kind_Object_Alias_Declaration => 834,
-      Iir_Kind_File_Declaration => 848,
-      Iir_Kind_Guard_Signal_Declaration => 861,
-      Iir_Kind_Signal_Declaration => 878,
-      Iir_Kind_Variable_Declaration => 891,
-      Iir_Kind_Constant_Declaration => 905,
-      Iir_Kind_Iterator_Declaration => 916,
-      Iir_Kind_Interface_Constant_Declaration => 932,
-      Iir_Kind_Interface_Variable_Declaration => 948,
-      Iir_Kind_Interface_Signal_Declaration => 969,
-      Iir_Kind_Interface_File_Declaration => 985,
-      Iir_Kind_Interface_Type_Declaration => 995,
-      Iir_Kind_Interface_Package_Declaration => 1007,
-      Iir_Kind_Interface_Function_Declaration => 1024,
-      Iir_Kind_Interface_Procedure_Declaration => 1037,
-      Iir_Kind_Anonymous_Signal_Declaration => 1046,
-      Iir_Kind_Signal_Attribute_Declaration => 1049,
-      Iir_Kind_Identity_Operator => 1053,
-      Iir_Kind_Negation_Operator => 1057,
-      Iir_Kind_Absolute_Operator => 1061,
-      Iir_Kind_Not_Operator => 1065,
-      Iir_Kind_Implicit_Condition_Operator => 1069,
-      Iir_Kind_Condition_Operator => 1073,
-      Iir_Kind_Reduction_And_Operator => 1077,
-      Iir_Kind_Reduction_Or_Operator => 1081,
-      Iir_Kind_Reduction_Nand_Operator => 1085,
-      Iir_Kind_Reduction_Nor_Operator => 1089,
-      Iir_Kind_Reduction_Xor_Operator => 1093,
-      Iir_Kind_Reduction_Xnor_Operator => 1097,
-      Iir_Kind_And_Operator => 1102,
-      Iir_Kind_Or_Operator => 1107,
-      Iir_Kind_Nand_Operator => 1112,
-      Iir_Kind_Nor_Operator => 1117,
-      Iir_Kind_Xor_Operator => 1122,
-      Iir_Kind_Xnor_Operator => 1127,
-      Iir_Kind_Equality_Operator => 1132,
-      Iir_Kind_Inequality_Operator => 1137,
-      Iir_Kind_Less_Than_Operator => 1142,
-      Iir_Kind_Less_Than_Or_Equal_Operator => 1147,
-      Iir_Kind_Greater_Than_Operator => 1152,
-      Iir_Kind_Greater_Than_Or_Equal_Operator => 1157,
-      Iir_Kind_Match_Equality_Operator => 1162,
-      Iir_Kind_Match_Inequality_Operator => 1167,
-      Iir_Kind_Match_Less_Than_Operator => 1172,
-      Iir_Kind_Match_Less_Than_Or_Equal_Operator => 1177,
-      Iir_Kind_Match_Greater_Than_Operator => 1182,
-      Iir_Kind_Match_Greater_Than_Or_Equal_Operator => 1187,
-      Iir_Kind_Sll_Operator => 1192,
-      Iir_Kind_Sla_Operator => 1197,
-      Iir_Kind_Srl_Operator => 1202,
-      Iir_Kind_Sra_Operator => 1207,
-      Iir_Kind_Rol_Operator => 1212,
-      Iir_Kind_Ror_Operator => 1217,
-      Iir_Kind_Addition_Operator => 1222,
-      Iir_Kind_Substraction_Operator => 1227,
-      Iir_Kind_Concatenation_Operator => 1232,
-      Iir_Kind_Multiplication_Operator => 1237,
-      Iir_Kind_Division_Operator => 1242,
-      Iir_Kind_Modulus_Operator => 1247,
-      Iir_Kind_Remainder_Operator => 1252,
-      Iir_Kind_Exponentiation_Operator => 1257,
-      Iir_Kind_Function_Call => 1265,
-      Iir_Kind_Aggregate => 1272,
-      Iir_Kind_Parenthesis_Expression => 1275,
-      Iir_Kind_Qualified_Expression => 1279,
-      Iir_Kind_Type_Conversion => 1284,
-      Iir_Kind_Allocator_By_Expression => 1288,
-      Iir_Kind_Allocator_By_Subtype => 1293,
-      Iir_Kind_Selected_Element => 1301,
-      Iir_Kind_Dereference => 1306,
-      Iir_Kind_Implicit_Dereference => 1311,
-      Iir_Kind_Slice_Name => 1318,
-      Iir_Kind_Indexed_Name => 1324,
-      Iir_Kind_Psl_Expression => 1326,
-      Iir_Kind_Sensitized_Process_Statement => 1347,
-      Iir_Kind_Process_Statement => 1367,
-      Iir_Kind_Concurrent_Simple_Signal_Assignment => 1379,
-      Iir_Kind_Concurrent_Conditional_Signal_Assignment => 1391,
-      Iir_Kind_Concurrent_Selected_Signal_Assignment => 1404,
-      Iir_Kind_Concurrent_Assertion_Statement => 1412,
-      Iir_Kind_Concurrent_Procedure_Call_Statement => 1419,
-      Iir_Kind_Psl_Assert_Directive => 1432,
-      Iir_Kind_Psl_Assume_Directive => 1443,
-      Iir_Kind_Psl_Cover_Directive => 1455,
-      Iir_Kind_Psl_Restrict_Directive => 1466,
-      Iir_Kind_Block_Statement => 1480,
-      Iir_Kind_If_Generate_Statement => 1491,
-      Iir_Kind_Case_Generate_Statement => 1500,
-      Iir_Kind_For_Generate_Statement => 1509,
-      Iir_Kind_Component_Instantiation_Statement => 1520,
-      Iir_Kind_Psl_Default_Clock => 1524,
-      Iir_Kind_Simple_Simultaneous_Statement => 1531,
-      Iir_Kind_Generate_Statement_Body => 1542,
-      Iir_Kind_If_Generate_Else_Clause => 1548,
-      Iir_Kind_Simple_Signal_Assignment_Statement => 1558,
-      Iir_Kind_Conditional_Signal_Assignment_Statement => 1568,
-      Iir_Kind_Selected_Waveform_Assignment_Statement => 1579,
-      Iir_Kind_Null_Statement => 1583,
-      Iir_Kind_Assertion_Statement => 1590,
-      Iir_Kind_Report_Statement => 1596,
-      Iir_Kind_Wait_Statement => 1604,
-      Iir_Kind_Variable_Assignment_Statement => 1611,
-      Iir_Kind_Conditional_Variable_Assignment_Statement => 1618,
-      Iir_Kind_Return_Statement => 1624,
-      Iir_Kind_For_Loop_Statement => 1635,
-      Iir_Kind_While_Loop_Statement => 1646,
-      Iir_Kind_Next_Statement => 1653,
-      Iir_Kind_Exit_Statement => 1660,
-      Iir_Kind_Case_Statement => 1668,
-      Iir_Kind_Procedure_Call_Statement => 1674,
-      Iir_Kind_If_Statement => 1684,
-      Iir_Kind_Elsif => 1690,
-      Iir_Kind_Character_Literal => 1698,
-      Iir_Kind_Simple_Name => 1706,
-      Iir_Kind_Selected_Name => 1715,
-      Iir_Kind_Operator_Symbol => 1721,
-      Iir_Kind_Reference_Name => 1726,
-      Iir_Kind_External_Constant_Name => 1734,
-      Iir_Kind_External_Signal_Name => 1742,
-      Iir_Kind_External_Variable_Name => 1751,
-      Iir_Kind_Selected_By_All_Name => 1757,
-      Iir_Kind_Parenthesis_Name => 1762,
-      Iir_Kind_Package_Pathname => 1766,
-      Iir_Kind_Absolute_Pathname => 1767,
-      Iir_Kind_Relative_Pathname => 1768,
-      Iir_Kind_Pathname_Element => 1773,
-      Iir_Kind_Base_Attribute => 1775,
-      Iir_Kind_Subtype_Attribute => 1780,
-      Iir_Kind_Element_Attribute => 1785,
-      Iir_Kind_Left_Type_Attribute => 1790,
-      Iir_Kind_Right_Type_Attribute => 1795,
-      Iir_Kind_High_Type_Attribute => 1800,
-      Iir_Kind_Low_Type_Attribute => 1805,
-      Iir_Kind_Ascending_Type_Attribute => 1810,
-      Iir_Kind_Image_Attribute => 1816,
-      Iir_Kind_Value_Attribute => 1822,
-      Iir_Kind_Pos_Attribute => 1828,
-      Iir_Kind_Val_Attribute => 1834,
-      Iir_Kind_Succ_Attribute => 1840,
-      Iir_Kind_Pred_Attribute => 1846,
-      Iir_Kind_Leftof_Attribute => 1852,
-      Iir_Kind_Rightof_Attribute => 1858,
-      Iir_Kind_Delayed_Attribute => 1867,
-      Iir_Kind_Stable_Attribute => 1876,
-      Iir_Kind_Quiet_Attribute => 1885,
-      Iir_Kind_Transaction_Attribute => 1894,
-      Iir_Kind_Event_Attribute => 1898,
-      Iir_Kind_Active_Attribute => 1902,
-      Iir_Kind_Last_Event_Attribute => 1906,
-      Iir_Kind_Last_Active_Attribute => 1910,
-      Iir_Kind_Last_Value_Attribute => 1914,
-      Iir_Kind_Driving_Attribute => 1918,
-      Iir_Kind_Driving_Value_Attribute => 1922,
-      Iir_Kind_Behavior_Attribute => 1922,
-      Iir_Kind_Structure_Attribute => 1922,
-      Iir_Kind_Simple_Name_Attribute => 1929,
-      Iir_Kind_Instance_Name_Attribute => 1934,
-      Iir_Kind_Path_Name_Attribute => 1939,
-      Iir_Kind_Left_Array_Attribute => 1946,
-      Iir_Kind_Right_Array_Attribute => 1953,
-      Iir_Kind_High_Array_Attribute => 1960,
-      Iir_Kind_Low_Array_Attribute => 1967,
-      Iir_Kind_Length_Array_Attribute => 1974,
-      Iir_Kind_Ascending_Array_Attribute => 1981,
-      Iir_Kind_Range_Array_Attribute => 1988,
-      Iir_Kind_Reverse_Range_Array_Attribute => 1995,
-      Iir_Kind_Attribute_Name => 2004
+      Iir_Kind_Error => 6,
+      Iir_Kind_Design_File => 17,
+      Iir_Kind_Design_Unit => 33,
+      Iir_Kind_Library_Clause => 38,
+      Iir_Kind_Use_Clause => 42,
+      Iir_Kind_Context_Reference => 46,
+      Iir_Kind_Integer_Literal => 51,
+      Iir_Kind_Floating_Point_Literal => 56,
+      Iir_Kind_Null_Literal => 58,
+      Iir_Kind_String_Literal8 => 69,
+      Iir_Kind_Physical_Int_Literal => 75,
+      Iir_Kind_Physical_Fp_Literal => 81,
+      Iir_Kind_Simple_Aggregate => 86,
+      Iir_Kind_Overflow_Literal => 89,
+      Iir_Kind_Unaffected_Waveform => 90,
+      Iir_Kind_Waveform_Element => 93,
+      Iir_Kind_Conditional_Waveform => 97,
+      Iir_Kind_Conditional_Expression => 101,
+      Iir_Kind_Association_Element_By_Expression => 109,
+      Iir_Kind_Association_Element_By_Individual => 118,
+      Iir_Kind_Association_Element_Open => 124,
+      Iir_Kind_Association_Element_Package => 130,
+      Iir_Kind_Association_Element_Type => 138,
+      Iir_Kind_Association_Element_Subprogram => 144,
+      Iir_Kind_Association_Element_Terminal => 150,
+      Iir_Kind_Choice_By_Range => 158,
+      Iir_Kind_Choice_By_Expression => 166,
+      Iir_Kind_Choice_By_Others => 172,
+      Iir_Kind_Choice_By_None => 178,
+      Iir_Kind_Choice_By_Name => 185,
+      Iir_Kind_Entity_Aspect_Entity => 187,
+      Iir_Kind_Entity_Aspect_Configuration => 188,
+      Iir_Kind_Entity_Aspect_Open => 188,
+      Iir_Kind_Psl_Hierarchical_Name => 190,
+      Iir_Kind_Block_Configuration => 196,
+      Iir_Kind_Block_Header => 200,
+      Iir_Kind_Component_Configuration => 207,
+      Iir_Kind_Binding_Indication => 211,
+      Iir_Kind_Entity_Class => 213,
+      Iir_Kind_Attribute_Value => 221,
+      Iir_Kind_Signature => 224,
+      Iir_Kind_Aggregate_Info => 231,
+      Iir_Kind_Procedure_Call => 235,
+      Iir_Kind_Record_Element_Constraint => 243,
+      Iir_Kind_Array_Element_Resolution => 245,
+      Iir_Kind_Record_Resolution => 246,
+      Iir_Kind_Record_Element_Resolution => 249,
+      Iir_Kind_Break_Element => 253,
+      Iir_Kind_Attribute_Specification => 261,
+      Iir_Kind_Disconnection_Specification => 267,
+      Iir_Kind_Step_Limit_Specification => 273,
+      Iir_Kind_Configuration_Specification => 279,
+      Iir_Kind_Access_Type_Definition => 286,
+      Iir_Kind_Incomplete_Type_Definition => 293,
+      Iir_Kind_Interface_Type_Definition => 299,
+      Iir_Kind_File_Type_Definition => 305,
+      Iir_Kind_Protected_Type_Declaration => 314,
+      Iir_Kind_Record_Type_Definition => 324,
+      Iir_Kind_Array_Type_Definition => 335,
+      Iir_Kind_Array_Subtype_Definition => 350,
+      Iir_Kind_Record_Subtype_Definition => 363,
+      Iir_Kind_Access_Subtype_Definition => 371,
+      Iir_Kind_Physical_Subtype_Definition => 381,
+      Iir_Kind_Floating_Subtype_Definition => 392,
+      Iir_Kind_Integer_Subtype_Definition => 402,
+      Iir_Kind_Enumeration_Subtype_Definition => 412,
+      Iir_Kind_Enumeration_Type_Definition => 423,
+      Iir_Kind_Integer_Type_Definition => 431,
+      Iir_Kind_Floating_Type_Definition => 439,
+      Iir_Kind_Physical_Type_Definition => 450,
+      Iir_Kind_Range_Expression => 458,
+      Iir_Kind_Protected_Type_Body => 466,
+      Iir_Kind_Wildcard_Type_Definition => 470,
+      Iir_Kind_Subtype_Definition => 477,
+      Iir_Kind_Scalar_Nature_Definition => 485,
+      Iir_Kind_Record_Nature_Definition => 498,
+      Iir_Kind_Array_Nature_Definition => 512,
+      Iir_Kind_Array_Subnature_Definition => 527,
+      Iir_Kind_Overload_List => 528,
+      Iir_Kind_Entity_Declaration => 541,
+      Iir_Kind_Configuration_Declaration => 550,
+      Iir_Kind_Context_Declaration => 556,
+      Iir_Kind_Package_Declaration => 571,
+      Iir_Kind_Package_Instantiation_Declaration => 585,
+      Iir_Kind_Vmode_Declaration => 597,
+      Iir_Kind_Vprop_Declaration => 609,
+      Iir_Kind_Vunit_Declaration => 622,
+      Iir_Kind_Package_Body => 630,
+      Iir_Kind_Architecture_Body => 643,
+      Iir_Kind_Type_Declaration => 650,
+      Iir_Kind_Anonymous_Type_Declaration => 656,
+      Iir_Kind_Subtype_Declaration => 664,
+      Iir_Kind_Nature_Declaration => 670,
+      Iir_Kind_Subnature_Declaration => 677,
+      Iir_Kind_Package_Header => 679,
+      Iir_Kind_Unit_Declaration => 688,
+      Iir_Kind_Library_Declaration => 696,
+      Iir_Kind_Component_Declaration => 706,
+      Iir_Kind_Attribute_Declaration => 713,
+      Iir_Kind_Group_Template_Declaration => 719,
+      Iir_Kind_Group_Declaration => 726,
+      Iir_Kind_Element_Declaration => 734,
+      Iir_Kind_Nature_Element_Declaration => 741,
+      Iir_Kind_Non_Object_Alias_Declaration => 749,
+      Iir_Kind_Psl_Declaration => 757,
+      Iir_Kind_Psl_Endpoint_Declaration => 771,
+      Iir_Kind_Enumeration_Literal => 782,
+      Iir_Kind_Function_Declaration => 807,
+      Iir_Kind_Procedure_Declaration => 831,
+      Iir_Kind_Function_Body => 841,
+      Iir_Kind_Procedure_Body => 852,
+      Iir_Kind_Terminal_Declaration => 861,
+      Iir_Kind_Object_Alias_Declaration => 873,
+      Iir_Kind_Free_Quantity_Declaration => 885,
+      Iir_Kind_Spectrum_Quantity_Declaration => 898,
+      Iir_Kind_Noise_Quantity_Declaration => 910,
+      Iir_Kind_Across_Quantity_Declaration => 926,
+      Iir_Kind_Through_Quantity_Declaration => 942,
+      Iir_Kind_File_Declaration => 957,
+      Iir_Kind_Guard_Signal_Declaration => 970,
+      Iir_Kind_Signal_Declaration => 987,
+      Iir_Kind_Variable_Declaration => 1000,
+      Iir_Kind_Constant_Declaration => 1014,
+      Iir_Kind_Iterator_Declaration => 1026,
+      Iir_Kind_Interface_Constant_Declaration => 1043,
+      Iir_Kind_Interface_Variable_Declaration => 1059,
+      Iir_Kind_Interface_Signal_Declaration => 1080,
+      Iir_Kind_Interface_File_Declaration => 1096,
+      Iir_Kind_Interface_Quantity_Declaration => 1112,
+      Iir_Kind_Interface_Terminal_Declaration => 1124,
+      Iir_Kind_Interface_Type_Declaration => 1135,
+      Iir_Kind_Interface_Package_Declaration => 1148,
+      Iir_Kind_Interface_Function_Declaration => 1166,
+      Iir_Kind_Interface_Procedure_Declaration => 1180,
+      Iir_Kind_Anonymous_Signal_Declaration => 1189,
+      Iir_Kind_Signal_Attribute_Declaration => 1192,
+      Iir_Kind_Identity_Operator => 1196,
+      Iir_Kind_Negation_Operator => 1200,
+      Iir_Kind_Absolute_Operator => 1204,
+      Iir_Kind_Not_Operator => 1208,
+      Iir_Kind_Implicit_Condition_Operator => 1212,
+      Iir_Kind_Condition_Operator => 1216,
+      Iir_Kind_Reduction_And_Operator => 1220,
+      Iir_Kind_Reduction_Or_Operator => 1224,
+      Iir_Kind_Reduction_Nand_Operator => 1228,
+      Iir_Kind_Reduction_Nor_Operator => 1232,
+      Iir_Kind_Reduction_Xor_Operator => 1236,
+      Iir_Kind_Reduction_Xnor_Operator => 1240,
+      Iir_Kind_And_Operator => 1245,
+      Iir_Kind_Or_Operator => 1250,
+      Iir_Kind_Nand_Operator => 1255,
+      Iir_Kind_Nor_Operator => 1260,
+      Iir_Kind_Xor_Operator => 1265,
+      Iir_Kind_Xnor_Operator => 1270,
+      Iir_Kind_Equality_Operator => 1275,
+      Iir_Kind_Inequality_Operator => 1280,
+      Iir_Kind_Less_Than_Operator => 1285,
+      Iir_Kind_Less_Than_Or_Equal_Operator => 1290,
+      Iir_Kind_Greater_Than_Operator => 1295,
+      Iir_Kind_Greater_Than_Or_Equal_Operator => 1300,
+      Iir_Kind_Match_Equality_Operator => 1305,
+      Iir_Kind_Match_Inequality_Operator => 1310,
+      Iir_Kind_Match_Less_Than_Operator => 1315,
+      Iir_Kind_Match_Less_Than_Or_Equal_Operator => 1320,
+      Iir_Kind_Match_Greater_Than_Operator => 1325,
+      Iir_Kind_Match_Greater_Than_Or_Equal_Operator => 1330,
+      Iir_Kind_Sll_Operator => 1335,
+      Iir_Kind_Sla_Operator => 1340,
+      Iir_Kind_Srl_Operator => 1345,
+      Iir_Kind_Sra_Operator => 1350,
+      Iir_Kind_Rol_Operator => 1355,
+      Iir_Kind_Ror_Operator => 1360,
+      Iir_Kind_Addition_Operator => 1365,
+      Iir_Kind_Substraction_Operator => 1370,
+      Iir_Kind_Concatenation_Operator => 1375,
+      Iir_Kind_Multiplication_Operator => 1380,
+      Iir_Kind_Division_Operator => 1385,
+      Iir_Kind_Modulus_Operator => 1390,
+      Iir_Kind_Remainder_Operator => 1395,
+      Iir_Kind_Exponentiation_Operator => 1400,
+      Iir_Kind_Function_Call => 1408,
+      Iir_Kind_Aggregate => 1415,
+      Iir_Kind_Parenthesis_Expression => 1418,
+      Iir_Kind_Qualified_Expression => 1422,
+      Iir_Kind_Type_Conversion => 1427,
+      Iir_Kind_Allocator_By_Expression => 1432,
+      Iir_Kind_Allocator_By_Subtype => 1438,
+      Iir_Kind_Selected_Element => 1446,
+      Iir_Kind_Dereference => 1451,
+      Iir_Kind_Implicit_Dereference => 1456,
+      Iir_Kind_Slice_Name => 1463,
+      Iir_Kind_Indexed_Name => 1469,
+      Iir_Kind_Psl_Prev => 1475,
+      Iir_Kind_Psl_Stable => 1480,
+      Iir_Kind_Psl_Rose => 1485,
+      Iir_Kind_Psl_Fell => 1490,
+      Iir_Kind_Psl_Expression => 1492,
+      Iir_Kind_Sensitized_Process_Statement => 1513,
+      Iir_Kind_Process_Statement => 1533,
+      Iir_Kind_Concurrent_Simple_Signal_Assignment => 1546,
+      Iir_Kind_Concurrent_Conditional_Signal_Assignment => 1559,
+      Iir_Kind_Concurrent_Selected_Signal_Assignment => 1573,
+      Iir_Kind_Concurrent_Assertion_Statement => 1581,
+      Iir_Kind_Concurrent_Procedure_Call_Statement => 1588,
+      Iir_Kind_Concurrent_Break_Statement => 1596,
+      Iir_Kind_Psl_Assert_Directive => 1609,
+      Iir_Kind_Psl_Assume_Directive => 1620,
+      Iir_Kind_Psl_Cover_Directive => 1632,
+      Iir_Kind_Psl_Restrict_Directive => 1643,
+      Iir_Kind_Block_Statement => 1657,
+      Iir_Kind_If_Generate_Statement => 1668,
+      Iir_Kind_Case_Generate_Statement => 1677,
+      Iir_Kind_For_Generate_Statement => 1686,
+      Iir_Kind_Component_Instantiation_Statement => 1697,
+      Iir_Kind_Psl_Default_Clock => 1701,
+      Iir_Kind_Generate_Statement_Body => 1712,
+      Iir_Kind_If_Generate_Else_Clause => 1718,
+      Iir_Kind_Simple_Simultaneous_Statement => 1725,
+      Iir_Kind_Simultaneous_Null_Statement => 1729,
+      Iir_Kind_Simultaneous_Procedural_Statement => 1740,
+      Iir_Kind_Simultaneous_Case_Statement => 1749,
+      Iir_Kind_Simultaneous_If_Statement => 1758,
+      Iir_Kind_Simultaneous_Elsif => 1764,
+      Iir_Kind_Simple_Signal_Assignment_Statement => 1775,
+      Iir_Kind_Conditional_Signal_Assignment_Statement => 1786,
+      Iir_Kind_Selected_Waveform_Assignment_Statement => 1798,
+      Iir_Kind_Null_Statement => 1802,
+      Iir_Kind_Assertion_Statement => 1809,
+      Iir_Kind_Report_Statement => 1815,
+      Iir_Kind_Wait_Statement => 1823,
+      Iir_Kind_Variable_Assignment_Statement => 1830,
+      Iir_Kind_Conditional_Variable_Assignment_Statement => 1837,
+      Iir_Kind_Return_Statement => 1843,
+      Iir_Kind_For_Loop_Statement => 1854,
+      Iir_Kind_While_Loop_Statement => 1865,
+      Iir_Kind_Next_Statement => 1872,
+      Iir_Kind_Exit_Statement => 1879,
+      Iir_Kind_Case_Statement => 1887,
+      Iir_Kind_Procedure_Call_Statement => 1893,
+      Iir_Kind_Break_Statement => 1900,
+      Iir_Kind_If_Statement => 1910,
+      Iir_Kind_Elsif => 1916,
+      Iir_Kind_Character_Literal => 1924,
+      Iir_Kind_Simple_Name => 1932,
+      Iir_Kind_Selected_Name => 1941,
+      Iir_Kind_Operator_Symbol => 1947,
+      Iir_Kind_Reference_Name => 1952,
+      Iir_Kind_External_Constant_Name => 1961,
+      Iir_Kind_External_Signal_Name => 1970,
+      Iir_Kind_External_Variable_Name => 1980,
+      Iir_Kind_Selected_By_All_Name => 1986,
+      Iir_Kind_Parenthesis_Name => 1991,
+      Iir_Kind_Package_Pathname => 1995,
+      Iir_Kind_Absolute_Pathname => 1996,
+      Iir_Kind_Relative_Pathname => 1997,
+      Iir_Kind_Pathname_Element => 2002,
+      Iir_Kind_Base_Attribute => 2004,
+      Iir_Kind_Subtype_Attribute => 2009,
+      Iir_Kind_Element_Attribute => 2014,
+      Iir_Kind_Across_Attribute => 2019,
+      Iir_Kind_Through_Attribute => 2024,
+      Iir_Kind_Nature_Reference_Attribute => 2028,
+      Iir_Kind_Left_Type_Attribute => 2033,
+      Iir_Kind_Right_Type_Attribute => 2038,
+      Iir_Kind_High_Type_Attribute => 2043,
+      Iir_Kind_Low_Type_Attribute => 2048,
+      Iir_Kind_Ascending_Type_Attribute => 2053,
+      Iir_Kind_Image_Attribute => 2059,
+      Iir_Kind_Value_Attribute => 2065,
+      Iir_Kind_Pos_Attribute => 2071,
+      Iir_Kind_Val_Attribute => 2077,
+      Iir_Kind_Succ_Attribute => 2083,
+      Iir_Kind_Pred_Attribute => 2089,
+      Iir_Kind_Leftof_Attribute => 2095,
+      Iir_Kind_Rightof_Attribute => 2101,
+      Iir_Kind_Signal_Slew_Attribute => 2109,
+      Iir_Kind_Quantity_Slew_Attribute => 2117,
+      Iir_Kind_Ramp_Attribute => 2125,
+      Iir_Kind_Zoh_Attribute => 2133,
+      Iir_Kind_Ltf_Attribute => 2141,
+      Iir_Kind_Ztf_Attribute => 2151,
+      Iir_Kind_Dot_Attribute => 2158,
+      Iir_Kind_Integ_Attribute => 2165,
+      Iir_Kind_Above_Attribute => 2173,
+      Iir_Kind_Quantity_Delayed_Attribute => 2181,
+      Iir_Kind_Delayed_Attribute => 2190,
+      Iir_Kind_Stable_Attribute => 2199,
+      Iir_Kind_Quiet_Attribute => 2208,
+      Iir_Kind_Transaction_Attribute => 2217,
+      Iir_Kind_Event_Attribute => 2221,
+      Iir_Kind_Active_Attribute => 2225,
+      Iir_Kind_Last_Event_Attribute => 2229,
+      Iir_Kind_Last_Active_Attribute => 2233,
+      Iir_Kind_Last_Value_Attribute => 2237,
+      Iir_Kind_Driving_Attribute => 2241,
+      Iir_Kind_Driving_Value_Attribute => 2245,
+      Iir_Kind_Behavior_Attribute => 2245,
+      Iir_Kind_Structure_Attribute => 2245,
+      Iir_Kind_Simple_Name_Attribute => 2252,
+      Iir_Kind_Instance_Name_Attribute => 2257,
+      Iir_Kind_Path_Name_Attribute => 2262,
+      Iir_Kind_Left_Array_Attribute => 2269,
+      Iir_Kind_Right_Array_Attribute => 2276,
+      Iir_Kind_High_Array_Attribute => 2283,
+      Iir_Kind_Low_Array_Attribute => 2290,
+      Iir_Kind_Length_Array_Attribute => 2297,
+      Iir_Kind_Ascending_Array_Attribute => 2304,
+      Iir_Kind_Range_Array_Attribute => 2311,
+      Iir_Kind_Reverse_Range_Array_Attribute => 2318,
+      Iir_Kind_Attribute_Name => 2327
      );
 
    function Get_Fields_First (K : Iir_Kind) return Fields_Index is
@@ -4913,6 +5536,8 @@ package body Vhdl.Nodes_Meta is
             return Get_Has_Signal_Flag (N);
          when Field_Elab_Flag =>
             return Get_Elab_Flag (N);
+         when Field_Vendor_Library_Flag =>
+            return Get_Vendor_Library_Flag (N);
          when Field_Configuration_Mark_Flag =>
             return Get_Configuration_Mark_Flag (N);
          when Field_Configuration_Done_Flag =>
@@ -4973,6 +5598,8 @@ package body Vhdl.Nodes_Meta is
             return Get_Has_Mode (N);
          when Field_Has_Class =>
             return Get_Has_Class (N);
+         when Field_Has_Delay_Mechanism =>
+            return Get_Has_Delay_Mechanism (N);
          when Field_Suspend_Flag =>
             return Get_Suspend_Flag (N);
          when Field_Is_Ref =>
@@ -5051,6 +5678,8 @@ package body Vhdl.Nodes_Meta is
             Set_Has_Signal_Flag (N, V);
          when Field_Elab_Flag =>
             Set_Elab_Flag (N, V);
+         when Field_Vendor_Library_Flag =>
+            Set_Vendor_Library_Flag (N, V);
          when Field_Configuration_Mark_Flag =>
             Set_Configuration_Mark_Flag (N, V);
          when Field_Configuration_Done_Flag =>
@@ -5111,6 +5740,8 @@ package body Vhdl.Nodes_Meta is
             Set_Has_Mode (N, V);
          when Field_Has_Class =>
             Set_Has_Class (N, V);
+         when Field_Has_Delay_Mechanism =>
+            Set_Has_Delay_Mechanism (N, V);
          when Field_Suspend_Flag =>
             Set_Suspend_Flag (N, V);
          when Field_Is_Ref =>
@@ -5171,6 +5802,30 @@ package body Vhdl.Nodes_Meta is
             raise Internal_Error;
       end case;
    end Set_Date_Type;
+
+   function Get_Direction_Type
+      (N : Iir; F : Fields_Enum) return Direction_Type is
+   begin
+      pragma Assert (Fields_Type (F) = Type_Direction_Type);
+      case F is
+         when Field_Direction =>
+            return Get_Direction (N);
+         when others =>
+            raise Internal_Error;
+      end case;
+   end Get_Direction_Type;
+
+   procedure Set_Direction_Type
+      (N : Iir; F : Fields_Enum; V: Direction_Type) is
+   begin
+      pragma Assert (Fields_Type (F) = Type_Direction_Type);
+      case F is
+         when Field_Direction =>
+            Set_Direction (N, V);
+         when others =>
+            raise Internal_Error;
+      end case;
+   end Set_Direction_Type;
 
    function Get_File_Checksum_Id
       (N : Iir; F : Fields_Enum) return File_Checksum_Id is
@@ -5317,6 +5972,8 @@ package body Vhdl.Nodes_Meta is
             return Get_Vunit_Item_Chain (N);
          when Field_Bound_Vunit_Chain =>
             return Get_Bound_Vunit_Chain (N);
+         when Field_Verification_Block_Configuration =>
+            return Get_Verification_Block_Configuration (N);
          when Field_Block_Configuration =>
             return Get_Block_Configuration (N);
          when Field_Concurrent_Statement_Chain =>
@@ -5341,8 +5998,12 @@ package body Vhdl.Nodes_Meta is
             return Get_Incomplete_Type_Declaration (N);
          when Field_Interface_Type_Subprograms =>
             return Get_Interface_Type_Subprograms (N);
+         when Field_Nature_Definition =>
+            return Get_Nature_Definition (N);
          when Field_Nature =>
             return Get_Nature (N);
+         when Field_Subnature_Indication =>
+            return Get_Subnature_Indication (N);
          when Field_Base_Name =>
             return Get_Base_Name (N);
          when Field_Interface_Declaration_Chain =>
@@ -5351,6 +6012,8 @@ package body Vhdl.Nodes_Meta is
             return Get_Subprogram_Specification (N);
          when Field_Sequential_Statement_Chain =>
             return Get_Sequential_Statement_Chain (N);
+         when Field_Simultaneous_Statement_Chain =>
+            return Get_Simultaneous_Statement_Chain (N);
          when Field_Subprogram_Body =>
             return Get_Subprogram_Body (N);
          when Field_Return_Type =>
@@ -5401,18 +6064,32 @@ package body Vhdl.Nodes_Meta is
             return Get_Left_Limit_Expr (N);
          when Field_Right_Limit_Expr =>
             return Get_Right_Limit_Expr (N);
-         when Field_Base_Type =>
-            return Get_Base_Type (N);
+         when Field_Parent_Type =>
+            return Get_Parent_Type (N);
+         when Field_Simple_Nature =>
+            return Get_Simple_Nature (N);
+         when Field_Base_Nature =>
+            return Get_Base_Nature (N);
          when Field_Resolution_Indication =>
             return Get_Resolution_Indication (N);
          when Field_Record_Element_Resolution_Chain =>
             return Get_Record_Element_Resolution_Chain (N);
          when Field_Tolerance =>
             return Get_Tolerance (N);
+         when Field_Plus_Terminal_Name =>
+            return Get_Plus_Terminal_Name (N);
+         when Field_Minus_Terminal_Name =>
+            return Get_Minus_Terminal_Name (N);
          when Field_Plus_Terminal =>
             return Get_Plus_Terminal (N);
          when Field_Minus_Terminal =>
             return Get_Minus_Terminal (N);
+         when Field_Magnitude_Expression =>
+            return Get_Magnitude_Expression (N);
+         when Field_Phase_Expression =>
+            return Get_Phase_Expression (N);
+         when Field_Power_Expression =>
+            return Get_Power_Expression (N);
          when Field_Simultaneous_Left =>
             return Get_Simultaneous_Left (N);
          when Field_Simultaneous_Right =>
@@ -5421,6 +6098,10 @@ package body Vhdl.Nodes_Meta is
             return Get_Element_Subtype_Indication (N);
          when Field_Element_Subtype =>
             return Get_Element_Subtype (N);
+         when Field_Element_Subnature_Indication =>
+            return Get_Element_Subnature_Indication (N);
+         when Field_Element_Subnature =>
+            return Get_Element_Subnature (N);
          when Field_Array_Element_Constraint =>
             return Get_Array_Element_Constraint (N);
          when Field_Owned_Elements_Chain =>
@@ -5433,6 +6114,14 @@ package body Vhdl.Nodes_Meta is
             return Get_Reference (N);
          when Field_Nature_Declarator =>
             return Get_Nature_Declarator (N);
+         when Field_Across_Type_Mark =>
+            return Get_Across_Type_Mark (N);
+         when Field_Through_Type_Mark =>
+            return Get_Through_Type_Mark (N);
+         when Field_Across_Type_Definition =>
+            return Get_Across_Type_Definition (N);
+         when Field_Through_Type_Definition =>
+            return Get_Through_Type_Definition (N);
          when Field_Across_Type =>
             return Get_Across_Type (N);
          when Field_Through_Type =>
@@ -5451,6 +6140,12 @@ package body Vhdl.Nodes_Meta is
             return Get_Package_Origin (N);
          when Field_Condition_Clause =>
             return Get_Condition_Clause (N);
+         when Field_Break_Element =>
+            return Get_Break_Element (N);
+         when Field_Selector_Quantity =>
+            return Get_Selector_Quantity (N);
+         when Field_Break_Quantity =>
+            return Get_Break_Quantity (N);
          when Field_Timeout_Clause =>
             return Get_Timeout_Clause (N);
          when Field_Assertion_Condition =>
@@ -5563,6 +6258,12 @@ package body Vhdl.Nodes_Meta is
             return Get_Index_Subtype (N);
          when Field_Parameter =>
             return Get_Parameter (N);
+         when Field_Parameter_2 =>
+            return Get_Parameter_2 (N);
+         when Field_Parameter_3 =>
+            return Get_Parameter_3 (N);
+         when Field_Parameter_4 =>
+            return Get_Parameter_4 (N);
          when Field_Attr_Chain =>
             return Get_Attr_Chain (N);
          when Field_Signal_Attribute_Declaration =>
@@ -5599,6 +6300,8 @@ package body Vhdl.Nodes_Meta is
             return Get_Method_Object (N);
          when Field_Subtype_Type_Mark =>
             return Get_Subtype_Type_Mark (N);
+         when Field_Subnature_Nature_Mark =>
+            return Get_Subnature_Nature_Mark (N);
          when Field_Type_Conversion_Subtype =>
             return Get_Type_Conversion_Subtype (N);
          when Field_Type_Mark =>
@@ -5617,6 +6320,12 @@ package body Vhdl.Nodes_Meta is
             return Get_Protected_Type_Body (N);
          when Field_Protected_Type_Declaration =>
             return Get_Protected_Type_Declaration (N);
+         when Field_Count_Expression =>
+            return Get_Count_Expression (N);
+         when Field_Clock_Expression =>
+            return Get_Clock_Expression (N);
+         when Field_Default_Clock =>
+            return Get_Default_Clock (N);
          when others =>
             raise Internal_Error;
       end case;
@@ -5719,6 +6428,8 @@ package body Vhdl.Nodes_Meta is
             Set_Vunit_Item_Chain (N, V);
          when Field_Bound_Vunit_Chain =>
             Set_Bound_Vunit_Chain (N, V);
+         when Field_Verification_Block_Configuration =>
+            Set_Verification_Block_Configuration (N, V);
          when Field_Block_Configuration =>
             Set_Block_Configuration (N, V);
          when Field_Concurrent_Statement_Chain =>
@@ -5743,8 +6454,12 @@ package body Vhdl.Nodes_Meta is
             Set_Incomplete_Type_Declaration (N, V);
          when Field_Interface_Type_Subprograms =>
             Set_Interface_Type_Subprograms (N, V);
+         when Field_Nature_Definition =>
+            Set_Nature_Definition (N, V);
          when Field_Nature =>
             Set_Nature (N, V);
+         when Field_Subnature_Indication =>
+            Set_Subnature_Indication (N, V);
          when Field_Base_Name =>
             Set_Base_Name (N, V);
          when Field_Interface_Declaration_Chain =>
@@ -5753,6 +6468,8 @@ package body Vhdl.Nodes_Meta is
             Set_Subprogram_Specification (N, V);
          when Field_Sequential_Statement_Chain =>
             Set_Sequential_Statement_Chain (N, V);
+         when Field_Simultaneous_Statement_Chain =>
+            Set_Simultaneous_Statement_Chain (N, V);
          when Field_Subprogram_Body =>
             Set_Subprogram_Body (N, V);
          when Field_Return_Type =>
@@ -5803,18 +6520,32 @@ package body Vhdl.Nodes_Meta is
             Set_Left_Limit_Expr (N, V);
          when Field_Right_Limit_Expr =>
             Set_Right_Limit_Expr (N, V);
-         when Field_Base_Type =>
-            Set_Base_Type (N, V);
+         when Field_Parent_Type =>
+            Set_Parent_Type (N, V);
+         when Field_Simple_Nature =>
+            Set_Simple_Nature (N, V);
+         when Field_Base_Nature =>
+            Set_Base_Nature (N, V);
          when Field_Resolution_Indication =>
             Set_Resolution_Indication (N, V);
          when Field_Record_Element_Resolution_Chain =>
             Set_Record_Element_Resolution_Chain (N, V);
          when Field_Tolerance =>
             Set_Tolerance (N, V);
+         when Field_Plus_Terminal_Name =>
+            Set_Plus_Terminal_Name (N, V);
+         when Field_Minus_Terminal_Name =>
+            Set_Minus_Terminal_Name (N, V);
          when Field_Plus_Terminal =>
             Set_Plus_Terminal (N, V);
          when Field_Minus_Terminal =>
             Set_Minus_Terminal (N, V);
+         when Field_Magnitude_Expression =>
+            Set_Magnitude_Expression (N, V);
+         when Field_Phase_Expression =>
+            Set_Phase_Expression (N, V);
+         when Field_Power_Expression =>
+            Set_Power_Expression (N, V);
          when Field_Simultaneous_Left =>
             Set_Simultaneous_Left (N, V);
          when Field_Simultaneous_Right =>
@@ -5823,6 +6554,10 @@ package body Vhdl.Nodes_Meta is
             Set_Element_Subtype_Indication (N, V);
          when Field_Element_Subtype =>
             Set_Element_Subtype (N, V);
+         when Field_Element_Subnature_Indication =>
+            Set_Element_Subnature_Indication (N, V);
+         when Field_Element_Subnature =>
+            Set_Element_Subnature (N, V);
          when Field_Array_Element_Constraint =>
             Set_Array_Element_Constraint (N, V);
          when Field_Owned_Elements_Chain =>
@@ -5835,6 +6570,14 @@ package body Vhdl.Nodes_Meta is
             Set_Reference (N, V);
          when Field_Nature_Declarator =>
             Set_Nature_Declarator (N, V);
+         when Field_Across_Type_Mark =>
+            Set_Across_Type_Mark (N, V);
+         when Field_Through_Type_Mark =>
+            Set_Through_Type_Mark (N, V);
+         when Field_Across_Type_Definition =>
+            Set_Across_Type_Definition (N, V);
+         when Field_Through_Type_Definition =>
+            Set_Through_Type_Definition (N, V);
          when Field_Across_Type =>
             Set_Across_Type (N, V);
          when Field_Through_Type =>
@@ -5853,6 +6596,12 @@ package body Vhdl.Nodes_Meta is
             Set_Package_Origin (N, V);
          when Field_Condition_Clause =>
             Set_Condition_Clause (N, V);
+         when Field_Break_Element =>
+            Set_Break_Element (N, V);
+         when Field_Selector_Quantity =>
+            Set_Selector_Quantity (N, V);
+         when Field_Break_Quantity =>
+            Set_Break_Quantity (N, V);
          when Field_Timeout_Clause =>
             Set_Timeout_Clause (N, V);
          when Field_Assertion_Condition =>
@@ -5965,6 +6714,12 @@ package body Vhdl.Nodes_Meta is
             Set_Index_Subtype (N, V);
          when Field_Parameter =>
             Set_Parameter (N, V);
+         when Field_Parameter_2 =>
+            Set_Parameter_2 (N, V);
+         when Field_Parameter_3 =>
+            Set_Parameter_3 (N, V);
+         when Field_Parameter_4 =>
+            Set_Parameter_4 (N, V);
          when Field_Attr_Chain =>
             Set_Attr_Chain (N, V);
          when Field_Signal_Attribute_Declaration =>
@@ -6001,6 +6756,8 @@ package body Vhdl.Nodes_Meta is
             Set_Method_Object (N, V);
          when Field_Subtype_Type_Mark =>
             Set_Subtype_Type_Mark (N, V);
+         when Field_Subnature_Nature_Mark =>
+            Set_Subnature_Nature_Mark (N, V);
          when Field_Type_Conversion_Subtype =>
             Set_Type_Conversion_Subtype (N, V);
          when Field_Type_Mark =>
@@ -6019,6 +6776,12 @@ package body Vhdl.Nodes_Meta is
             Set_Protected_Type_Body (N, V);
          when Field_Protected_Type_Declaration =>
             Set_Protected_Type_Declaration (N, V);
+         when Field_Count_Expression =>
+            Set_Count_Expression (N, V);
+         when Field_Clock_Expression =>
+            Set_Clock_Expression (N, V);
+         when Field_Default_Clock =>
+            Set_Default_Clock (N, V);
          when others =>
             raise Internal_Error;
       end case;
@@ -6096,30 +6859,6 @@ package body Vhdl.Nodes_Meta is
       end case;
    end Set_Iir_Delay_Mechanism;
 
-   function Get_Iir_Direction
-      (N : Iir; F : Fields_Enum) return Iir_Direction is
-   begin
-      pragma Assert (Fields_Type (F) = Type_Iir_Direction);
-      case F is
-         when Field_Direction =>
-            return Get_Direction (N);
-         when others =>
-            raise Internal_Error;
-      end case;
-   end Get_Iir_Direction;
-
-   procedure Set_Iir_Direction
-      (N : Iir; F : Fields_Enum; V: Iir_Direction) is
-   begin
-      pragma Assert (Fields_Type (F) = Type_Iir_Direction);
-      case F is
-         when Field_Direction =>
-            Set_Direction (N, V);
-         when others =>
-            raise Internal_Error;
-      end case;
-   end Set_Iir_Direction;
-
    function Get_Iir_Flist
       (N : Iir; F : Fields_Enum) return Iir_Flist is
    begin
@@ -6131,6 +6870,8 @@ package body Vhdl.Nodes_Meta is
             return Get_Entity_Name_List (N);
          when Field_Signal_List =>
             return Get_Signal_List (N);
+         when Field_Quantity_List =>
+            return Get_Quantity_List (N);
          when Field_Enumeration_Literal_List =>
             return Get_Enumeration_Literal_List (N);
          when Field_Group_Constituent_List =>
@@ -6165,6 +6906,8 @@ package body Vhdl.Nodes_Meta is
             Set_Entity_Name_List (N, V);
          when Field_Signal_List =>
             Set_Signal_List (N, V);
+         when Field_Quantity_List =>
+            Set_Quantity_List (N, V);
          when Field_Enumeration_Literal_List =>
             Set_Enumeration_Literal_List (N, V);
          when Field_Group_Constituent_List =>
@@ -6409,6 +7152,8 @@ package body Vhdl.Nodes_Meta is
    begin
       pragma Assert (Fields_Type (F) = Type_Iir_Staticness);
       case F is
+         when Field_Nature_Staticness =>
+            return Get_Nature_Staticness (N);
          when Field_Type_Staticness =>
             return Get_Type_Staticness (N);
          when Field_Expr_Staticness =>
@@ -6427,6 +7172,8 @@ package body Vhdl.Nodes_Meta is
    begin
       pragma Assert (Fields_Type (F) = Type_Iir_Staticness);
       case F is
+         when Field_Nature_Staticness =>
+            Set_Nature_Staticness (N, V);
          when Field_Type_Staticness =>
             Set_Type_Staticness (N, V);
          when Field_Expr_Staticness =>
@@ -6643,6 +7390,30 @@ package body Vhdl.Nodes_Meta is
             raise Internal_Error;
       end case;
    end Set_PSL_Node;
+
+   function Get_Scalar_Size
+      (N : Iir; F : Fields_Enum) return Scalar_Size is
+   begin
+      pragma Assert (Fields_Type (F) = Type_Scalar_Size);
+      case F is
+         when Field_Scalar_Size =>
+            return Get_Scalar_Size (N);
+         when others =>
+            raise Internal_Error;
+      end case;
+   end Get_Scalar_Size;
+
+   procedure Set_Scalar_Size
+      (N : Iir; F : Fields_Enum; V: Scalar_Size) is
+   begin
+      pragma Assert (Fields_Type (F) = Type_Scalar_Size);
+      case F is
+         when Field_Scalar_Size =>
+            Set_Scalar_Size (N, V);
+         when others =>
+            raise Internal_Error;
+      end case;
+   end Set_Scalar_Size;
 
    function Get_Source_File_Entry
       (N : Iir; F : Fields_Enum) return Source_File_Entry is
@@ -7096,6 +7867,11 @@ package body Vhdl.Nodes_Meta is
       return K = Iir_Kind_Disconnection_Specification;
    end Has_Signal_List;
 
+   function Has_Quantity_List (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Step_Limit_Specification;
+   end Has_Quantity_List;
+
    function Has_Designated_Entity (K : Iir_Kind) return Boolean is
    begin
       return K = Iir_Kind_Attribute_Value;
@@ -7109,7 +7885,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Association_Element_Open
            | Iir_Kind_Association_Element_Package
            | Iir_Kind_Association_Element_Type
-           | Iir_Kind_Association_Element_Subprogram =>
+           | Iir_Kind_Association_Element_Subprogram
+           | Iir_Kind_Association_Element_Terminal =>
             return True;
          when others =>
             return False;
@@ -7122,7 +7899,8 @@ package body Vhdl.Nodes_Meta is
          when Iir_Kind_Association_Element_By_Expression
            | Iir_Kind_Association_Element_Package
            | Iir_Kind_Association_Element_Type
-           | Iir_Kind_Association_Element_Subprogram =>
+           | Iir_Kind_Association_Element_Subprogram
+           | Iir_Kind_Association_Element_Terminal =>
             return True;
          when others =>
             return False;
@@ -7147,7 +7925,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Association_Element_Open
            | Iir_Kind_Association_Element_Package
            | Iir_Kind_Association_Element_Type
-           | Iir_Kind_Association_Element_Subprogram =>
+           | Iir_Kind_Association_Element_Subprogram
+           | Iir_Kind_Association_Element_Terminal =>
             return True;
          when others =>
             return False;
@@ -7162,7 +7941,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Association_Element_Open
            | Iir_Kind_Association_Element_Package
            | Iir_Kind_Association_Element_Type
-           | Iir_Kind_Association_Element_Subprogram =>
+           | Iir_Kind_Association_Element_Subprogram
+           | Iir_Kind_Association_Element_Terminal =>
             return True;
          when others =>
             return False;
@@ -7176,7 +7956,17 @@ package body Vhdl.Nodes_Meta is
 
    function Has_Open_Flag (K : Iir_Kind) return Boolean is
    begin
-      return K = Iir_Kind_Interface_Signal_Declaration;
+      case K is
+         when Iir_Kind_Interface_Constant_Declaration
+           | Iir_Kind_Interface_Signal_Declaration
+           | Iir_Kind_Interface_Type_Declaration
+           | Iir_Kind_Interface_Package_Declaration
+           | Iir_Kind_Interface_Function_Declaration
+           | Iir_Kind_Interface_Procedure_Declaration =>
+            return True;
+         when others =>
+            return False;
+      end case;
    end Has_Open_Flag;
 
    function Has_After_Drivers_Flag (K : Iir_Kind) return Boolean is
@@ -7188,6 +7978,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
            | Iir_Kind_Anonymous_Signal_Declaration =>
             return True;
          when others =>
@@ -7319,7 +8110,9 @@ package body Vhdl.Nodes_Meta is
    function Has_Attribute_Value_Chain (K : Iir_Kind) return Boolean is
    begin
       case K is
-         when Iir_Kind_Entity_Declaration
+         when Iir_Kind_Protected_Type_Declaration
+           | Iir_Kind_Protected_Type_Body
+           | Iir_Kind_Entity_Declaration
            | Iir_Kind_Configuration_Declaration
            | Iir_Kind_Package_Declaration
            | Iir_Kind_Package_Instantiation_Declaration
@@ -7334,7 +8127,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Sensitized_Process_Statement
            | Iir_Kind_Process_Statement
            | Iir_Kind_Block_Statement
-           | Iir_Kind_Generate_Statement_Body =>
+           | Iir_Kind_Generate_Statement_Body
+           | Iir_Kind_Simultaneous_Procedural_Statement =>
             return True;
          when others =>
             return False;
@@ -7447,6 +8241,19 @@ package body Vhdl.Nodes_Meta is
       end case;
    end Has_Bound_Vunit_Chain;
 
+   function Has_Verification_Block_Configuration (K : Iir_Kind)
+      return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Vmode_Declaration
+           | Iir_Kind_Vprop_Declaration
+           | Iir_Kind_Vunit_Declaration =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Verification_Block_Configuration;
+
    function Has_Block_Configuration (K : Iir_Kind) return Boolean is
    begin
       case K is
@@ -7489,6 +8296,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Association_Element_Package
            | Iir_Kind_Association_Element_Type
            | Iir_Kind_Association_Element_Subprogram
+           | Iir_Kind_Association_Element_Terminal
            | Iir_Kind_Choice_By_Range
            | Iir_Kind_Choice_By_Expression
            | Iir_Kind_Choice_By_Others
@@ -7499,8 +8307,10 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Entity_Class
            | Iir_Kind_Record_Element_Constraint
            | Iir_Kind_Record_Element_Resolution
+           | Iir_Kind_Break_Element
            | Iir_Kind_Attribute_Specification
            | Iir_Kind_Disconnection_Specification
+           | Iir_Kind_Step_Limit_Specification
            | Iir_Kind_Configuration_Specification
            | Iir_Kind_Protected_Type_Body
            | Iir_Kind_Package_Declaration
@@ -7520,15 +8330,17 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Non_Object_Alias_Declaration
            | Iir_Kind_Psl_Declaration
            | Iir_Kind_Psl_Endpoint_Declaration
-           | Iir_Kind_Terminal_Declaration
-           | Iir_Kind_Free_Quantity_Declaration
-           | Iir_Kind_Across_Quantity_Declaration
-           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_Function_Declaration
            | Iir_Kind_Procedure_Declaration
            | Iir_Kind_Function_Body
            | Iir_Kind_Procedure_Body
+           | Iir_Kind_Terminal_Declaration
            | Iir_Kind_Object_Alias_Declaration
+           | Iir_Kind_Free_Quantity_Declaration
+           | Iir_Kind_Spectrum_Quantity_Declaration
+           | Iir_Kind_Noise_Quantity_Declaration
+           | Iir_Kind_Across_Quantity_Declaration
+           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_File_Declaration
            | Iir_Kind_Signal_Declaration
            | Iir_Kind_Variable_Declaration
@@ -7538,6 +8350,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
+           | Iir_Kind_Interface_Terminal_Declaration
            | Iir_Kind_Interface_Type_Declaration
            | Iir_Kind_Interface_Package_Declaration
            | Iir_Kind_Interface_Function_Declaration
@@ -7551,6 +8365,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Concurrent_Selected_Signal_Assignment
            | Iir_Kind_Concurrent_Assertion_Statement
            | Iir_Kind_Concurrent_Procedure_Call_Statement
+           | Iir_Kind_Concurrent_Break_Statement
            | Iir_Kind_Psl_Assert_Directive
            | Iir_Kind_Psl_Assume_Directive
            | Iir_Kind_Psl_Cover_Directive
@@ -7562,6 +8377,10 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Component_Instantiation_Statement
            | Iir_Kind_Psl_Default_Clock
            | Iir_Kind_Simple_Simultaneous_Statement
+           | Iir_Kind_Simultaneous_Null_Statement
+           | Iir_Kind_Simultaneous_Procedural_Statement
+           | Iir_Kind_Simultaneous_Case_Statement
+           | Iir_Kind_Simultaneous_If_Statement
            | Iir_Kind_Simple_Signal_Assignment_Statement
            | Iir_Kind_Conditional_Signal_Assignment_Statement
            | Iir_Kind_Selected_Waveform_Assignment_Statement
@@ -7578,6 +8397,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Exit_Statement
            | Iir_Kind_Case_Statement
            | Iir_Kind_Procedure_Call_Statement
+           | Iir_Kind_Break_Statement
            | Iir_Kind_If_Statement
            | Iir_Kind_External_Constant_Name
            | Iir_Kind_External_Signal_Name
@@ -7638,12 +8458,14 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Attribute_Declaration
            | Iir_Kind_Element_Declaration
            | Iir_Kind_Psl_Endpoint_Declaration
-           | Iir_Kind_Free_Quantity_Declaration
-           | Iir_Kind_Across_Quantity_Declaration
-           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_Enumeration_Literal
            | Iir_Kind_Function_Declaration
            | Iir_Kind_Object_Alias_Declaration
+           | Iir_Kind_Free_Quantity_Declaration
+           | Iir_Kind_Spectrum_Quantity_Declaration
+           | Iir_Kind_Noise_Quantity_Declaration
+           | Iir_Kind_Across_Quantity_Declaration
+           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_File_Declaration
            | Iir_Kind_Guard_Signal_Declaration
            | Iir_Kind_Signal_Declaration
@@ -7654,6 +8476,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
            | Iir_Kind_Interface_Type_Declaration
            | Iir_Kind_Interface_Function_Declaration
            | Iir_Kind_Anonymous_Signal_Declaration
@@ -7713,6 +8536,10 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Implicit_Dereference
            | Iir_Kind_Slice_Name
            | Iir_Kind_Indexed_Name
+           | Iir_Kind_Psl_Prev
+           | Iir_Kind_Psl_Stable
+           | Iir_Kind_Psl_Rose
+           | Iir_Kind_Psl_Fell
            | Iir_Kind_Psl_Expression
            | Iir_Kind_Return_Statement
            | Iir_Kind_Character_Literal
@@ -7728,6 +8555,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Base_Attribute
            | Iir_Kind_Subtype_Attribute
            | Iir_Kind_Element_Attribute
+           | Iir_Kind_Across_Attribute
+           | Iir_Kind_Through_Attribute
            | Iir_Kind_Left_Type_Attribute
            | Iir_Kind_Right_Type_Attribute
            | Iir_Kind_High_Type_Attribute
@@ -7741,6 +8570,16 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Pred_Attribute
            | Iir_Kind_Leftof_Attribute
            | Iir_Kind_Rightof_Attribute
+           | Iir_Kind_Signal_Slew_Attribute
+           | Iir_Kind_Quantity_Slew_Attribute
+           | Iir_Kind_Ramp_Attribute
+           | Iir_Kind_Zoh_Attribute
+           | Iir_Kind_Ltf_Attribute
+           | Iir_Kind_Ztf_Attribute
+           | Iir_Kind_Dot_Attribute
+           | Iir_Kind_Integ_Attribute
+           | Iir_Kind_Above_Attribute
+           | Iir_Kind_Quantity_Delayed_Attribute
            | Iir_Kind_Delayed_Attribute
            | Iir_Kind_Stable_Attribute
            | Iir_Kind_Quiet_Attribute
@@ -7773,10 +8612,13 @@ package body Vhdl.Nodes_Meta is
    function Has_Subtype_Indication (K : Iir_Kind) return Boolean is
    begin
       case K is
-         when Iir_Kind_Subtype_Declaration
+         when Iir_Kind_Record_Element_Constraint
+           | Iir_Kind_Subtype_Declaration
            | Iir_Kind_Element_Declaration
-           | Iir_Kind_Free_Quantity_Declaration
            | Iir_Kind_Object_Alias_Declaration
+           | Iir_Kind_Free_Quantity_Declaration
+           | Iir_Kind_Spectrum_Quantity_Declaration
+           | Iir_Kind_Noise_Quantity_Declaration
            | Iir_Kind_File_Declaration
            | Iir_Kind_Signal_Declaration
            | Iir_Kind_Variable_Declaration
@@ -7786,6 +8628,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
            | Iir_Kind_Allocator_By_Subtype
            | Iir_Kind_External_Constant_Name
            | Iir_Kind_External_Signal_Name
@@ -7833,17 +8676,39 @@ package body Vhdl.Nodes_Meta is
       return K = Iir_Kind_Interface_Type_Declaration;
    end Has_Interface_Type_Subprograms;
 
+   function Has_Nature_Definition (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Nature_Declaration;
+   end Has_Nature_Definition;
+
    function Has_Nature (K : Iir_Kind) return Boolean is
    begin
       case K is
-         when Iir_Kind_Nature_Declaration
+         when Iir_Kind_Error
+           | Iir_Kind_Nature_Declaration
            | Iir_Kind_Subnature_Declaration
-           | Iir_Kind_Terminal_Declaration =>
+           | Iir_Kind_Nature_Element_Declaration
+           | Iir_Kind_Terminal_Declaration
+           | Iir_Kind_Interface_Terminal_Declaration
+           | Iir_Kind_Nature_Reference_Attribute =>
             return True;
          when others =>
             return False;
       end case;
    end Has_Nature;
+
+   function Has_Subnature_Indication (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Subnature_Declaration
+           | Iir_Kind_Nature_Element_Declaration
+           | Iir_Kind_Terminal_Declaration
+           | Iir_Kind_Interface_Terminal_Declaration =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Subnature_Indication;
 
    function Has_Mode (K : Iir_Kind) return Boolean is
    begin
@@ -7852,7 +8717,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Interface_Constant_Declaration
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
-           | Iir_Kind_Interface_File_Declaration =>
+           | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration =>
             return True;
          when others =>
             return False;
@@ -7900,6 +8766,9 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Selected_By_All_Name
            | Iir_Kind_Subtype_Attribute
            | Iir_Kind_Element_Attribute
+           | Iir_Kind_Across_Attribute
+           | Iir_Kind_Through_Attribute
+           | Iir_Kind_Nature_Reference_Attribute
            | Iir_Kind_Left_Type_Attribute
            | Iir_Kind_Right_Type_Attribute
            | Iir_Kind_High_Type_Attribute
@@ -7913,6 +8782,16 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Pred_Attribute
            | Iir_Kind_Leftof_Attribute
            | Iir_Kind_Rightof_Attribute
+           | Iir_Kind_Signal_Slew_Attribute
+           | Iir_Kind_Quantity_Slew_Attribute
+           | Iir_Kind_Ramp_Attribute
+           | Iir_Kind_Zoh_Attribute
+           | Iir_Kind_Ltf_Attribute
+           | Iir_Kind_Ztf_Attribute
+           | Iir_Kind_Dot_Attribute
+           | Iir_Kind_Integ_Attribute
+           | Iir_Kind_Above_Attribute
+           | Iir_Kind_Quantity_Delayed_Attribute
            | Iir_Kind_Delayed_Attribute
            | Iir_Kind_Stable_Attribute
            | Iir_Kind_Quiet_Attribute
@@ -7966,6 +8845,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Procedure_Body
            | Iir_Kind_Sensitized_Process_Statement
            | Iir_Kind_Process_Statement
+           | Iir_Kind_Simultaneous_Procedural_Statement
            | Iir_Kind_For_Loop_Statement
            | Iir_Kind_While_Loop_Statement
            | Iir_Kind_If_Statement
@@ -7975,6 +8855,17 @@ package body Vhdl.Nodes_Meta is
             return False;
       end case;
    end Has_Sequential_Statement_Chain;
+
+   function Has_Simultaneous_Statement_Chain (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Simultaneous_If_Statement
+           | Iir_Kind_Simultaneous_Elsif =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Simultaneous_Statement_Chain;
 
    function Has_Subprogram_Body (K : Iir_Kind) return Boolean is
    begin
@@ -8072,6 +8963,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
            | Iir_Kind_Anonymous_Signal_Declaration =>
             return True;
          when others =>
@@ -8148,7 +9040,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Sensitized_Process_Statement
            | Iir_Kind_Process_Statement
            | Iir_Kind_Block_Statement
-           | Iir_Kind_Generate_Statement_Body =>
+           | Iir_Kind_Generate_Statement_Body
+           | Iir_Kind_Simultaneous_Procedural_Statement =>
             return True;
          when others =>
             return False;
@@ -8169,7 +9062,8 @@ package body Vhdl.Nodes_Meta is
    begin
       case K is
          when Iir_Kind_Record_Element_Constraint
-           | Iir_Kind_Element_Declaration =>
+           | Iir_Kind_Element_Declaration
+           | Iir_Kind_Nature_Element_Declaration =>
             return True;
          when others =>
             return False;
@@ -8303,17 +9197,20 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Group_Template_Declaration
            | Iir_Kind_Group_Declaration
            | Iir_Kind_Element_Declaration
+           | Iir_Kind_Nature_Element_Declaration
            | Iir_Kind_Non_Object_Alias_Declaration
            | Iir_Kind_Psl_Declaration
            | Iir_Kind_Psl_Endpoint_Declaration
-           | Iir_Kind_Terminal_Declaration
-           | Iir_Kind_Free_Quantity_Declaration
-           | Iir_Kind_Across_Quantity_Declaration
-           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_Enumeration_Literal
            | Iir_Kind_Function_Declaration
            | Iir_Kind_Procedure_Declaration
+           | Iir_Kind_Terminal_Declaration
            | Iir_Kind_Object_Alias_Declaration
+           | Iir_Kind_Free_Quantity_Declaration
+           | Iir_Kind_Spectrum_Quantity_Declaration
+           | Iir_Kind_Noise_Quantity_Declaration
+           | Iir_Kind_Across_Quantity_Declaration
+           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_File_Declaration
            | Iir_Kind_Guard_Signal_Declaration
            | Iir_Kind_Signal_Declaration
@@ -8324,6 +9221,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
+           | Iir_Kind_Interface_Terminal_Declaration
            | Iir_Kind_Interface_Type_Declaration
            | Iir_Kind_Interface_Package_Declaration
            | Iir_Kind_Interface_Function_Declaration
@@ -8337,6 +9236,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Concurrent_Selected_Signal_Assignment
            | Iir_Kind_Concurrent_Assertion_Statement
            | Iir_Kind_Concurrent_Procedure_Call_Statement
+           | Iir_Kind_Concurrent_Break_Statement
            | Iir_Kind_Psl_Assert_Directive
            | Iir_Kind_Psl_Assume_Directive
            | Iir_Kind_Psl_Cover_Directive
@@ -8347,8 +9247,12 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_For_Generate_Statement
            | Iir_Kind_Component_Instantiation_Statement
            | Iir_Kind_Psl_Default_Clock
-           | Iir_Kind_Simple_Simultaneous_Statement
            | Iir_Kind_Generate_Statement_Body
+           | Iir_Kind_Simple_Simultaneous_Statement
+           | Iir_Kind_Simultaneous_Null_Statement
+           | Iir_Kind_Simultaneous_Procedural_Statement
+           | Iir_Kind_Simultaneous_Case_Statement
+           | Iir_Kind_Simultaneous_If_Statement
            | Iir_Kind_Simple_Signal_Assignment_Statement
            | Iir_Kind_Conditional_Signal_Assignment_Statement
            | Iir_Kind_Selected_Waveform_Assignment_Statement
@@ -8365,6 +9269,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Exit_Statement
            | Iir_Kind_Case_Statement
            | Iir_Kind_Procedure_Call_Statement
+           | Iir_Kind_Break_Statement
            | Iir_Kind_If_Statement
            | Iir_Kind_Character_Literal
            | Iir_Kind_Simple_Name
@@ -8389,6 +9294,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Concurrent_Selected_Signal_Assignment
            | Iir_Kind_Concurrent_Assertion_Statement
            | Iir_Kind_Concurrent_Procedure_Call_Statement
+           | Iir_Kind_Concurrent_Break_Statement
            | Iir_Kind_Psl_Assert_Directive
            | Iir_Kind_Psl_Assume_Directive
            | Iir_Kind_Psl_Cover_Directive
@@ -8400,6 +9306,10 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Component_Instantiation_Statement
            | Iir_Kind_Psl_Default_Clock
            | Iir_Kind_Simple_Simultaneous_Statement
+           | Iir_Kind_Simultaneous_Null_Statement
+           | Iir_Kind_Simultaneous_Procedural_Statement
+           | Iir_Kind_Simultaneous_Case_Statement
+           | Iir_Kind_Simultaneous_If_Statement
            | Iir_Kind_Simple_Signal_Assignment_Statement
            | Iir_Kind_Conditional_Signal_Assignment_Statement
            | Iir_Kind_Selected_Waveform_Assignment_Statement
@@ -8416,6 +9326,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Exit_Statement
            | Iir_Kind_Case_Statement
            | Iir_Kind_Procedure_Call_Statement
+           | Iir_Kind_Break_Statement
            | Iir_Kind_If_Statement =>
             return True;
          when others =>
@@ -8447,17 +9358,20 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Group_Template_Declaration
            | Iir_Kind_Group_Declaration
            | Iir_Kind_Element_Declaration
+           | Iir_Kind_Nature_Element_Declaration
            | Iir_Kind_Non_Object_Alias_Declaration
            | Iir_Kind_Psl_Declaration
            | Iir_Kind_Psl_Endpoint_Declaration
-           | Iir_Kind_Terminal_Declaration
-           | Iir_Kind_Free_Quantity_Declaration
-           | Iir_Kind_Across_Quantity_Declaration
-           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_Enumeration_Literal
            | Iir_Kind_Function_Declaration
            | Iir_Kind_Procedure_Declaration
+           | Iir_Kind_Terminal_Declaration
            | Iir_Kind_Object_Alias_Declaration
+           | Iir_Kind_Free_Quantity_Declaration
+           | Iir_Kind_Spectrum_Quantity_Declaration
+           | Iir_Kind_Noise_Quantity_Declaration
+           | Iir_Kind_Across_Quantity_Declaration
+           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_File_Declaration
            | Iir_Kind_Guard_Signal_Declaration
            | Iir_Kind_Signal_Declaration
@@ -8468,6 +9382,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
+           | Iir_Kind_Interface_Terminal_Declaration
            | Iir_Kind_Interface_Type_Declaration
            | Iir_Kind_Interface_Package_Declaration
            | Iir_Kind_Interface_Function_Declaration
@@ -8479,6 +9395,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Concurrent_Selected_Signal_Assignment
            | Iir_Kind_Concurrent_Assertion_Statement
            | Iir_Kind_Concurrent_Procedure_Call_Statement
+           | Iir_Kind_Concurrent_Break_Statement
            | Iir_Kind_Psl_Assert_Directive
            | Iir_Kind_Psl_Assume_Directive
            | Iir_Kind_Psl_Cover_Directive
@@ -8488,8 +9405,12 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Case_Generate_Statement
            | Iir_Kind_For_Generate_Statement
            | Iir_Kind_Component_Instantiation_Statement
-           | Iir_Kind_Simple_Simultaneous_Statement
            | Iir_Kind_If_Generate_Else_Clause
+           | Iir_Kind_Simple_Simultaneous_Statement
+           | Iir_Kind_Simultaneous_Null_Statement
+           | Iir_Kind_Simultaneous_Procedural_Statement
+           | Iir_Kind_Simultaneous_Case_Statement
+           | Iir_Kind_Simultaneous_If_Statement
            | Iir_Kind_Simple_Signal_Assignment_Statement
            | Iir_Kind_Conditional_Signal_Assignment_Statement
            | Iir_Kind_Selected_Waveform_Assignment_Statement
@@ -8506,6 +9427,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Exit_Statement
            | Iir_Kind_Case_Statement
            | Iir_Kind_Procedure_Call_Statement
+           | Iir_Kind_Break_Statement
            | Iir_Kind_If_Statement =>
             return True;
          when others =>
@@ -8556,35 +9478,46 @@ package body Vhdl.Nodes_Meta is
       return K = Iir_Kind_Range_Expression;
    end Has_Right_Limit_Expr;
 
-   function Has_Base_Type (K : Iir_Kind) return Boolean is
+   function Has_Parent_Type (K : Iir_Kind) return Boolean is
    begin
       case K is
-         when Iir_Kind_Error
-           | Iir_Kind_Access_Type_Definition
-           | Iir_Kind_Incomplete_Type_Definition
-           | Iir_Kind_Interface_Type_Definition
-           | Iir_Kind_File_Type_Definition
-           | Iir_Kind_Protected_Type_Declaration
-           | Iir_Kind_Record_Type_Definition
-           | Iir_Kind_Array_Type_Definition
-           | Iir_Kind_Array_Subtype_Definition
+         when Iir_Kind_Array_Subtype_Definition
            | Iir_Kind_Record_Subtype_Definition
            | Iir_Kind_Access_Subtype_Definition
            | Iir_Kind_Physical_Subtype_Definition
            | Iir_Kind_Floating_Subtype_Definition
            | Iir_Kind_Integer_Subtype_Definition
            | Iir_Kind_Enumeration_Subtype_Definition
-           | Iir_Kind_Enumeration_Type_Definition
-           | Iir_Kind_Integer_Type_Definition
-           | Iir_Kind_Floating_Type_Definition
-           | Iir_Kind_Physical_Type_Definition
-           | Iir_Kind_Wildcard_Type_Definition
            | Iir_Kind_Subtype_Definition =>
             return True;
          when others =>
             return False;
       end case;
-   end Has_Base_Type;
+   end Has_Parent_Type;
+
+   function Has_Simple_Nature (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Record_Nature_Definition
+           | Iir_Kind_Array_Nature_Definition =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Simple_Nature;
+
+   function Has_Base_Nature (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Scalar_Nature_Definition
+           | Iir_Kind_Record_Nature_Definition
+           | Iir_Kind_Array_Nature_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Base_Nature;
 
    function Has_Resolution_Indication (K : Iir_Kind) return Boolean is
    begin
@@ -8617,6 +9550,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Record_Subtype_Definition
            | Iir_Kind_Floating_Subtype_Definition
            | Iir_Kind_Subtype_Definition
+           | Iir_Kind_Array_Subnature_Definition
            | Iir_Kind_Across_Quantity_Declaration
            | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_Simple_Simultaneous_Statement =>
@@ -8625,6 +9559,28 @@ package body Vhdl.Nodes_Meta is
             return False;
       end case;
    end Has_Tolerance;
+
+   function Has_Plus_Terminal_Name (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Across_Quantity_Declaration
+           | Iir_Kind_Through_Quantity_Declaration =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Plus_Terminal_Name;
+
+   function Has_Minus_Terminal_Name (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Across_Quantity_Declaration
+           | Iir_Kind_Through_Quantity_Declaration =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Minus_Terminal_Name;
 
    function Has_Plus_Terminal (K : Iir_Kind) return Boolean is
    begin
@@ -8647,6 +9603,21 @@ package body Vhdl.Nodes_Meta is
             return False;
       end case;
    end Has_Minus_Terminal;
+
+   function Has_Magnitude_Expression (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Spectrum_Quantity_Declaration;
+   end Has_Magnitude_Expression;
+
+   function Has_Phase_Expression (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Spectrum_Quantity_Declaration;
+   end Has_Phase_Expression;
+
+   function Has_Power_Expression (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Noise_Quantity_Declaration;
+   end Has_Power_Expression;
 
    function Has_Simultaneous_Left (K : Iir_Kind) return Boolean is
    begin
@@ -8673,6 +9644,19 @@ package body Vhdl.Nodes_Meta is
       return K = Iir_Kind_Enumeration_Type_Definition;
    end Has_Is_Character_Type;
 
+   function Has_Nature_Staticness (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Scalar_Nature_Definition
+           | Iir_Kind_Record_Nature_Definition
+           | Iir_Kind_Array_Nature_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Nature_Staticness;
+
    function Has_Type_Staticness (K : Iir_Kind) return Boolean is
    begin
       case K is
@@ -8697,7 +9681,9 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Physical_Type_Definition
            | Iir_Kind_Wildcard_Type_Definition
            | Iir_Kind_Subtype_Attribute
-           | Iir_Kind_Element_Attribute =>
+           | Iir_Kind_Element_Attribute
+           | Iir_Kind_Across_Attribute
+           | Iir_Kind_Through_Attribute =>
             return True;
          when others =>
             return False;
@@ -8710,7 +9696,10 @@ package body Vhdl.Nodes_Meta is
          when Iir_Kind_Record_Type_Definition
            | Iir_Kind_Array_Type_Definition
            | Iir_Kind_Array_Subtype_Definition
-           | Iir_Kind_Record_Subtype_Definition =>
+           | Iir_Kind_Record_Subtype_Definition
+           | Iir_Kind_Record_Nature_Definition
+           | Iir_Kind_Array_Nature_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
             return True;
          when others =>
             return False;
@@ -8721,7 +9710,9 @@ package body Vhdl.Nodes_Meta is
    begin
       case K is
          when Iir_Kind_Array_Type_Definition
-           | Iir_Kind_Array_Subtype_Definition =>
+           | Iir_Kind_Array_Subtype_Definition
+           | Iir_Kind_Array_Nature_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
             return True;
          when others =>
             return False;
@@ -8731,7 +9722,13 @@ package body Vhdl.Nodes_Meta is
    function Has_Index_Subtype_Definition_List (K : Iir_Kind)
       return Boolean is
    begin
-      return K = Iir_Kind_Array_Type_Definition;
+      case K is
+         when Iir_Kind_Array_Type_Definition
+           | Iir_Kind_Array_Nature_Definition =>
+            return True;
+         when others =>
+            return False;
+      end case;
    end Has_Index_Subtype_Definition_List;
 
    function Has_Element_Subtype_Indication (K : Iir_Kind) return Boolean is
@@ -8756,21 +9753,50 @@ package body Vhdl.Nodes_Meta is
       end case;
    end Has_Element_Subtype;
 
+   function Has_Element_Subnature_Indication (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Array_Nature_Definition;
+   end Has_Element_Subnature_Indication;
+
+   function Has_Element_Subnature (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Array_Nature_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Element_Subnature;
+
    function Has_Index_Constraint_List (K : Iir_Kind) return Boolean is
    begin
-      return K = Iir_Kind_Array_Subtype_Definition;
+      case K is
+         when Iir_Kind_Array_Subtype_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
+            return True;
+         when others =>
+            return False;
+      end case;
    end Has_Index_Constraint_List;
 
    function Has_Array_Element_Constraint (K : Iir_Kind) return Boolean is
    begin
-      return K = Iir_Kind_Array_Subtype_Definition;
+      case K is
+         when Iir_Kind_Array_Subtype_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
+            return True;
+         when others =>
+            return False;
+      end case;
    end Has_Array_Element_Constraint;
 
    function Has_Elements_Declaration_List (K : Iir_Kind) return Boolean is
    begin
       case K is
          when Iir_Kind_Record_Type_Definition
-           | Iir_Kind_Record_Subtype_Definition =>
+           | Iir_Kind_Record_Subtype_Definition
+           | Iir_Kind_Record_Nature_Definition =>
             return True;
          when others =>
             return False;
@@ -8817,17 +9843,75 @@ package body Vhdl.Nodes_Meta is
 
    function Has_Nature_Declarator (K : Iir_Kind) return Boolean is
    begin
-      return K = Iir_Kind_Scalar_Nature_Definition;
+      case K is
+         when Iir_Kind_Scalar_Nature_Definition
+           | Iir_Kind_Record_Nature_Definition
+           | Iir_Kind_Array_Nature_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
+            return True;
+         when others =>
+            return False;
+      end case;
    end Has_Nature_Declarator;
+
+   function Has_Across_Type_Mark (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Scalar_Nature_Definition;
+   end Has_Across_Type_Mark;
+
+   function Has_Through_Type_Mark (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Scalar_Nature_Definition;
+   end Has_Through_Type_Mark;
+
+   function Has_Across_Type_Definition (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Record_Nature_Definition
+           | Iir_Kind_Array_Nature_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Across_Type_Definition;
+
+   function Has_Through_Type_Definition (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Record_Nature_Definition
+           | Iir_Kind_Array_Nature_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Through_Type_Definition;
 
    function Has_Across_Type (K : Iir_Kind) return Boolean is
    begin
-      return K = Iir_Kind_Scalar_Nature_Definition;
+      case K is
+         when Iir_Kind_Scalar_Nature_Definition
+           | Iir_Kind_Record_Nature_Definition
+           | Iir_Kind_Array_Nature_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
+            return True;
+         when others =>
+            return False;
+      end case;
    end Has_Across_Type;
 
    function Has_Through_Type (K : Iir_Kind) return Boolean is
    begin
-      return K = Iir_Kind_Scalar_Nature_Definition;
+      case K is
+         when Iir_Kind_Scalar_Nature_Definition
+           | Iir_Kind_Record_Nature_Definition
+           | Iir_Kind_Array_Nature_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
+            return True;
+         when others =>
+            return False;
+      end case;
    end Has_Through_Type;
 
    function Has_Target (K : Iir_Kind) return Boolean is
@@ -8905,6 +9989,7 @@ package body Vhdl.Nodes_Meta is
    begin
       case K is
          when Iir_Kind_Sensitized_Process_Statement
+           | Iir_Kind_Concurrent_Break_Statement
            | Iir_Kind_Wait_Statement =>
             return True;
          when others =>
@@ -8932,6 +10017,27 @@ package body Vhdl.Nodes_Meta is
    begin
       return K = Iir_Kind_Wait_Statement;
    end Has_Condition_Clause;
+
+   function Has_Break_Element (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Concurrent_Break_Statement
+           | Iir_Kind_Break_Statement =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Break_Element;
+
+   function Has_Selector_Quantity (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Break_Element;
+   end Has_Selector_Quantity;
+
+   function Has_Break_Quantity (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Break_Element;
+   end Has_Break_Quantity;
 
    function Has_Timeout_Clause (K : Iir_Kind) return Boolean is
    begin
@@ -9160,6 +10266,11 @@ package body Vhdl.Nodes_Meta is
       end case;
    end Has_Elab_Flag;
 
+   function Has_Vendor_Library_Flag (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Library_Declaration;
+   end Has_Vendor_Library_Flag;
+
    function Has_Configuration_Mark_Flag (K : Iir_Kind) return Boolean is
    begin
       return K = Iir_Kind_Design_Unit;
@@ -9174,7 +10285,9 @@ package body Vhdl.Nodes_Meta is
    begin
       case K is
          when Iir_Kind_Array_Type_Definition
-           | Iir_Kind_Array_Subtype_Definition =>
+           | Iir_Kind_Array_Subtype_Definition
+           | Iir_Kind_Array_Nature_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
             return True;
          when others =>
             return False;
@@ -9292,15 +10405,22 @@ package body Vhdl.Nodes_Meta is
    begin
       case K is
          when Iir_Kind_Conditional_Expression
+           | Iir_Kind_Break_Element
            | Iir_Kind_Attribute_Specification
            | Iir_Kind_Disconnection_Specification
+           | Iir_Kind_Step_Limit_Specification
            | Iir_Kind_Anonymous_Signal_Declaration
            | Iir_Kind_Parenthesis_Expression
            | Iir_Kind_Qualified_Expression
            | Iir_Kind_Type_Conversion
            | Iir_Kind_Allocator_By_Expression
+           | Iir_Kind_Psl_Prev
+           | Iir_Kind_Psl_Stable
+           | Iir_Kind_Psl_Rose
+           | Iir_Kind_Psl_Fell
            | Iir_Kind_Concurrent_Selected_Signal_Assignment
            | Iir_Kind_Case_Generate_Statement
+           | Iir_Kind_Simultaneous_Case_Statement
            | Iir_Kind_Selected_Waveform_Assignment_Statement
            | Iir_Kind_Variable_Assignment_Statement
            | Iir_Kind_Return_Statement
@@ -9455,11 +10575,15 @@ package body Vhdl.Nodes_Meta is
       case K is
          when Iir_Kind_Conditional_Waveform
            | Iir_Kind_Conditional_Expression
+           | Iir_Kind_Concurrent_Break_Statement
            | Iir_Kind_If_Generate_Statement
            | Iir_Kind_If_Generate_Else_Clause
+           | Iir_Kind_Simultaneous_If_Statement
+           | Iir_Kind_Simultaneous_Elsif
            | Iir_Kind_While_Loop_Statement
            | Iir_Kind_Next_Statement
            | Iir_Kind_Exit_Statement
+           | Iir_Kind_Break_Statement
            | Iir_Kind_If_Statement
            | Iir_Kind_Elsif =>
             return True;
@@ -9471,7 +10595,9 @@ package body Vhdl.Nodes_Meta is
    function Has_Else_Clause (K : Iir_Kind) return Boolean is
    begin
       case K is
-         when Iir_Kind_If_Statement
+         when Iir_Kind_Simultaneous_If_Statement
+           | Iir_Kind_Simultaneous_Elsif
+           | Iir_Kind_If_Statement
            | Iir_Kind_Elsif =>
             return True;
          when others =>
@@ -9508,6 +10634,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Record_Element_Constraint
            | Iir_Kind_Attribute_Specification
            | Iir_Kind_Disconnection_Specification
+           | Iir_Kind_Step_Limit_Specification
            | Iir_Kind_Configuration_Specification
            | Iir_Kind_Protected_Type_Body
            | Iir_Kind_Entity_Declaration
@@ -9531,19 +10658,22 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Group_Template_Declaration
            | Iir_Kind_Group_Declaration
            | Iir_Kind_Element_Declaration
+           | Iir_Kind_Nature_Element_Declaration
            | Iir_Kind_Non_Object_Alias_Declaration
            | Iir_Kind_Psl_Declaration
            | Iir_Kind_Psl_Endpoint_Declaration
-           | Iir_Kind_Terminal_Declaration
-           | Iir_Kind_Free_Quantity_Declaration
-           | Iir_Kind_Across_Quantity_Declaration
-           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_Enumeration_Literal
            | Iir_Kind_Function_Declaration
            | Iir_Kind_Procedure_Declaration
            | Iir_Kind_Function_Body
            | Iir_Kind_Procedure_Body
+           | Iir_Kind_Terminal_Declaration
            | Iir_Kind_Object_Alias_Declaration
+           | Iir_Kind_Free_Quantity_Declaration
+           | Iir_Kind_Spectrum_Quantity_Declaration
+           | Iir_Kind_Noise_Quantity_Declaration
+           | Iir_Kind_Across_Quantity_Declaration
+           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_File_Declaration
            | Iir_Kind_Guard_Signal_Declaration
            | Iir_Kind_Signal_Declaration
@@ -9554,6 +10684,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
+           | Iir_Kind_Interface_Terminal_Declaration
            | Iir_Kind_Interface_Type_Declaration
            | Iir_Kind_Interface_Package_Declaration
            | Iir_Kind_Interface_Function_Declaration
@@ -9567,6 +10699,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Concurrent_Selected_Signal_Assignment
            | Iir_Kind_Concurrent_Assertion_Statement
            | Iir_Kind_Concurrent_Procedure_Call_Statement
+           | Iir_Kind_Concurrent_Break_Statement
            | Iir_Kind_Psl_Assert_Directive
            | Iir_Kind_Psl_Assume_Directive
            | Iir_Kind_Psl_Cover_Directive
@@ -9577,9 +10710,14 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_For_Generate_Statement
            | Iir_Kind_Component_Instantiation_Statement
            | Iir_Kind_Psl_Default_Clock
-           | Iir_Kind_Simple_Simultaneous_Statement
            | Iir_Kind_Generate_Statement_Body
            | Iir_Kind_If_Generate_Else_Clause
+           | Iir_Kind_Simple_Simultaneous_Statement
+           | Iir_Kind_Simultaneous_Null_Statement
+           | Iir_Kind_Simultaneous_Procedural_Statement
+           | Iir_Kind_Simultaneous_Case_Statement
+           | Iir_Kind_Simultaneous_If_Statement
+           | Iir_Kind_Simultaneous_Elsif
            | Iir_Kind_Simple_Signal_Assignment_Statement
            | Iir_Kind_Conditional_Signal_Assignment_Statement
            | Iir_Kind_Selected_Waveform_Assignment_Statement
@@ -9596,6 +10734,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Exit_Statement
            | Iir_Kind_Case_Statement
            | Iir_Kind_Procedure_Call_Statement
+           | Iir_Kind_Break_Statement
            | Iir_Kind_If_Statement
            | Iir_Kind_Elsif
            | Iir_Kind_External_Constant_Name
@@ -9740,11 +10879,13 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Range_Expression
            | Iir_Kind_Unit_Declaration
            | Iir_Kind_Psl_Endpoint_Declaration
-           | Iir_Kind_Free_Quantity_Declaration
-           | Iir_Kind_Across_Quantity_Declaration
-           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_Enumeration_Literal
            | Iir_Kind_Object_Alias_Declaration
+           | Iir_Kind_Free_Quantity_Declaration
+           | Iir_Kind_Spectrum_Quantity_Declaration
+           | Iir_Kind_Noise_Quantity_Declaration
+           | Iir_Kind_Across_Quantity_Declaration
+           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_File_Declaration
            | Iir_Kind_Guard_Signal_Declaration
            | Iir_Kind_Signal_Declaration
@@ -9755,6 +10896,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
            | Iir_Kind_Anonymous_Signal_Declaration
            | Iir_Kind_Identity_Operator
            | Iir_Kind_Negation_Operator
@@ -9812,6 +10954,10 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Implicit_Dereference
            | Iir_Kind_Slice_Name
            | Iir_Kind_Indexed_Name
+           | Iir_Kind_Psl_Prev
+           | Iir_Kind_Psl_Stable
+           | Iir_Kind_Psl_Rose
+           | Iir_Kind_Psl_Fell
            | Iir_Kind_Character_Literal
            | Iir_Kind_Simple_Name
            | Iir_Kind_Selected_Name
@@ -9833,6 +10979,16 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Pred_Attribute
            | Iir_Kind_Leftof_Attribute
            | Iir_Kind_Rightof_Attribute
+           | Iir_Kind_Signal_Slew_Attribute
+           | Iir_Kind_Quantity_Slew_Attribute
+           | Iir_Kind_Ramp_Attribute
+           | Iir_Kind_Zoh_Attribute
+           | Iir_Kind_Ltf_Attribute
+           | Iir_Kind_Ztf_Attribute
+           | Iir_Kind_Dot_Attribute
+           | Iir_Kind_Integ_Attribute
+           | Iir_Kind_Above_Attribute
+           | Iir_Kind_Quantity_Delayed_Attribute
            | Iir_Kind_Delayed_Attribute
            | Iir_Kind_Stable_Attribute
            | Iir_Kind_Quiet_Attribute
@@ -9861,6 +11017,19 @@ package body Vhdl.Nodes_Meta is
             return False;
       end case;
    end Has_Expr_Staticness;
+
+   function Has_Scalar_Size (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Enumeration_Type_Definition
+           | Iir_Kind_Integer_Type_Definition
+           | Iir_Kind_Floating_Type_Definition
+           | Iir_Kind_Physical_Type_Definition =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Scalar_Size;
 
    function Has_Error_Origin (K : Iir_Kind) return Boolean is
    begin
@@ -10015,11 +11184,14 @@ package body Vhdl.Nodes_Meta is
          when Iir_Kind_Attribute_Value
            | Iir_Kind_Unit_Declaration
            | Iir_Kind_Psl_Endpoint_Declaration
+           | Iir_Kind_Enumeration_Literal
+           | Iir_Kind_Terminal_Declaration
+           | Iir_Kind_Object_Alias_Declaration
            | Iir_Kind_Free_Quantity_Declaration
+           | Iir_Kind_Spectrum_Quantity_Declaration
+           | Iir_Kind_Noise_Quantity_Declaration
            | Iir_Kind_Across_Quantity_Declaration
            | Iir_Kind_Through_Quantity_Declaration
-           | Iir_Kind_Enumeration_Literal
-           | Iir_Kind_Object_Alias_Declaration
            | Iir_Kind_File_Declaration
            | Iir_Kind_Guard_Signal_Declaration
            | Iir_Kind_Signal_Declaration
@@ -10030,6 +11202,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
+           | Iir_Kind_Interface_Terminal_Declaration
            | Iir_Kind_Interface_Type_Declaration
            | Iir_Kind_Function_Call
            | Iir_Kind_Selected_Element
@@ -10045,6 +11219,9 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_External_Variable_Name
            | Iir_Kind_Subtype_Attribute
            | Iir_Kind_Element_Attribute
+           | Iir_Kind_Across_Attribute
+           | Iir_Kind_Through_Attribute
+           | Iir_Kind_Nature_Reference_Attribute
            | Iir_Kind_Left_Type_Attribute
            | Iir_Kind_Right_Type_Attribute
            | Iir_Kind_High_Type_Attribute
@@ -10058,6 +11235,16 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Pred_Attribute
            | Iir_Kind_Leftof_Attribute
            | Iir_Kind_Rightof_Attribute
+           | Iir_Kind_Signal_Slew_Attribute
+           | Iir_Kind_Quantity_Slew_Attribute
+           | Iir_Kind_Ramp_Attribute
+           | Iir_Kind_Zoh_Attribute
+           | Iir_Kind_Ltf_Attribute
+           | Iir_Kind_Ztf_Attribute
+           | Iir_Kind_Dot_Attribute
+           | Iir_Kind_Integ_Attribute
+           | Iir_Kind_Above_Attribute
+           | Iir_Kind_Quantity_Delayed_Attribute
            | Iir_Kind_Delayed_Attribute
            | Iir_Kind_Stable_Attribute
            | Iir_Kind_Quiet_Attribute
@@ -10103,6 +11290,9 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Base_Attribute
            | Iir_Kind_Subtype_Attribute
            | Iir_Kind_Element_Attribute
+           | Iir_Kind_Across_Attribute
+           | Iir_Kind_Through_Attribute
+           | Iir_Kind_Nature_Reference_Attribute
            | Iir_Kind_Left_Type_Attribute
            | Iir_Kind_Right_Type_Attribute
            | Iir_Kind_High_Type_Attribute
@@ -10116,6 +11306,16 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Pred_Attribute
            | Iir_Kind_Leftof_Attribute
            | Iir_Kind_Rightof_Attribute
+           | Iir_Kind_Signal_Slew_Attribute
+           | Iir_Kind_Quantity_Slew_Attribute
+           | Iir_Kind_Ramp_Attribute
+           | Iir_Kind_Zoh_Attribute
+           | Iir_Kind_Ltf_Attribute
+           | Iir_Kind_Ztf_Attribute
+           | Iir_Kind_Dot_Attribute
+           | Iir_Kind_Integ_Attribute
+           | Iir_Kind_Above_Attribute
+           | Iir_Kind_Quantity_Delayed_Attribute
            | Iir_Kind_Delayed_Attribute
            | Iir_Kind_Stable_Attribute
            | Iir_Kind_Quiet_Attribute
@@ -10188,7 +11388,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Association_Element_Open
            | Iir_Kind_Association_Element_Package
            | Iir_Kind_Association_Element_Type
-           | Iir_Kind_Association_Element_Subprogram =>
+           | Iir_Kind_Association_Element_Subprogram
+           | Iir_Kind_Association_Element_Terminal =>
             return True;
          when others =>
             return False;
@@ -10233,6 +11434,14 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Pred_Attribute
            | Iir_Kind_Leftof_Attribute
            | Iir_Kind_Rightof_Attribute
+           | Iir_Kind_Signal_Slew_Attribute
+           | Iir_Kind_Quantity_Slew_Attribute
+           | Iir_Kind_Ramp_Attribute
+           | Iir_Kind_Zoh_Attribute
+           | Iir_Kind_Ltf_Attribute
+           | Iir_Kind_Ztf_Attribute
+           | Iir_Kind_Above_Attribute
+           | Iir_Kind_Quantity_Delayed_Attribute
            | Iir_Kind_Delayed_Attribute
            | Iir_Kind_Stable_Attribute
            | Iir_Kind_Quiet_Attribute
@@ -10251,10 +11460,45 @@ package body Vhdl.Nodes_Meta is
       end case;
    end Has_Parameter;
 
+   function Has_Parameter_2 (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Signal_Slew_Attribute
+           | Iir_Kind_Quantity_Slew_Attribute
+           | Iir_Kind_Ramp_Attribute
+           | Iir_Kind_Zoh_Attribute
+           | Iir_Kind_Ltf_Attribute
+           | Iir_Kind_Ztf_Attribute =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Parameter_2;
+
+   function Has_Parameter_3 (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Ztf_Attribute;
+   end Has_Parameter_3;
+
+   function Has_Parameter_4 (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Ztf_Attribute;
+   end Has_Parameter_4;
+
    function Has_Attr_Chain (K : Iir_Kind) return Boolean is
    begin
       case K is
-         when Iir_Kind_Delayed_Attribute
+         when Iir_Kind_Signal_Slew_Attribute
+           | Iir_Kind_Quantity_Slew_Attribute
+           | Iir_Kind_Ramp_Attribute
+           | Iir_Kind_Zoh_Attribute
+           | Iir_Kind_Ltf_Attribute
+           | Iir_Kind_Ztf_Attribute
+           | Iir_Kind_Dot_Attribute
+           | Iir_Kind_Integ_Attribute
+           | Iir_Kind_Above_Attribute
+           | Iir_Kind_Quantity_Delayed_Attribute
+           | Iir_Kind_Delayed_Attribute
            | Iir_Kind_Stable_Attribute
            | Iir_Kind_Quiet_Attribute
            | Iir_Kind_Transaction_Attribute =>
@@ -10267,7 +11511,11 @@ package body Vhdl.Nodes_Meta is
    function Has_Signal_Attribute_Declaration (K : Iir_Kind) return Boolean is
    begin
       case K is
-         when Iir_Kind_Delayed_Attribute
+         when Iir_Kind_Dot_Attribute
+           | Iir_Kind_Integ_Attribute
+           | Iir_Kind_Above_Attribute
+           | Iir_Kind_Quantity_Delayed_Attribute
+           | Iir_Kind_Delayed_Attribute
            | Iir_Kind_Stable_Attribute
            | Iir_Kind_Quiet_Attribute
            | Iir_Kind_Transaction_Attribute =>
@@ -10363,6 +11611,7 @@ package body Vhdl.Nodes_Meta is
    begin
       case K is
          when Iir_Kind_Case_Generate_Statement
+           | Iir_Kind_Simultaneous_Case_Statement
            | Iir_Kind_Case_Statement =>
             return True;
          when others =>
@@ -10487,6 +11736,11 @@ package body Vhdl.Nodes_Meta is
       end case;
    end Has_Subtype_Type_Mark;
 
+   function Has_Subnature_Nature_Mark (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Array_Subnature_Definition;
+   end Has_Subnature_Nature_Mark;
+
    function Has_Type_Conversion_Subtype (K : Iir_Kind) return Boolean is
    begin
       return K = Iir_Kind_Type_Conversion;
@@ -10496,6 +11750,7 @@ package body Vhdl.Nodes_Meta is
    begin
       case K is
          when Iir_Kind_Disconnection_Specification
+           | Iir_Kind_Step_Limit_Specification
            | Iir_Kind_Attribute_Declaration
            | Iir_Kind_Qualified_Expression
            | Iir_Kind_Type_Conversion =>
@@ -10571,6 +11826,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Case_Generate_Statement
            | Iir_Kind_For_Generate_Statement
            | Iir_Kind_Generate_Statement_Body
+           | Iir_Kind_Simultaneous_Procedural_Statement
+           | Iir_Kind_Simultaneous_Case_Statement
            | Iir_Kind_For_Loop_Statement =>
             return True;
          when others =>
@@ -10638,13 +11895,15 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Non_Object_Alias_Declaration
            | Iir_Kind_Psl_Declaration
            | Iir_Kind_Psl_Endpoint_Declaration
-           | Iir_Kind_Terminal_Declaration
-           | Iir_Kind_Free_Quantity_Declaration
-           | Iir_Kind_Across_Quantity_Declaration
-           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_Function_Declaration
            | Iir_Kind_Procedure_Declaration
+           | Iir_Kind_Terminal_Declaration
            | Iir_Kind_Object_Alias_Declaration
+           | Iir_Kind_Free_Quantity_Declaration
+           | Iir_Kind_Spectrum_Quantity_Declaration
+           | Iir_Kind_Noise_Quantity_Declaration
+           | Iir_Kind_Across_Quantity_Declaration
+           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_File_Declaration
            | Iir_Kind_Guard_Signal_Declaration
            | Iir_Kind_Signal_Declaration
@@ -10655,6 +11914,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
+           | Iir_Kind_Interface_Terminal_Declaration
            | Iir_Kind_Interface_Type_Declaration
            | Iir_Kind_Interface_Function_Declaration
            | Iir_Kind_Interface_Procedure_Declaration =>
@@ -10671,6 +11932,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Record_Type_Definition
            | Iir_Kind_Physical_Type_Definition
            | Iir_Kind_Protected_Type_Body
+           | Iir_Kind_Record_Nature_Definition
            | Iir_Kind_Entity_Declaration
            | Iir_Kind_Configuration_Declaration
            | Iir_Kind_Context_Declaration
@@ -10689,7 +11951,9 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Block_Statement
            | Iir_Kind_If_Generate_Statement
            | Iir_Kind_Case_Generate_Statement
-           | Iir_Kind_For_Generate_Statement =>
+           | Iir_Kind_For_Generate_Statement
+           | Iir_Kind_Simultaneous_Procedural_Statement
+           | Iir_Kind_Simultaneous_Case_Statement =>
             return True;
          when others =>
             return False;
@@ -10703,6 +11967,7 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Record_Type_Definition
            | Iir_Kind_Physical_Type_Definition
            | Iir_Kind_Protected_Type_Body
+           | Iir_Kind_Record_Nature_Definition
            | Iir_Kind_Entity_Declaration
            | Iir_Kind_Configuration_Declaration
            | Iir_Kind_Context_Declaration
@@ -10723,6 +11988,10 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Case_Generate_Statement
            | Iir_Kind_For_Generate_Statement
            | Iir_Kind_Generate_Statement_Body
+           | Iir_Kind_Simultaneous_Procedural_Statement
+           | Iir_Kind_Simultaneous_Case_Statement
+           | Iir_Kind_Simultaneous_If_Statement
+           | Iir_Kind_Simultaneous_Elsif
            | Iir_Kind_For_Loop_Statement
            | Iir_Kind_While_Loop_Statement
            | Iir_Kind_Case_Statement
@@ -10782,7 +12051,8 @@ package body Vhdl.Nodes_Meta is
          when Iir_Kind_Component_Declaration
            | Iir_Kind_Sensitized_Process_Statement
            | Iir_Kind_Process_Statement
-           | Iir_Kind_Block_Statement =>
+           | Iir_Kind_Block_Statement
+           | Iir_Kind_Simultaneous_Procedural_Statement =>
             return True;
          when others =>
             return False;
@@ -10834,7 +12104,13 @@ package body Vhdl.Nodes_Meta is
       case K is
          when Iir_Kind_Library_Clause
            | Iir_Kind_Element_Declaration
+           | Iir_Kind_Nature_Element_Declaration
            | Iir_Kind_Terminal_Declaration
+           | Iir_Kind_Free_Quantity_Declaration
+           | Iir_Kind_Spectrum_Quantity_Declaration
+           | Iir_Kind_Noise_Quantity_Declaration
+           | Iir_Kind_Across_Quantity_Declaration
+           | Iir_Kind_Through_Quantity_Declaration
            | Iir_Kind_File_Declaration
            | Iir_Kind_Signal_Declaration
            | Iir_Kind_Variable_Declaration
@@ -10844,6 +12120,8 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
+           | Iir_Kind_Interface_Terminal_Declaration
            | Iir_Kind_Interface_Type_Declaration =>
             return True;
          when others =>
@@ -10858,7 +12136,9 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Interface_Constant_Declaration
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
-           | Iir_Kind_Interface_File_Declaration =>
+           | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
+           | Iir_Kind_Interface_Terminal_Declaration =>
             return True;
          when others =>
             return False;
@@ -10871,12 +12151,29 @@ package body Vhdl.Nodes_Meta is
          when Iir_Kind_Interface_Constant_Declaration
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
-           | Iir_Kind_Interface_File_Declaration =>
+           | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
+           | Iir_Kind_Interface_Terminal_Declaration =>
             return True;
          when others =>
             return False;
       end case;
    end Has_Has_Class;
+
+   function Has_Has_Delay_Mechanism (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Concurrent_Simple_Signal_Assignment
+           | Iir_Kind_Concurrent_Conditional_Signal_Assignment
+           | Iir_Kind_Concurrent_Selected_Signal_Assignment
+           | Iir_Kind_Simple_Signal_Assignment_Statement
+           | Iir_Kind_Conditional_Signal_Assignment_Statement
+           | Iir_Kind_Selected_Waveform_Assignment_Statement =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Has_Delay_Mechanism;
 
    function Has_Suspend_Flag (K : Iir_Kind) return Boolean is
    begin
@@ -10902,7 +12199,9 @@ package body Vhdl.Nodes_Meta is
          when Iir_Kind_Conditional_Waveform
            | Iir_Kind_Conditional_Expression
            | Iir_Kind_Component_Configuration
+           | Iir_Kind_Record_Element_Constraint
            | Iir_Kind_Disconnection_Specification
+           | Iir_Kind_Step_Limit_Specification
            | Iir_Kind_Configuration_Specification
            | Iir_Kind_Record_Type_Definition
            | Iir_Kind_Record_Subtype_Definition
@@ -10915,22 +12214,39 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_Floating_Type_Definition
            | Iir_Kind_Physical_Type_Definition
            | Iir_Kind_Subtype_Definition
+           | Iir_Kind_Record_Nature_Definition
+           | Iir_Kind_Subtype_Declaration
+           | Iir_Kind_Element_Declaration
+           | Iir_Kind_Object_Alias_Declaration
            | Iir_Kind_Free_Quantity_Declaration
+           | Iir_Kind_Spectrum_Quantity_Declaration
+           | Iir_Kind_Noise_Quantity_Declaration
+           | Iir_Kind_Across_Quantity_Declaration
+           | Iir_Kind_Through_Quantity_Declaration
+           | Iir_Kind_File_Declaration
            | Iir_Kind_Signal_Declaration
            | Iir_Kind_Variable_Declaration
            | Iir_Kind_Constant_Declaration
+           | Iir_Kind_Iterator_Declaration
            | Iir_Kind_Interface_Constant_Declaration
            | Iir_Kind_Interface_Variable_Declaration
            | Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Interface_File_Declaration
+           | Iir_Kind_Interface_Quantity_Declaration
+           | Iir_Kind_Interface_Terminal_Declaration
            | Iir_Kind_Interface_Type_Declaration
            | Iir_Kind_Anonymous_Signal_Declaration
+           | Iir_Kind_Allocator_By_Expression
+           | Iir_Kind_Allocator_By_Subtype
            | Iir_Kind_Sensitized_Process_Statement
            | Iir_Kind_Concurrent_Simple_Signal_Assignment
            | Iir_Kind_Concurrent_Conditional_Signal_Assignment
            | Iir_Kind_Concurrent_Selected_Signal_Assignment
+           | Iir_Kind_Concurrent_Break_Statement
            | Iir_Kind_If_Generate_Statement
            | Iir_Kind_If_Generate_Else_Clause
+           | Iir_Kind_Simultaneous_If_Statement
+           | Iir_Kind_Simultaneous_Elsif
            | Iir_Kind_Simple_Signal_Assignment_Statement
            | Iir_Kind_Conditional_Signal_Assignment_Statement
            | Iir_Kind_Selected_Waveform_Assignment_Statement
@@ -10940,8 +12256,12 @@ package body Vhdl.Nodes_Meta is
            | Iir_Kind_While_Loop_Statement
            | Iir_Kind_Next_Statement
            | Iir_Kind_Exit_Statement
+           | Iir_Kind_Break_Statement
            | Iir_Kind_If_Statement
-           | Iir_Kind_Elsif =>
+           | Iir_Kind_Elsif
+           | Iir_Kind_External_Constant_Name
+           | Iir_Kind_External_Signal_Name
+           | Iir_Kind_External_Variable_Name =>
             return True;
          when others =>
             return False;
@@ -11082,5 +12402,36 @@ package body Vhdl.Nodes_Meta is
             return False;
       end case;
    end Has_PSL_EOS_Flag;
+
+   function Has_Count_Expression (K : Iir_Kind) return Boolean is
+   begin
+      return K = Iir_Kind_Psl_Prev;
+   end Has_Count_Expression;
+
+   function Has_Clock_Expression (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Psl_Prev
+           | Iir_Kind_Psl_Stable
+           | Iir_Kind_Psl_Rose
+           | Iir_Kind_Psl_Fell =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Clock_Expression;
+
+   function Has_Default_Clock (K : Iir_Kind) return Boolean is
+   begin
+      case K is
+         when Iir_Kind_Psl_Prev
+           | Iir_Kind_Psl_Stable
+           | Iir_Kind_Psl_Rose
+           | Iir_Kind_Psl_Fell =>
+            return True;
+         when others =>
+            return False;
+      end case;
+   end Has_Default_Clock;
 
 end Vhdl.Nodes_Meta;

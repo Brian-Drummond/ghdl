@@ -21,97 +21,71 @@
 with Types; use Types;
 with Tables;
 
-with Vhdl.Nodes; use Vhdl.Nodes;
 
 package body Synth.Heap is
 
    package Heap_Table is new Tables
-     (Table_Component_Type => Value_Acc,
+     (Table_Component_Type => Valtyp,
       Table_Index_Type => Heap_Index,
       Table_Low_Bound => 1,
       Table_Initial => 16);
 
-   function Allocate_By_Type (T : Type_Acc) return Value_Acc is
+   function Alloc_Mem (Sz : Size_Type) return Memory_Ptr;
+   pragma Import (C, Alloc_Mem, "malloc");
+
+   function Allocate_Memory (T : Type_Acc) return Value_Acc
+   is
+      M : Memory_Ptr;
    begin
-      case T.Kind is
-         when Type_Bit
-           | Type_Logic =>
-            return new Value_Type'
-              (Kind => Value_Discrete, Typ => T, Scal => 0);
-         when Type_Discrete =>
-            return new Value_Type'
-              (Kind => Value_Discrete, Typ => T, Scal => T.Drange.Left);
-         when Type_Array =>
-            declare
-               Len : constant Uns32 := Get_Array_Flat_Length (T);
-               El_Typ : constant Type_Acc := Get_Array_Element (T);
-               Arr : Value_Array_Acc;
-            begin
-               Arr := new Value_Array_Type (Iir_Index32 (Len));
-               for I in Arr.V'Range loop
-                  Arr.V (I) := Allocate_By_Type (El_Typ);
-               end loop;
-               return new Value_Type'
-                 (Kind => Value_Const_Array, Typ => T, Arr => Arr);
-            end;
-         when others =>
-            raise Internal_Error;
-      end case;
+      M := Alloc_Mem (T.Sz);
+      return new Value_Type'(Kind => Value_Memory, Mem => M);
+   end Allocate_Memory;
+
+   function Allocate_By_Type (T : Type_Acc) return Value_Acc
+   is
+      Res : Value_Acc;
+   begin
+      Res := Allocate_Memory (T);
+      Write_Value_Default (Res.Mem, T);
+      return Res;
    end Allocate_By_Type;
 
    function Allocate_By_Type (T : Type_Acc) return Heap_Index is
    begin
       --  FIXME: allocate type.
-      Heap_Table.Append (Allocate_By_Type (T));
+      Heap_Table.Append ((T, Allocate_By_Type (T)));
       return Heap_Table.Last;
    end Allocate_By_Type;
 
-   function Allocate_By_Value (V : Value_Acc) return Value_Acc is
+   function Allocate_By_Value (V : Valtyp) return Value_Acc
+   is
+      Res : Value_Acc;
    begin
-      case V.Kind is
-         when Value_Net
-           | Value_Wire =>
-            raise Internal_Error;
-         when Value_Discrete =>
-            return new Value_Type'
-              (Kind => Value_Discrete, Typ => V.Typ, Scal => V.Scal);
-         when Value_Array
-           | Value_Const_Array =>
-            declare
-               Arr : Value_Array_Acc;
-            begin
-               Arr := new Value_Array_Type (V.Arr.Len);
-               for I in Arr.V'Range loop
-                  Arr.V (I) := Allocate_By_Value (V.Arr.V (I));
-               end loop;
-               return new Value_Type'
-                 (Kind => Value_Const_Array, Typ => V.Typ, Arr => Arr);
-            end;
-         when others =>
-            raise Internal_Error;
-      end case;
+      Res := Allocate_Memory (V.Typ);
+      Write_Value (Res.Mem, V);
+      return Res;
    end Allocate_By_Value;
 
-   function Allocate_By_Value (V : Value_Acc) return Heap_Index is
+   function Allocate_By_Value (V : Valtyp) return Heap_Index is
    begin
-      Heap_Table.Append (Allocate_By_Value (V));
+      Heap_Table.Append ((V.Typ, Allocate_By_Value (V)));
       return Heap_Table.Last;
    end Allocate_By_Value;
 
-   function Synth_Dereference (Idx : Heap_Index) return Value_Acc is
+   function Synth_Dereference (Idx : Heap_Index) return Valtyp is
    begin
       return Heap_Table.Table (Idx);
    end Synth_Dereference;
 
-   procedure Free (Obj : in out Value_Acc) is
+   procedure Free (Obj : in out Valtyp) is
    begin
       -- TODO
-      Obj := null;
+      Obj := No_Valtyp;
    end Free;
 
    procedure Synth_Deallocate (Idx : Heap_Index) is
    begin
-      if Heap_Table.Table (Idx) = null then
+      if Heap_Table.Table (Idx) = No_Valtyp then
          return;
       end if;
       Free (Heap_Table.Table (Idx));

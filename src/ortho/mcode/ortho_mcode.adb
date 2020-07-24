@@ -283,12 +283,14 @@ package body Ortho_Mcode is
          Ortho_Code.O_Cnode (Res));
    end Finish_Record_Aggr;
 
-   procedure Start_Array_Aggr (List : out O_Array_Aggr_List; Atype : O_Tnode)
+   procedure Start_Array_Aggr
+     (List : out O_Array_Aggr_List; Atype : O_Tnode; Len : Unsigned_32)
    is
    begin
       Ortho_Code.Consts.Start_Array_Aggr
         (Ortho_Code.Consts.O_Array_Aggr_List (List),
-         Ortho_Code.O_Tnode (Atype));
+         Ortho_Code.O_Tnode (Atype),
+         Len);
    end Start_Array_Aggr;
 
    procedure New_Array_Aggr_El (List : in out O_Array_Aggr_List;
@@ -447,6 +449,13 @@ package body Ortho_Mcode is
         (Ortho_Code.Exprs.New_Convert_Ov (Ortho_Code.O_Enode (Val),
                                           Ortho_Code.O_Tnode (Rtype)));
    end New_Convert_Ov;
+
+   function New_Convert (Val : O_Enode; Rtype : O_Tnode) return O_Enode is
+   begin
+      return O_Enode
+        (Ortho_Code.Exprs.New_Convert (Ortho_Code.O_Enode (Val),
+                                       Ortho_Code.O_Tnode (Rtype)));
+   end New_Convert;
 
    function New_Address (Lvalue : O_Lnode; Atype : O_Tnode)
                         return O_Enode is

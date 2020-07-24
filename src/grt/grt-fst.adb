@@ -38,6 +38,7 @@
 --    + Integer signals aren't displayed correctly but only their lowest bit is
 --      shown.
 
+with Ada.Unchecked_Deallocation;
 with Interfaces; use Interfaces;
 with Interfaces.C;
 with Grt.Types; use Grt.Types;
@@ -54,7 +55,7 @@ with Grt.Rtis_Types; use Grt.Rtis_Types;
 with Grt.To_Strings;
 with Grt.Wave_Opt; use Grt.Wave_Opt;
 with Grt.Wave_Opt.Design; use Grt.Wave_Opt.Design;
-with Ada.Unchecked_Deallocation;
+with Grt.Options;
 pragma Elaborate_All (Grt.Table);
 
 package body Grt.Fst is
@@ -113,7 +114,7 @@ package body Grt.Fst is
 
       fstWriterSetFileType (Context, FST_FT_VHDL);
       fstWriterSetPackType (Context, FST_WR_PT_LZ4);
-      fstWriterSetTimescale (Context, -15); --  fs
+      fstWriterSetTimescale (Context, -3 * Options.Time_Resolution_Scale);
       fstWriterSetVersion (Context, To_Ghdl_C_String (Version'Address));
       fstWriterSetRepackOnClose (Context, 1);
       fstWriterSetParallelMode (Context, 0);
@@ -215,7 +216,7 @@ package body Grt.Fst is
 
    procedure Fst_Add_Signal (Sig : VhpiHandleT)
    is
-      Sig_Type, Sig_Base_Type : VhpiHandleT;
+      Sig_Typemark, Sig_Subtype, Sig_Base_Type : VhpiHandleT;
       Err : AvhpiErrorT;
       Vcd_El : Verilog_Wire_Info;
       Vt : fstVarType;
@@ -325,18 +326,18 @@ package body Grt.Fst is
       end if;
 
       --  Extract type name.
-      Vhpi_Handle (VhpiSubtype, Sig, Sig_Type, Err);
+      Vhpi_Handle (VhpiSubtype, Sig, Sig_Subtype, Err);
       if Err /= AvhpiErrorOk then
          Avhpi_Error (Err);
       end if;
-      Vhpi_Handle (VhpiTypeMark, Sig_Type, Sig_Type, Err);
+      Vhpi_Handle (VhpiTypeMark, Sig_Subtype, Sig_Typemark, Err);
       if Err /= AvhpiErrorOk then
          Avhpi_Error (Err);
       end if;
-      Vhpi_Get_Str (VhpiNameP, Sig_Type, Type_Name, Type_Name_Len);
+      Vhpi_Get_Str (VhpiNameP, Sig_Typemark, Type_Name, Type_Name_Len);
       if Type_Name_Len = 0 then
          --  Try with the base type.
-         Vhpi_Handle (VhpiBaseType, Sig_Type, Sig_Base_Type, Err);
+         Vhpi_Handle (VhpiBaseType, Sig_Subtype, Sig_Base_Type, Err);
          if Err /= AvhpiErrorOk then
             Avhpi_Error (Err);
          end if;

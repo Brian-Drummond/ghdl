@@ -18,6 +18,7 @@
 --  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
 --  MA 02110-1301, USA.
 
+with Netlists.Gates; use Netlists.Gates;
 with Netlists.Builders; use Netlists.Builders;
 
 package Netlists.Folds is
@@ -48,17 +49,41 @@ package Netlists.Folds is
    function Build2_Uresize (Ctxt : Context_Acc;
                             I : Net;
                             W : Width;
-                            Loc : Location_Type := No_Location)
+                            Loc : Location_Type)
                            return Net;
 
    --  Sign extend, noop or truncate I so that its width is W.
    function Build2_Sresize (Ctxt : Context_Acc;
                             I : Net;
                             W : Width;
-                            Loc : Location_Type := No_Location)
+                            Loc : Location_Type)
                            return Net;
 
---  Same as Build_Extract, but return I iff extract all the bits.
+   --  If IS_SIGNED is true, this is Build2_Sresize, otherwise Build2_Uresize.
+   function Build2_Resize (Ctxt : Context_Acc;
+                           I : Net;
+                           W : Width;
+                           Is_Signed : Boolean;
+                           Loc : Location_Type)
+                          return Net;
+
+   --  Same as Build_Extract, but return I iff extract all the bits.
    function Build2_Extract
      (Ctxt : Context_Acc; I : Net; Off, W : Width) return Net;
+
+   --  Return A -> B  ==  !A || B
+   function Build2_Imp (Ctxt : Context_Acc; A, B : Net; Loc : Location_Type)
+                       return Net;
+
+   --  Return A & B.
+   --  If A is No_Net, simply return B so that it is possible to easily build
+   --  chain of conditions.
+   function Build2_And (Ctxt : Context_Acc; A, B : Net; Loc : Location_Type)
+                        return Net;
+
+   --  Like Build_Compare but handle net of width 0.
+   function Build2_Compare (Ctxt : Context_Acc;
+                            Id   : Compare_Module_Id;
+                            L, R : Net) return Net;
+
 end Netlists.Folds;

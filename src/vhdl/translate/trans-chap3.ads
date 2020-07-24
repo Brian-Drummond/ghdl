@@ -21,9 +21,9 @@ package Trans.Chap3 is
    --  a subtype.
    --  This can be done only for a declaration.
    --  DECL must have an identifier and a type.
-   procedure Translate_Object_Subtype
+   procedure Translate_Object_Subtype_Indication
      (Decl : Iir; With_Vars : Boolean := True);
-   procedure Elab_Object_Subtype (Def : Iir);
+   procedure Elab_Object_Subtype_Indication (Decl : Iir);
 
    --  Translate the subtype of a literal.
    --  This can be done not at declaration time, ie no variables are created
@@ -149,6 +149,7 @@ package Trans.Chap3 is
                        return Mnode;
 
    --  Index array ARR of type ATYPE with INDEX.
+   --  Return the base.
    function Index_Array (Arr : Mnode; Atype : Iir; Index : O_Enode)
                         return Mnode;
 
@@ -163,12 +164,20 @@ package Trans.Chap3 is
    --  automatically stabilized if necessary.
    function Get_Bounds_Length (Bounds : Mnode; Atype : Iir) return O_Enode;
 
+   --  Return the number of elements for statically bounded array ATYPE.
+   function Get_Static_Array_Length (Atype : Iir) return Int64;
+
    --  Get the number of elements in array ATYPE.
    function Get_Array_Type_Length (Atype : Iir) return O_Enode;
 
    --  Get the base of array or record OBJ.  If OBJ is already constrained,
    --  return it.
    function Get_Composite_Base (Obj : Mnode) return Mnode;
+
+   --  The base returned by Get_Composite_Base is always the least
+   --  constrained array base.  But the subtype may be more constrained than
+   --  the base.  In that case the base must be converted to the subtype.
+   function Convert_Array_Base (Arr : Mnode) return Mnode;
 
    --  Get the base of array or record OBJ; but if OBJ is already constrained,
    --  convert it to the base of an unbounded object (so this unboxes the

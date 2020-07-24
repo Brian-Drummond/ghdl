@@ -112,6 +112,15 @@ package Vhdl.Std_Package is
    Time_Subtype_Definition: Iir_Physical_Subtype_Definition;
    Time_Subtype_Declaration : Iir_Subtype_Declaration;
 
+   --  For AMS-VHDL
+   Domain_Type_Type_Declaration : Iir_Type_Declaration;
+   Domain_Type_Type_Definition : Iir_Enumeration_Type_Definition;
+   Domain_Type_Quiescent_Domain : Iir_Enumeration_Literal;
+   Domain_Type_Time_Domain : Iir_Enumeration_Literal;
+   Domain_Type_Frequency_Domain : Iir_Enumeration_Literal;
+
+   Domain_Signal : Iir_Signal_Declaration;
+
    --  For VHDL-93
    Delay_Length_Subtype_Definition : Iir_Physical_Subtype_Definition;
    Delay_Length_Subtype_Declaration : Iir_Subtype_Declaration;
@@ -165,14 +174,18 @@ package Vhdl.Std_Package is
    --  Wilcard types.
    --  Err, we break privacy for iir numbers, but this allow use of them in
    --  case statements.
-   Wildcard_Any_Type : constant Iir := 7;
+   Wildcard_Any_Type           : constant Iir := 7;
    Wildcard_Any_Aggregate_Type : constant Iir := 8;
-   Wildcard_Any_String_Type : constant Iir := 9;
-   Wildcard_Any_Access_Type : constant Iir := 10;
+   Wildcard_Any_String_Type    : constant Iir := 9;
+   Wildcard_Any_Access_Type    : constant Iir := 10;
+   Wildcard_Any_Integer_Type   : constant Iir := 11;
+   Wildcard_Psl_Bit_Type       : constant Iir := 12;
+   Wildcard_Psl_Bitvector_Type : constant Iir := 13;
+   Wildcard_Psl_Boolean_Type   : constant Iir := 14;
 
    --  Subtype for all wildcard types, so that missing choice can be detected
    --  at compilation time.
-   subtype Iir_Wildcard_Types is Iir range 7 .. 10;
+   subtype Iir_Wildcard_Types is Iir range 7 .. 14;
 
    --  Chain of wildcard declarations, to own the nodes.
    Wildcard_Type_Declaration_Chain : Iir;

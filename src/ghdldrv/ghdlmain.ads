@@ -49,7 +49,7 @@ package Ghdlmain is
    procedure Disp_Long_Help (Cmd : Command_Type);
 
    --  Perform the action.
-   procedure Perform_Action (Cmd : Command_Type; Args : Argument_List)
+   procedure Perform_Action (Cmd : in out Command_Type; Args : Argument_List)
      is abstract;
 
    --  A command that accepts command and help strings.
@@ -66,7 +66,8 @@ package Ghdlmain is
    type Command_Str_Disp is new Command_Str_Type with record
       Disp : String_Func;
    end record;
-   procedure Perform_Action (Cmd : Command_Str_Disp; Args : Argument_List);
+   procedure Perform_Action (Cmd : in out Command_Str_Disp;
+                             Args : Argument_List);
 
    --  Register a command.
    procedure Register_Command (Cmd : Command_Acc);
@@ -84,10 +85,9 @@ package Ghdlmain is
    --  Exec failed: either the program was not found, or failed.
    Exec_Error : exception;
 
-   --  Decode command CMD_NAME and options from ARGS.
+   --  Decode options from ARGS for command CMD after initializing CMD.
    --  Return the index of the first non-option argument.
-   procedure Decode_Command_Options (Cmd_Name : String;
-                                     Cmd : out Command_Acc;
+   procedure Decode_Command_Options (Cmd : in out Command_Type'Class;
                                      Args : Argument_List;
                                      First_Arg : out Natural);
 

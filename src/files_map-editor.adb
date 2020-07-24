@@ -84,6 +84,15 @@ package body Files_Map.Editor is
       P : Source_Ptr;
       Nl : Natural;
    begin
+      --  Check File_Length.
+      P := F.File_Length;
+      if P >= Get_Buffer_Length (File) then
+         Log_Line ("invalid file length");
+      end if;
+      if F.Source (P) /= EOT or else F.Source (P + 1) /= EOT then
+         Log_Line ("missing EOT at end of buffer");
+      end if;
+
       L := 1;
       P := Source_Ptr_Org;
       Main_Loop: loop
@@ -184,6 +193,8 @@ package body Files_Map.Editor is
            F.Source (New_Start .. New_Start + Diff - 1);
 
          if F.Gap_Start >= F.File_Length then
+            --  The gap was after the EOT.  As it is moved before, we need
+            --  to increase the file length.
             F.File_Length := F.File_Length + Gap_Len;
          end if;
 
@@ -204,7 +215,8 @@ package body Files_Map.Editor is
          F.Source (F.Gap_Start .. F.Gap_Start + Diff - 1) :=
            F.Source (F.Gap_Last + 1 .. F.Gap_Last + 1 + Diff - 1);
 
-         if New_Start + Gap_Len >= F.File_Length then
+         if New_Start + Gap_Len > F.File_Length then
+            --  Moved past the end of file.  Decrease the file length.
             F.File_Length := F.File_Length - Gap_Len;
          end if;
 
@@ -440,7 +452,7 @@ package body Files_Map.Editor is
          D.Source (S.Gap_Start .. S_Cont_Len - 1) :=
            S.Source (S.Gap_Last + 1 .. S.File_Length - 1);
       else
-         pragma Assert (S.Gap_Start = S_Cont_Len);
+         pragma Assert (S.Gap_Start = S_Cont_Len + 2);
          D.Source (Source_Ptr_Org .. Source_Ptr_Org + S_Cont_Len - 1) :=
            S.Source (Source_Ptr_Org .. Source_Ptr_Org + S_Cont_Len - 1);
       end if;

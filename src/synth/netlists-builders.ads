@@ -86,7 +86,8 @@ package Netlists.Builders is
    function Build_Const_Log (Ctxt : Context_Acc;
                              W : Width) return Instance;
 
-   function Build_Edge (Ctxt : Context_Acc; Src : Net) return Net;
+   function Build_Posedge (Ctxt : Context_Acc; Src : Net) return Net;
+   function Build_Negedge (Ctxt : Context_Acc; Src : Net) return Net;
 
    function Build_Mux2 (Ctxt : Context_Acc;
                         Sel : Net;
@@ -94,6 +95,12 @@ package Netlists.Builders is
    function Build_Mux4 (Ctxt : Context_Acc;
                         Sel : Net;
                         I0, I1, I2, I3 : Net) return Net;
+
+   --  The width of SEL gives the number of inputs (+ 2).
+   --  The width of DEF (default value) gives the width of the output.
+   function Build_Pmux (Ctxt : Context_Acc;
+                        Sel : Net;
+                        Def : Net) return Net;
 
    --  Build: I0 & I1 [ & I2 [ & I3 ]]
    function Build_Concat2 (Ctxt : Context_Acc; I0, I1 : Net) return Net;
@@ -131,9 +138,9 @@ package Netlists.Builders is
       I : Net; Step : Uns32; Max : Uns32; W : Width) return Net;
    function Build_Addidx (Ctxt : Context_Acc; L, R : Net) return Net;
 
-   function Build_Memory (Ctxt : Context_Acc; W : Width) return Net;
+   function Build_Memory (Ctxt : Context_Acc; W : Width) return Instance;
    function Build_Memory_Init (Ctxt : Context_Acc; W : Width; Init : Net)
-                              return Net;
+                              return Instance;
    function Build_Mem_Rd
      (Ctxt : Context_Acc; Pport : Net; Addr : Net; Data_W : Width)
      return Instance;
@@ -150,12 +157,18 @@ package Netlists.Builders is
                                En : Net;
                                Data : Net) return Instance;
 
+   function Build_Mem_Multiport (Ctxt : Context_Acc; I0, I1 : Net) return Net;
+
    function Build_Output (Ctxt : Context_Acc; W : Width) return Net;
+   function Build_Ioutput (Ctxt : Context_Acc; Init : Net) return Net;
+   function Build_Inout (Ctxt : Context_Acc; W : Width) return Instance;
+   function Build_Iinout (Ctxt : Context_Acc; W : Width) return Instance;
    function Build_Signal (Ctxt : Context_Acc; Name : Sname; W : Width)
                          return Net;
    function Build_Isignal (Ctxt : Context_Acc; Name : Sname; Init : Net)
                           return Net;
    function Build_Port (Ctxt : Context_Acc; N : Net) return Net;
+   function Build_Enable (Ctxt : Context_Acc) return Net;
 
    function Build_Assert (Ctxt : Context_Acc; Name : Sname; Cond : Net)
                          return Instance;
@@ -185,7 +198,23 @@ package Netlists.Builders is
    function Build_Iadff (Ctxt : Context_Acc;
                         Clk : Net;
                         D : Net; Rst : Net; Rst_Val : Net;
-                        Init : Net) return Net;
+                                            Init : Net) return Net;
+
+   function Build_Mdff (Ctxt : Context_Acc;
+                        Clk : Net;
+                        D : Net;
+                        Els : Net) return Net;
+   function Build_Midff (Ctxt : Context_Acc;
+                         Clk : Net;
+                         D : Net;
+                         Els : Net;
+                         Init : Net) return Net;
+
+   function Build_Tri (Ctxt : Context_Acc; En : Net; D : Net) return Net;
+
+   function Build_Resolver (Ctxt : Context_Acc; L, R : Net) return Net;
+
+   function Build_Nop (Ctxt : Context_Acc; I : Net) return Net;
 private
    type Module_Arr is array (Module_Id range <>) of Module;
 
@@ -206,17 +235,28 @@ private
       M_Const_Z : Module;
       M_Const_Bit : Module;
       M_Const_Log : Module;
-      M_Edge : Module;
+      M_Posedge : Module;
+      M_Negedge : Module;
       M_Mux2 : Module;
       M_Mux4 : Module;
+      M_Pmux : Module;
+      M_Nop : Module;
       M_Output : Module;
+      M_Ioutput : Module;
       M_Signal : Module;
       M_Isignal : Module;
       M_Port : Module;
+      M_Inout : Module;
+      M_Iinout : Module;
+      M_Enable : Module;
       M_Dff : Module;
       M_Idff : Module;
       M_Adff : Module;
       M_Iadff : Module;
+      M_Mdff : Module;
+      M_Midff : Module;
+      M_Tri : Module;
+      M_Resolver : Module;
       M_Truncate : Module_Arr (Truncate_Module_Id);
       M_Extend : Module_Arr (Extend_Module_Id);
       M_Reduce : Module_Arr (Reduce_Module_Id);
@@ -231,6 +271,7 @@ private
       M_Mem_Rd : Module;
       M_Mem_Rd_Sync : Module;
       M_Mem_Wr_Sync : Module;
+      M_Mem_Multiport : Module;
       M_Assert : Module;
       M_Assume : Module;
       M_Cover : Module;

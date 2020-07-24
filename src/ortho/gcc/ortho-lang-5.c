@@ -709,6 +709,14 @@ type_for_mode (enum machine_mode mode, int unsignedp)
   if (mode == TYPE_MODE (long_double_type_node))
     return long_double_type_node;
 
+   if (VECTOR_MODE_P (mode))
+    {
+      machine_mode inner_mode = GET_MODE_INNER (mode);
+      tree inner_type = type_for_mode (inner_mode, unsignedp);
+      if (inner_type)
+	return build_vector_type_for_mode (inner_type, mode);
+    }
+
   return NULL_TREE;
 }
 
@@ -933,7 +941,7 @@ new_compare_op (enum ON_op_kind kind, tree left, tree right, tree ntype)
 }
 
 tree
-new_convert_ov (tree val, tree rtype)
+new_convert (tree val, tree rtype)
 {
   tree val_type;
   enum tree_code val_code;
@@ -993,6 +1001,12 @@ new_convert_ov (tree val, tree rtype)
     gcc_unreachable ();
 
   return build1 (code, rtype, val);
+}
+
+tree
+new_convert_ov (tree val, tree rtype)
+{
+  return new_convert (val, rtype);
 }
 
 tree
@@ -1207,23 +1221,12 @@ finish_access_type (tree atype, tree dtype)
   TREE_TYPE (atype) = dtype;
 }
 
-tree
-new_array_type (tree el_type, tree index_type)
+/*  Create a range type from INDEX_TYPE of length LENGTH.  */
+static tree
+ortho_build_array_range(tree index_type, tree length)
 {
-  return build_array_type (el_type, index_type);
-}
-
-
-tree
-new_constrained_array_type (tree atype, tree length)
-{
-  tree range_type;
-  tree index_type;
   tree len;
-  tree one;
-  tree res;
 
-  index_type = TYPE_DOMAIN (atype);
   if (integer_zerop (length))
     {
       /*  Handle null array, by creating a one-length array...  */
@@ -1231,17 +1234,42 @@ new_constrained_array_type (tree atype, tree length)
     }
   else
     {
-      one = build_int_cstu (index_type, 1);
-      len = build2 (MINUS_EXPR, index_type, length, one);
-      len = fold (len);
+      len = fold_build2 (MINUS_EXPR, index_type,
+			 convert (index_type, length),
+			 convert (index_type, size_one_node));
     }
+  return build_range_type (index_type, size_zero_node, len);
+}
 
-  range_type = build_range_type (index_type, size_zero_node, len);
+tree
+new_array_type (tree el_type, tree index_type)
+{
+  /* Incomplete array.  */
+  tree range_type;
+  tree res;
+
+  /* Build an incomplete array.  */
+  range_type = build_range_type (index_type, size_zero_node, NULL_TREE);
+  res = build_array_type (el_type, range_type);
+  return res;
+}
+
+tree
+new_constrained_array_type (tree atype, tree length)
+{
+  tree range_type;
+  tree index_type;
+  tree res;
+
+  index_type = TYPE_DOMAIN (atype);
+
+  range_type = ortho_build_array_range(index_type, length);
   res = build_array_type (TREE_TYPE (atype), range_type);
 
   /* Constrained arrays are *always* a subtype of its array type.
      Just copy alias set.  */
   TYPE_ALIAS_SET (res) = get_alias_set (atype);
+
   return res;
 }
 
@@ -1335,19 +1363,13 @@ struct GTY(()) o_array_aggr_list
 };
 
 void
-start_array_aggr (struct o_array_aggr_list *list, tree atype)
+start_array_aggr (struct o_array_aggr_list *list, tree atype, unsigned len)
 {
-  tree nelts;
-  unsigned HOST_WIDE_INT n;
+  tree length;
 
-  list->atype = atype;
-  list->elts = NULL;
-
-  nelts = array_type_nelts (atype);
-  gcc_assert (nelts != NULL_TREE && tree_fits_uhwi_p (nelts));
-
-  n = tree_to_uhwi (nelts) + 1;
-  vec_alloc(list->elts, n);
+  length = new_unsigned_literal (sizetype, len);
+  list->atype = new_constrained_array_type (atype, length);
+  vec_alloc(list->elts, len);
 }
 
 void
@@ -1390,6 +1412,14 @@ tree
 new_slice (tree arr, tree res_type, tree index)
 {
   gcc_assert (TREE_CODE (res_type) == ARRAY_TYPE);
+
+  /* gcc needs a complete array type, so create the biggest one if it is
+     not.  */
+  if (TYPE_MAX_VALUE (TYPE_DOMAIN (res_type)) == NULL_TREE)
+    {
+      res_type = build_array_type (TREE_TYPE (res_type),
+                                   TREE_TYPE (TYPE_DOMAIN (res_type)));
+    }
 
   ortho_mark_addressable (arr);
   return build4 (ARRAY_RANGE_REF, res_type, arr, index, NULL_TREE, NULL_TREE);
@@ -1624,6 +1654,14 @@ finish_init_value (tree *decl, tree val)
   DECL_INITIAL (*decl) = val;
   TREE_CONSTANT (val) = 1;
   TREE_STATIC (*decl) = 1;
+
+  /* The variable may be declared with an incomplete array, so be sure it
+     has a completed type.
+     Force re-layout by clearing the size.  */
+  DECL_SIZE (*decl) = NULL_TREE;
+  TREE_TYPE (*decl) = TREE_TYPE (val);
+  layout_decl (*decl, 0);
+
   rest_of_decl_compilation (*decl, current_function_decl == NULL_TREE, 0);
 }
 
@@ -1704,8 +1742,10 @@ new_interface_decl (struct o_inter_list *interfaces,
     case ENUMERAL_TYPE:
     case BOOLEAN_TYPE:
       DECL_ARG_TYPE (r) = integer_type_node;
+      break;
     default:
       DECL_ARG_TYPE (r) = atype;
+      break;
     }
 
   layout_decl (r, 0);

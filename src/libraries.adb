@@ -53,6 +53,20 @@ package body Libraries is
       Report_Msg (Msgid_Error, Library, No_Source_Coord, Msg);
    end Error_Lib_Msg;
 
+   procedure Create_Virtual_Locations
+   is
+      use Files_Map;
+      Library_Source_File : Source_File_Entry;
+      Command_Source_File : Source_File_Entry;
+   begin
+      Library_Source_File := Create_Virtual_Source_File
+        (Get_Identifier ("*libraries*"));
+      Command_Source_File := Create_Virtual_Source_File
+        (Get_Identifier ("*command line*"));
+      Command_Line_Location := File_To_Location (Command_Source_File);
+      Library_Location := File_To_Location (Library_Source_File);
+   end Create_Virtual_Locations;
+
    --  Initialize paths table.
    --  Set the local path.
    procedure Init_Paths is
@@ -63,6 +77,8 @@ package body Libraries is
 
       Local_Directory := Name_Nil;
       Work_Directory := Name_Nil;
+
+      Create_Virtual_Locations;
    end Init_Paths;
 
    function Path_To_Id (Path : String) return Name_Id is
@@ -108,7 +124,7 @@ package body Libraries is
       case Vhdl_Std is
          when Vhdl_87 =>
             return Image_Identifier (Library) & "-obj87.cf";
-         when Vhdl_93c | Vhdl_93 | Vhdl_00 | Vhdl_02 =>
+         when Vhdl_93 | Vhdl_00 | Vhdl_02 =>
             return Image_Identifier (Library) & "-obj93.cf";
          when Vhdl_08 =>
             return Image_Identifier (Library) & "-obj08.cf";
@@ -150,7 +166,7 @@ package body Libraries is
             case Vhdl_Std is
                when Vhdl_87 =>
                   Path (L + 2 .. L + 4) := "v87";
-               when Vhdl_93c | Vhdl_93 | Vhdl_00 | Vhdl_02 =>
+               when Vhdl_93 | Vhdl_00 | Vhdl_02 =>
                   Path (L + 2 .. L + 4) := "v93";
                when Vhdl_08 =>
                   Path (L + 2 .. L + 4) := "v08";
@@ -613,20 +629,6 @@ package body Libraries is
       return True;
    end Load_Library;
 
-   procedure Create_Virtual_Locations
-   is
-      use Files_Map;
-      Library_Source_File : Source_File_Entry;
-      Command_Source_File : Source_File_Entry;
-   begin
-      Library_Source_File := Create_Virtual_Source_File
-        (Get_Identifier ("*libraries*"));
-      Command_Source_File := Create_Virtual_Source_File
-        (Get_Identifier ("*command line*"));
-      Command_Line_Location := File_To_Location (Command_Source_File);
-      Library_Location := File_To_Location (Library_Source_File);
-   end Create_Virtual_Locations;
-
    -- Note: the scanner shouldn't be in use, since this procedure uses it.
    procedure Load_Std_Library (Build_Standard : Boolean := True)
    is
@@ -639,7 +641,6 @@ package body Libraries is
       end if;
 
       Flags.Create_Flag_String;
-      Create_Virtual_Locations;
 
       Vhdl.Std_Package.Create_First_Nodes;
 
@@ -1082,98 +1083,103 @@ package body Libraries is
 
       --  Try to find a design unit with the same name in the work library.
       Id := Get_Hash_Id_For_Unit (Unit);
-      Design_Unit := Unit_Hash_Table (Id);
-      Prev_Design_Unit := Null_Iir;
-      while Design_Unit /= Null_Iir loop
-         Design_File := Get_Design_File (Design_Unit);
-         Library_Unit := Get_Library_Unit (Design_Unit);
-         if Get_Identifier (Design_Unit) = Unit_Id
-           and then Get_Library (Design_File) = Work_Library
-           and then Is_Same_Library_Unit (New_Library_Unit, Library_Unit)
-         then
-            --  LIBRARY_UNIT and UNIT designate the same design unit.
-            Mark_Unit_Obsolete (Design_Unit);
+      declare
+         Design_Unit, Prev_Design_Unit : Iir_Design_Unit;
+         Next_Design_Unit : Iir_Design_Unit;
+      begin
+         Design_Unit := Unit_Hash_Table (Id);
+         Prev_Design_Unit := Null_Iir;
+         while Design_Unit /= Null_Iir loop
+            Next_Design_Unit := Get_Hash_Chain (Design_Unit);
+            Design_File := Get_Design_File (Design_Unit);
+            Library_Unit := Get_Library_Unit (Design_Unit);
+            if Get_Identifier (Design_Unit) = Unit_Id
+              and then Get_Library (Design_File) = Work_Library
+              and then Is_Same_Library_Unit (New_Library_Unit, Library_Unit)
+            then
+               --  LIBRARY_UNIT and UNIT designate the same design unit.
+               Mark_Unit_Obsolete (Design_Unit);
 
-            --  Remove the old one from the hash table.
-            declare
-               Next_Design : Iir;
-            begin
+               --  Remove the old one from the hash table.
                --  Remove DESIGN_UNIT from the unit_hash.
-               Next_Design := Get_Hash_Chain (Design_Unit);
                if Prev_Design_Unit = Null_Iir then
-                  Unit_Hash_Table (Id) := Next_Design;
+                  Unit_Hash_Table (Id) := Next_Design_Unit;
                else
-                  Set_Hash_Chain (Prev_Design_Unit, Next_Design);
-               end if;
-            end;
-
-            --  Remove DESIGN_UNIT from the design_file.
-            --  If KEEP_OBSOLETE is True, units that are obsoleted by units
-            --  in the same design file are kept.  This allows to process
-            --  (pretty print, xrefs, ...) all units of a design file.
-            --  But still remove units that are replaced (if a file was
-            --  already in the library).
-            if not Keep_Obsolete
-              or else Get_Date_State (Design_Unit) = Date_Disk
-            then
-               Remove_Unit_From_File (Design_Unit, Design_File);
-
-               --  Put removed units in a list so that they are still
-               --  referenced.
-               Set_Chain (Design_Unit, Obsoleted_Design_Units);
-               Obsoleted_Design_Units := Design_Unit;
-            end if;
-
-            --  UNIT *must* replace library_unit if they don't belong
-            --  to the same file.
-            if Get_Design_File_Filename (Design_File) = File_Name
-              and then Get_Design_File_Directory (Design_File) = Dir_Name
-            then
-               --  In the same file.
-               if Get_Date_State (Design_Unit) = Date_Analyze then
-                  --  Warns only if we are not re-analyzing the file.
-                  if Is_Warning_Enabled (Warnid_Library) then
-                     Warning_Msg_Sem
-                       (Warnid_Library, +Unit,
-                        "redefinition of a library unit in "
-                          & "same design file:");
-                     Warning_Msg_Sem
-                       (Warnid_Library, +Unit, "%n defined at %l is now %n",
-                        (+Library_Unit, +Library_Unit, +New_Library_Unit));
-                  end if;
-               else
-                  --  Free the stub corresponding to the unit.  This is the
-                  --  common case when a unit is reanalyzed after a change.
-                  if not Keep_Obsolete then
-                     Free_Design_Unit (Design_Unit);
-                  end if;
+                  Set_Hash_Chain (Prev_Design_Unit, Next_Design_Unit);
                end if;
 
-               --  Note: the current design unit should not be freed if
-               --  in use; unfortunatly, this is not obvious to check.
-            else
-               if Is_Warning_Enabled (Warnid_Library) then
-                  if Get_Kind (Library_Unit) /= Get_Kind (New_Library_Unit)
+               --  Remove DESIGN_UNIT from the design_file.
+               --  If KEEP_OBSOLETE is True, units that are obsoleted by units
+               --  in the same design file are kept.  This allows to process
+               --  (pretty print, xrefs, ...) all units of a design file.
+               --  But still remove units that are replaced (if a file was
+               --  already in the library).
+               if not Keep_Obsolete
+                 or else Get_Date_State (Design_Unit) = Date_Disk
+               then
+                  Remove_Unit_From_File (Design_Unit, Design_File);
+
+                  --  Put removed units in a list so that they are still
+                  --  referenced.
+                  Set_Chain (Design_Unit, Obsoleted_Design_Units);
+                  Obsoleted_Design_Units := Design_Unit;
+               end if;
+
+               --  UNIT *must* replace library_unit if they don't belong
+               --  to the same file.
+               if Get_Design_File_Filename (Design_File) = File_Name
+                 and then Get_Design_File_Directory (Design_File) = Dir_Name
+               then
+                  --  In the same file.
+                  if Get_Date_State (Design_Unit) = Date_Analyze then
+                     --  Warns only if we are not re-analyzing the file.
+                     if Is_Warning_Enabled (Warnid_Library) then
+                        Warning_Msg_Sem
+                          (Warnid_Library, +Unit,
+                           "redefinition of a library unit in "
+                             & "same design file:");
+                        Warning_Msg_Sem
+                          (Warnid_Library, +Unit, "%n defined at %l is now %n",
+                           (+Library_Unit, +Library_Unit, +New_Library_Unit));
+                     end if;
+                  else
+                     --  Free the stub corresponding to the unit.  This is the
+                     --  common case when a unit is reanalyzed after a change.
+                     if not Keep_Obsolete then
+                        Free_Design_Unit (Design_Unit);
+                     end if;
+                  end if;
+
+                  --  Note: the current design unit should not be freed if
+                  --  in use; unfortunatly, this is not obvious to check.
+               else
+                  if Is_Warning_Enabled (Warnid_Library)
+                    and then Get_Kind (Library_Unit) in Iir_Kinds_Primary_Unit
                   then
+                     if Get_Kind (Library_Unit) /= Get_Kind (New_Library_Unit)
+                     then
+                        Warning_Msg_Sem
+                          (Warnid_Library, +Unit,
+                           "changing definition of a library unit:");
+                        Warning_Msg_Sem
+                          (Warnid_Library, +Unit,
+                           "%n is now %n", (+Library_Unit, +New_Library_Unit));
+                     end if;
                      Warning_Msg_Sem
                        (Warnid_Library, +Unit,
-                        "changing definition of a library unit:");
-                     Warning_Msg_Sem
-                       (Warnid_Library, +Unit,
-                        "%n is now %n", (+Library_Unit, +New_Library_Unit));
+                        "%n was also defined in file %i",
+                        (+Library_Unit,
+                         +Get_Design_File_Filename (Design_File)));
                   end if;
-                  Warning_Msg_Sem
-                    (Warnid_Library, +Unit,
-                     "%n was also defined in file %i",
-                     (+Library_Unit, +Get_Design_File_Filename (Design_File)));
                end if;
+               --  Continue to search as there can be several units with the
+               --  same name (like package and package body).
             end if;
-            exit;
-         else
+
             Prev_Design_Unit := Design_Unit;
-            Design_Unit := Get_Hash_Chain (Design_Unit);
-         end if;
-      end loop;
+            Design_Unit := Next_Design_Unit;
+         end loop;
+      end;
 
       --  Try to find the design file in the library.
       --  First try the last one found.
@@ -1642,18 +1648,17 @@ package body Libraries is
       return Libraries_Chain;
    end Get_Libraries_Chain;
 
-   function Decode_Work_Option (Opt : String) return Boolean
+   function Decode_Work_Option (Opt : String) return Name_Id
    is
-      pragma Assert (Opt'First = 1);
-      Name : String (1 .. Opt'Last - 8 + 1);
+      Name : String (Opt'First + 7 .. Opt'Last);
       Err : Boolean;
    begin
-      Name := Opt (8 .. Opt'Last);
+      Name := Opt (Opt'First + 7 .. Opt'Last);
       Vhdl.Scanner.Convert_Identifier (Name, Err);
       if Err then
-         return False;
+         return Null_Identifier;
       end if;
-      Libraries.Work_Library_Name := Get_Identifier (Name);
-      return True;
+      return Get_Identifier (Name);
+      -- Libraries.Work_Library_Name :=
    end Decode_Work_Option;
 end Libraries;

@@ -18,13 +18,13 @@ class types:
     Boolean = 0
     Date_State_Type = 1
     Date_Type = 2
-    File_Checksum_Id = 3
-    Fp64 = 4
-    Iir = 5
-    Iir_All_Sensitized = 6
-    Iir_Constraint = 7
-    Iir_Delay_Mechanism = 8
-    Iir_Direction = 9
+    Direction_Type = 3
+    File_Checksum_Id = 4
+    Fp64 = 5
+    Iir = 6
+    Iir_All_Sensitized = 7
+    Iir_Constraint = 8
+    Iir_Delay_Mechanism = 9
     Iir_Flist = 10
     Iir_Index32 = 11
     Iir_Int32 = 12
@@ -40,12 +40,13 @@ class types:
     Number_Base_Type = 22
     PSL_NFA = 23
     PSL_Node = 24
-    Source_File_Entry = 25
-    Source_Ptr = 26
-    String8_Id = 27
-    Time_Stamp_Id = 28
-    Token_Type = 29
-    Tri_State_Type = 30
+    Scalar_Size = 25
+    Source_File_Entry = 26
+    Source_Ptr = 27
+    String8_Id = 28
+    Time_Stamp_Id = 29
+    Token_Type = 30
+    Tri_State_Type = 31
 
 
 class Attr:
@@ -107,292 +108,324 @@ class fields:
     Attribute_Specification_Chain = 43
     Attribute_Specification = 44
     Signal_List = 45
-    Designated_Entity = 46
-    Formal = 47
-    Actual = 48
-    Actual_Conversion = 49
-    Formal_Conversion = 50
-    Whole_Association_Flag = 51
-    Collapse_Signal_Flag = 52
-    Artificial_Flag = 53
-    Open_Flag = 54
-    After_Drivers_Flag = 55
-    We_Value = 56
-    Time = 57
-    Associated_Expr = 58
-    Associated_Block = 59
-    Associated_Chain = 60
-    Choice_Name = 61
-    Choice_Expression = 62
-    Choice_Range = 63
-    Same_Alternative_Flag = 64
-    Element_Type_Flag = 65
-    Architecture = 66
-    Block_Specification = 67
-    Prev_Block_Configuration = 68
-    Configuration_Item_Chain = 69
-    Attribute_Value_Chain = 70
-    Spec_Chain = 71
-    Value_Chain = 72
-    Attribute_Value_Spec_Chain = 73
-    Entity_Name = 74
-    Package = 75
-    Package_Body = 76
-    Instance_Package_Body = 77
-    Need_Body = 78
-    Macro_Expanded_Flag = 79
-    Need_Instance_Bodies = 80
-    Hierarchical_Name = 81
-    Inherit_Spec_Chain = 82
-    Vunit_Item_Chain = 83
-    Bound_Vunit_Chain = 84
-    Block_Configuration = 85
-    Concurrent_Statement_Chain = 86
-    Chain = 87
-    Port_Chain = 88
-    Generic_Chain = 89
-    Type = 90
-    Subtype_Indication = 91
-    Discrete_Range = 92
-    Type_Definition = 93
-    Subtype_Definition = 94
-    Incomplete_Type_Declaration = 95
-    Interface_Type_Subprograms = 96
-    Nature = 97
-    Mode = 98
-    Guarded_Signal_Flag = 99
-    Signal_Kind = 100
-    Base_Name = 101
-    Interface_Declaration_Chain = 102
-    Subprogram_Specification = 103
-    Sequential_Statement_Chain = 104
-    Subprogram_Body = 105
-    Overload_Number = 106
-    Subprogram_Depth = 107
-    Subprogram_Hash = 108
-    Impure_Depth = 109
-    Return_Type = 110
-    Implicit_Definition = 111
-    Default_Value = 112
-    Deferred_Declaration = 113
-    Deferred_Declaration_Flag = 114
-    Shared_Flag = 115
-    Design_Unit = 116
-    Block_Statement = 117
-    Signal_Driver = 118
-    Declaration_Chain = 119
-    File_Logical_Name = 120
-    File_Open_Kind = 121
-    Element_Position = 122
-    Use_Clause_Chain = 123
-    Context_Reference_Chain = 124
-    Selected_Name = 125
-    Type_Declarator = 126
-    Complete_Type_Definition = 127
-    Incomplete_Type_Ref_Chain = 128
-    Associated_Type = 129
-    Enumeration_Literal_List = 130
-    Entity_Class_Entry_Chain = 131
-    Group_Constituent_List = 132
-    Unit_Chain = 133
-    Primary_Unit = 134
-    Identifier = 135
-    Label = 136
-    Visible_Flag = 137
-    Range_Constraint = 138
-    Direction = 139
-    Left_Limit = 140
-    Right_Limit = 141
-    Left_Limit_Expr = 142
-    Right_Limit_Expr = 143
-    Base_Type = 144
-    Resolution_Indication = 145
-    Record_Element_Resolution_Chain = 146
-    Tolerance = 147
-    Plus_Terminal = 148
-    Minus_Terminal = 149
-    Simultaneous_Left = 150
-    Simultaneous_Right = 151
-    Text_File_Flag = 152
-    Only_Characters_Flag = 153
-    Is_Character_Type = 154
-    Type_Staticness = 155
-    Constraint_State = 156
-    Index_Subtype_List = 157
-    Index_Subtype_Definition_List = 158
-    Element_Subtype_Indication = 159
-    Element_Subtype = 160
-    Index_Constraint_List = 161
-    Array_Element_Constraint = 162
-    Elements_Declaration_List = 163
-    Owned_Elements_Chain = 164
-    Designated_Type = 165
-    Designated_Subtype_Indication = 166
-    Index_List = 167
-    Reference = 168
-    Nature_Declarator = 169
-    Across_Type = 170
-    Through_Type = 171
-    Target = 172
-    Waveform_Chain = 173
-    Guard = 174
-    Delay_Mechanism = 175
-    Reject_Time_Expression = 176
-    Sensitivity_List = 177
-    Process_Origin = 178
-    Package_Origin = 179
-    Condition_Clause = 180
-    Timeout_Clause = 181
-    Postponed_Flag = 182
-    Callees_List = 183
-    Passive_Flag = 184
-    Resolution_Function_Flag = 185
-    Wait_State = 186
-    All_Sensitized_State = 187
-    Seen_Flag = 188
-    Pure_Flag = 189
-    Foreign_Flag = 190
-    Resolved_Flag = 191
-    Signal_Type_Flag = 192
-    Has_Signal_Flag = 193
-    Purity_State = 194
-    Elab_Flag = 195
-    Configuration_Mark_Flag = 196
-    Configuration_Done_Flag = 197
-    Index_Constraint_Flag = 198
-    Hide_Implicit_Flag = 199
-    Assertion_Condition = 200
-    Report_Expression = 201
-    Severity_Expression = 202
-    Instantiated_Unit = 203
-    Generic_Map_Aspect_Chain = 204
-    Port_Map_Aspect_Chain = 205
-    Configuration_Name = 206
-    Component_Configuration = 207
-    Configuration_Specification = 208
-    Default_Binding_Indication = 209
-    Default_Configuration_Declaration = 210
-    Expression = 211
-    Conditional_Expression_Chain = 212
-    Allocator_Designated_Type = 213
-    Selected_Waveform_Chain = 214
-    Conditional_Waveform_Chain = 215
-    Guard_Expression = 216
-    Guard_Decl = 217
-    Guard_Sensitivity_List = 218
-    Signal_Attribute_Chain = 219
-    Block_Block_Configuration = 220
-    Package_Header = 221
-    Block_Header = 222
-    Uninstantiated_Package_Name = 223
-    Uninstantiated_Package_Decl = 224
-    Instance_Source_File = 225
-    Generate_Block_Configuration = 226
-    Generate_Statement_Body = 227
-    Alternative_Label = 228
-    Generate_Else_Clause = 229
-    Condition = 230
-    Else_Clause = 231
-    Parameter_Specification = 232
-    Parent = 233
-    Loop_Label = 234
-    Exit_Flag = 235
-    Next_Flag = 236
-    Component_Name = 237
-    Instantiation_List = 238
-    Entity_Aspect = 239
-    Default_Entity_Aspect = 240
-    Binding_Indication = 241
-    Named_Entity = 242
-    Alias_Declaration = 243
-    Referenced_Name = 244
-    Expr_Staticness = 245
-    Error_Origin = 246
-    Operand = 247
-    Left = 248
-    Right = 249
-    Unit_Name = 250
-    Name = 251
-    Group_Template_Name = 252
-    Name_Staticness = 253
-    Prefix = 254
-    Signature_Prefix = 255
-    External_Pathname = 256
-    Pathname_Suffix = 257
-    Pathname_Expression = 258
-    In_Formal_Flag = 259
-    Slice_Subtype = 260
-    Suffix = 261
-    Index_Subtype = 262
-    Parameter = 263
-    Attr_Chain = 264
-    Signal_Attribute_Declaration = 265
-    Actual_Type = 266
-    Actual_Type_Definition = 267
-    Association_Chain = 268
-    Individual_Association_Chain = 269
-    Subprogram_Association_Chain = 270
-    Aggregate_Info = 271
-    Sub_Aggregate_Info = 272
-    Aggr_Dynamic_Flag = 273
-    Aggr_Min_Length = 274
-    Aggr_Low_Limit = 275
-    Aggr_High_Limit = 276
-    Aggr_Others_Flag = 277
-    Aggr_Named_Flag = 278
-    Aggregate_Expand_Flag = 279
-    Association_Choices_Chain = 280
-    Case_Statement_Alternative_Chain = 281
-    Choice_Staticness = 282
-    Procedure_Call = 283
-    Implementation = 284
-    Parameter_Association_Chain = 285
-    Method_Object = 286
-    Subtype_Type_Mark = 287
-    Type_Conversion_Subtype = 288
-    Type_Mark = 289
-    File_Type_Mark = 290
-    Return_Type_Mark = 291
-    Has_Disconnect_Flag = 292
-    Has_Active_Flag = 293
-    Is_Within_Flag = 294
-    Type_Marks_List = 295
-    Implicit_Alias_Flag = 296
-    Alias_Signature = 297
-    Attribute_Signature = 298
-    Overload_List = 299
-    Simple_Name_Identifier = 300
-    Simple_Name_Subtype = 301
-    Protected_Type_Body = 302
-    Protected_Type_Declaration = 303
-    Use_Flag = 304
-    End_Has_Reserved_Id = 305
-    End_Has_Identifier = 306
-    End_Has_Postponed = 307
-    Has_Label = 308
-    Has_Begin = 309
-    Has_End = 310
-    Has_Is = 311
-    Has_Pure = 312
-    Has_Body = 313
-    Has_Parameter = 314
-    Has_Component = 315
-    Has_Identifier_List = 316
-    Has_Mode = 317
-    Has_Class = 318
-    Suspend_Flag = 319
-    Is_Ref = 320
-    Is_Forward_Ref = 321
-    Psl_Property = 322
-    Psl_Sequence = 323
-    Psl_Declaration = 324
-    Psl_Expression = 325
-    Psl_Boolean = 326
-    PSL_Clock = 327
-    PSL_NFA = 328
-    PSL_Nbr_States = 329
-    PSL_Clock_Sensitivity = 330
-    PSL_EOS_Flag = 331
+    Quantity_List = 46
+    Designated_Entity = 47
+    Formal = 48
+    Actual = 49
+    Actual_Conversion = 50
+    Formal_Conversion = 51
+    Whole_Association_Flag = 52
+    Collapse_Signal_Flag = 53
+    Artificial_Flag = 54
+    Open_Flag = 55
+    After_Drivers_Flag = 56
+    We_Value = 57
+    Time = 58
+    Associated_Expr = 59
+    Associated_Block = 60
+    Associated_Chain = 61
+    Choice_Name = 62
+    Choice_Expression = 63
+    Choice_Range = 64
+    Same_Alternative_Flag = 65
+    Element_Type_Flag = 66
+    Architecture = 67
+    Block_Specification = 68
+    Prev_Block_Configuration = 69
+    Configuration_Item_Chain = 70
+    Attribute_Value_Chain = 71
+    Spec_Chain = 72
+    Value_Chain = 73
+    Attribute_Value_Spec_Chain = 74
+    Entity_Name = 75
+    Package = 76
+    Package_Body = 77
+    Instance_Package_Body = 78
+    Need_Body = 79
+    Macro_Expanded_Flag = 80
+    Need_Instance_Bodies = 81
+    Hierarchical_Name = 82
+    Inherit_Spec_Chain = 83
+    Vunit_Item_Chain = 84
+    Bound_Vunit_Chain = 85
+    Verification_Block_Configuration = 86
+    Block_Configuration = 87
+    Concurrent_Statement_Chain = 88
+    Chain = 89
+    Port_Chain = 90
+    Generic_Chain = 91
+    Type = 92
+    Subtype_Indication = 93
+    Discrete_Range = 94
+    Type_Definition = 95
+    Subtype_Definition = 96
+    Incomplete_Type_Declaration = 97
+    Interface_Type_Subprograms = 98
+    Nature_Definition = 99
+    Nature = 100
+    Subnature_Indication = 101
+    Mode = 102
+    Guarded_Signal_Flag = 103
+    Signal_Kind = 104
+    Base_Name = 105
+    Interface_Declaration_Chain = 106
+    Subprogram_Specification = 107
+    Sequential_Statement_Chain = 108
+    Simultaneous_Statement_Chain = 109
+    Subprogram_Body = 110
+    Overload_Number = 111
+    Subprogram_Depth = 112
+    Subprogram_Hash = 113
+    Impure_Depth = 114
+    Return_Type = 115
+    Implicit_Definition = 116
+    Default_Value = 117
+    Deferred_Declaration = 118
+    Deferred_Declaration_Flag = 119
+    Shared_Flag = 120
+    Design_Unit = 121
+    Block_Statement = 122
+    Signal_Driver = 123
+    Declaration_Chain = 124
+    File_Logical_Name = 125
+    File_Open_Kind = 126
+    Element_Position = 127
+    Use_Clause_Chain = 128
+    Context_Reference_Chain = 129
+    Selected_Name = 130
+    Type_Declarator = 131
+    Complete_Type_Definition = 132
+    Incomplete_Type_Ref_Chain = 133
+    Associated_Type = 134
+    Enumeration_Literal_List = 135
+    Entity_Class_Entry_Chain = 136
+    Group_Constituent_List = 137
+    Unit_Chain = 138
+    Primary_Unit = 139
+    Identifier = 140
+    Label = 141
+    Visible_Flag = 142
+    Range_Constraint = 143
+    Direction = 144
+    Left_Limit = 145
+    Right_Limit = 146
+    Left_Limit_Expr = 147
+    Right_Limit_Expr = 148
+    Parent_Type = 149
+    Simple_Nature = 150
+    Base_Nature = 151
+    Resolution_Indication = 152
+    Record_Element_Resolution_Chain = 153
+    Tolerance = 154
+    Plus_Terminal_Name = 155
+    Minus_Terminal_Name = 156
+    Plus_Terminal = 157
+    Minus_Terminal = 158
+    Magnitude_Expression = 159
+    Phase_Expression = 160
+    Power_Expression = 161
+    Simultaneous_Left = 162
+    Simultaneous_Right = 163
+    Text_File_Flag = 164
+    Only_Characters_Flag = 165
+    Is_Character_Type = 166
+    Nature_Staticness = 167
+    Type_Staticness = 168
+    Constraint_State = 169
+    Index_Subtype_List = 170
+    Index_Subtype_Definition_List = 171
+    Element_Subtype_Indication = 172
+    Element_Subtype = 173
+    Element_Subnature_Indication = 174
+    Element_Subnature = 175
+    Index_Constraint_List = 176
+    Array_Element_Constraint = 177
+    Elements_Declaration_List = 178
+    Owned_Elements_Chain = 179
+    Designated_Type = 180
+    Designated_Subtype_Indication = 181
+    Index_List = 182
+    Reference = 183
+    Nature_Declarator = 184
+    Across_Type_Mark = 185
+    Through_Type_Mark = 186
+    Across_Type_Definition = 187
+    Through_Type_Definition = 188
+    Across_Type = 189
+    Through_Type = 190
+    Target = 191
+    Waveform_Chain = 192
+    Guard = 193
+    Delay_Mechanism = 194
+    Reject_Time_Expression = 195
+    Sensitivity_List = 196
+    Process_Origin = 197
+    Package_Origin = 198
+    Condition_Clause = 199
+    Break_Element = 200
+    Selector_Quantity = 201
+    Break_Quantity = 202
+    Timeout_Clause = 203
+    Postponed_Flag = 204
+    Callees_List = 205
+    Passive_Flag = 206
+    Resolution_Function_Flag = 207
+    Wait_State = 208
+    All_Sensitized_State = 209
+    Seen_Flag = 210
+    Pure_Flag = 211
+    Foreign_Flag = 212
+    Resolved_Flag = 213
+    Signal_Type_Flag = 214
+    Has_Signal_Flag = 215
+    Purity_State = 216
+    Elab_Flag = 217
+    Vendor_Library_Flag = 218
+    Configuration_Mark_Flag = 219
+    Configuration_Done_Flag = 220
+    Index_Constraint_Flag = 221
+    Hide_Implicit_Flag = 222
+    Assertion_Condition = 223
+    Report_Expression = 224
+    Severity_Expression = 225
+    Instantiated_Unit = 226
+    Generic_Map_Aspect_Chain = 227
+    Port_Map_Aspect_Chain = 228
+    Configuration_Name = 229
+    Component_Configuration = 230
+    Configuration_Specification = 231
+    Default_Binding_Indication = 232
+    Default_Configuration_Declaration = 233
+    Expression = 234
+    Conditional_Expression_Chain = 235
+    Allocator_Designated_Type = 236
+    Selected_Waveform_Chain = 237
+    Conditional_Waveform_Chain = 238
+    Guard_Expression = 239
+    Guard_Decl = 240
+    Guard_Sensitivity_List = 241
+    Signal_Attribute_Chain = 242
+    Block_Block_Configuration = 243
+    Package_Header = 244
+    Block_Header = 245
+    Uninstantiated_Package_Name = 246
+    Uninstantiated_Package_Decl = 247
+    Instance_Source_File = 248
+    Generate_Block_Configuration = 249
+    Generate_Statement_Body = 250
+    Alternative_Label = 251
+    Generate_Else_Clause = 252
+    Condition = 253
+    Else_Clause = 254
+    Parameter_Specification = 255
+    Parent = 256
+    Loop_Label = 257
+    Exit_Flag = 258
+    Next_Flag = 259
+    Component_Name = 260
+    Instantiation_List = 261
+    Entity_Aspect = 262
+    Default_Entity_Aspect = 263
+    Binding_Indication = 264
+    Named_Entity = 265
+    Alias_Declaration = 266
+    Referenced_Name = 267
+    Expr_Staticness = 268
+    Scalar_Size = 269
+    Error_Origin = 270
+    Operand = 271
+    Left = 272
+    Right = 273
+    Unit_Name = 274
+    Name = 275
+    Group_Template_Name = 276
+    Name_Staticness = 277
+    Prefix = 278
+    Signature_Prefix = 279
+    External_Pathname = 280
+    Pathname_Suffix = 281
+    Pathname_Expression = 282
+    In_Formal_Flag = 283
+    Slice_Subtype = 284
+    Suffix = 285
+    Index_Subtype = 286
+    Parameter = 287
+    Parameter_2 = 288
+    Parameter_3 = 289
+    Parameter_4 = 290
+    Attr_Chain = 291
+    Signal_Attribute_Declaration = 292
+    Actual_Type = 293
+    Actual_Type_Definition = 294
+    Association_Chain = 295
+    Individual_Association_Chain = 296
+    Subprogram_Association_Chain = 297
+    Aggregate_Info = 298
+    Sub_Aggregate_Info = 299
+    Aggr_Dynamic_Flag = 300
+    Aggr_Min_Length = 301
+    Aggr_Low_Limit = 302
+    Aggr_High_Limit = 303
+    Aggr_Others_Flag = 304
+    Aggr_Named_Flag = 305
+    Aggregate_Expand_Flag = 306
+    Association_Choices_Chain = 307
+    Case_Statement_Alternative_Chain = 308
+    Choice_Staticness = 309
+    Procedure_Call = 310
+    Implementation = 311
+    Parameter_Association_Chain = 312
+    Method_Object = 313
+    Subtype_Type_Mark = 314
+    Subnature_Nature_Mark = 315
+    Type_Conversion_Subtype = 316
+    Type_Mark = 317
+    File_Type_Mark = 318
+    Return_Type_Mark = 319
+    Has_Disconnect_Flag = 320
+    Has_Active_Flag = 321
+    Is_Within_Flag = 322
+    Type_Marks_List = 323
+    Implicit_Alias_Flag = 324
+    Alias_Signature = 325
+    Attribute_Signature = 326
+    Overload_List = 327
+    Simple_Name_Identifier = 328
+    Simple_Name_Subtype = 329
+    Protected_Type_Body = 330
+    Protected_Type_Declaration = 331
+    Use_Flag = 332
+    End_Has_Reserved_Id = 333
+    End_Has_Identifier = 334
+    End_Has_Postponed = 335
+    Has_Label = 336
+    Has_Begin = 337
+    Has_End = 338
+    Has_Is = 339
+    Has_Pure = 340
+    Has_Body = 341
+    Has_Parameter = 342
+    Has_Component = 343
+    Has_Identifier_List = 344
+    Has_Mode = 345
+    Has_Class = 346
+    Has_Delay_Mechanism = 347
+    Suspend_Flag = 348
+    Is_Ref = 349
+    Is_Forward_Ref = 350
+    Psl_Property = 351
+    Psl_Sequence = 352
+    Psl_Declaration = 353
+    Psl_Expression = 354
+    Psl_Boolean = 355
+    PSL_Clock = 356
+    PSL_NFA = 357
+    PSL_Nbr_States = 358
+    PSL_Clock_Sensitivity = 359
+    PSL_EOS_Flag = 360
+    Count_Expression = 361
+    Clock_Expression = 362
+    Default_Clock = 363
 
 
 Get_Boolean = libghdl.vhdl__nodes_meta__get_boolean
@@ -400,6 +433,8 @@ Get_Boolean = libghdl.vhdl__nodes_meta__get_boolean
 Get_Date_State_Type = libghdl.vhdl__nodes_meta__get_date_state_type
 
 Get_Date_Type = libghdl.vhdl__nodes_meta__get_date_type
+
+Get_Direction_Type = libghdl.vhdl__nodes_meta__get_direction_type
 
 Get_File_Checksum_Id = libghdl.vhdl__nodes_meta__get_file_checksum_id
 
@@ -412,8 +447,6 @@ Get_Iir_All_Sensitized = libghdl.vhdl__nodes_meta__get_iir_all_sensitized
 Get_Iir_Constraint = libghdl.vhdl__nodes_meta__get_iir_constraint
 
 Get_Iir_Delay_Mechanism = libghdl.vhdl__nodes_meta__get_iir_delay_mechanism
-
-Get_Iir_Direction = libghdl.vhdl__nodes_meta__get_iir_direction
 
 Get_Iir_Flist = libghdl.vhdl__nodes_meta__get_iir_flist
 
@@ -444,6 +477,8 @@ Get_Number_Base_Type = libghdl.vhdl__nodes_meta__get_number_base_type
 Get_PSL_NFA = libghdl.vhdl__nodes_meta__get_psl_nfa
 
 Get_PSL_Node = libghdl.vhdl__nodes_meta__get_psl_node
+
+Get_Scalar_Size = libghdl.vhdl__nodes_meta__get_scalar_size
 
 Get_Source_File_Entry = libghdl.vhdl__nodes_meta__get_source_file_entry
 
@@ -596,6 +631,9 @@ Has_Attribute_Specification =\
 Has_Signal_List =\
     libghdl.vhdl__nodes_meta__has_signal_list
 
+Has_Quantity_List =\
+    libghdl.vhdl__nodes_meta__has_quantity_list
+
 Has_Designated_Entity =\
     libghdl.vhdl__nodes_meta__has_designated_entity
 
@@ -713,6 +751,9 @@ Has_Vunit_Item_Chain =\
 Has_Bound_Vunit_Chain =\
     libghdl.vhdl__nodes_meta__has_bound_vunit_chain
 
+Has_Verification_Block_Configuration =\
+    libghdl.vhdl__nodes_meta__has_verification_block_configuration
+
 Has_Block_Configuration =\
     libghdl.vhdl__nodes_meta__has_block_configuration
 
@@ -749,8 +790,14 @@ Has_Incomplete_Type_Declaration =\
 Has_Interface_Type_Subprograms =\
     libghdl.vhdl__nodes_meta__has_interface_type_subprograms
 
+Has_Nature_Definition =\
+    libghdl.vhdl__nodes_meta__has_nature_definition
+
 Has_Nature =\
     libghdl.vhdl__nodes_meta__has_nature
+
+Has_Subnature_Indication =\
+    libghdl.vhdl__nodes_meta__has_subnature_indication
 
 Has_Mode =\
     libghdl.vhdl__nodes_meta__has_mode
@@ -772,6 +819,9 @@ Has_Subprogram_Specification =\
 
 Has_Sequential_Statement_Chain =\
     libghdl.vhdl__nodes_meta__has_sequential_statement_chain
+
+Has_Simultaneous_Statement_Chain =\
+    libghdl.vhdl__nodes_meta__has_simultaneous_statement_chain
 
 Has_Subprogram_Body =\
     libghdl.vhdl__nodes_meta__has_subprogram_body
@@ -890,8 +940,14 @@ Has_Left_Limit_Expr =\
 Has_Right_Limit_Expr =\
     libghdl.vhdl__nodes_meta__has_right_limit_expr
 
-Has_Base_Type =\
-    libghdl.vhdl__nodes_meta__has_base_type
+Has_Parent_Type =\
+    libghdl.vhdl__nodes_meta__has_parent_type
+
+Has_Simple_Nature =\
+    libghdl.vhdl__nodes_meta__has_simple_nature
+
+Has_Base_Nature =\
+    libghdl.vhdl__nodes_meta__has_base_nature
 
 Has_Resolution_Indication =\
     libghdl.vhdl__nodes_meta__has_resolution_indication
@@ -902,11 +958,26 @@ Has_Record_Element_Resolution_Chain =\
 Has_Tolerance =\
     libghdl.vhdl__nodes_meta__has_tolerance
 
+Has_Plus_Terminal_Name =\
+    libghdl.vhdl__nodes_meta__has_plus_terminal_name
+
+Has_Minus_Terminal_Name =\
+    libghdl.vhdl__nodes_meta__has_minus_terminal_name
+
 Has_Plus_Terminal =\
     libghdl.vhdl__nodes_meta__has_plus_terminal
 
 Has_Minus_Terminal =\
     libghdl.vhdl__nodes_meta__has_minus_terminal
+
+Has_Magnitude_Expression =\
+    libghdl.vhdl__nodes_meta__has_magnitude_expression
+
+Has_Phase_Expression =\
+    libghdl.vhdl__nodes_meta__has_phase_expression
+
+Has_Power_Expression =\
+    libghdl.vhdl__nodes_meta__has_power_expression
 
 Has_Simultaneous_Left =\
     libghdl.vhdl__nodes_meta__has_simultaneous_left
@@ -922,6 +993,9 @@ Has_Only_Characters_Flag =\
 
 Has_Is_Character_Type =\
     libghdl.vhdl__nodes_meta__has_is_character_type
+
+Has_Nature_Staticness =\
+    libghdl.vhdl__nodes_meta__has_nature_staticness
 
 Has_Type_Staticness =\
     libghdl.vhdl__nodes_meta__has_type_staticness
@@ -940,6 +1014,12 @@ Has_Element_Subtype_Indication =\
 
 Has_Element_Subtype =\
     libghdl.vhdl__nodes_meta__has_element_subtype
+
+Has_Element_Subnature_Indication =\
+    libghdl.vhdl__nodes_meta__has_element_subnature_indication
+
+Has_Element_Subnature =\
+    libghdl.vhdl__nodes_meta__has_element_subnature
 
 Has_Index_Constraint_List =\
     libghdl.vhdl__nodes_meta__has_index_constraint_list
@@ -967,6 +1047,18 @@ Has_Reference =\
 
 Has_Nature_Declarator =\
     libghdl.vhdl__nodes_meta__has_nature_declarator
+
+Has_Across_Type_Mark =\
+    libghdl.vhdl__nodes_meta__has_across_type_mark
+
+Has_Through_Type_Mark =\
+    libghdl.vhdl__nodes_meta__has_through_type_mark
+
+Has_Across_Type_Definition =\
+    libghdl.vhdl__nodes_meta__has_across_type_definition
+
+Has_Through_Type_Definition =\
+    libghdl.vhdl__nodes_meta__has_through_type_definition
 
 Has_Across_Type =\
     libghdl.vhdl__nodes_meta__has_across_type
@@ -1000,6 +1092,15 @@ Has_Package_Origin =\
 
 Has_Condition_Clause =\
     libghdl.vhdl__nodes_meta__has_condition_clause
+
+Has_Break_Element =\
+    libghdl.vhdl__nodes_meta__has_break_element
+
+Has_Selector_Quantity =\
+    libghdl.vhdl__nodes_meta__has_selector_quantity
+
+Has_Break_Quantity =\
+    libghdl.vhdl__nodes_meta__has_break_quantity
 
 Has_Timeout_Clause =\
     libghdl.vhdl__nodes_meta__has_timeout_clause
@@ -1045,6 +1146,9 @@ Has_Purity_State =\
 
 Has_Elab_Flag =\
     libghdl.vhdl__nodes_meta__has_elab_flag
+
+Has_Vendor_Library_Flag =\
+    libghdl.vhdl__nodes_meta__has_vendor_library_flag
 
 Has_Configuration_Mark_Flag =\
     libghdl.vhdl__nodes_meta__has_configuration_mark_flag
@@ -1196,6 +1300,9 @@ Has_Referenced_Name =\
 Has_Expr_Staticness =\
     libghdl.vhdl__nodes_meta__has_expr_staticness
 
+Has_Scalar_Size =\
+    libghdl.vhdl__nodes_meta__has_scalar_size
+
 Has_Error_Origin =\
     libghdl.vhdl__nodes_meta__has_error_origin
 
@@ -1249,6 +1356,15 @@ Has_Index_Subtype =\
 
 Has_Parameter =\
     libghdl.vhdl__nodes_meta__has_parameter
+
+Has_Parameter_2 =\
+    libghdl.vhdl__nodes_meta__has_parameter_2
+
+Has_Parameter_3 =\
+    libghdl.vhdl__nodes_meta__has_parameter_3
+
+Has_Parameter_4 =\
+    libghdl.vhdl__nodes_meta__has_parameter_4
 
 Has_Attr_Chain =\
     libghdl.vhdl__nodes_meta__has_attr_chain
@@ -1321,6 +1437,9 @@ Has_Method_Object =\
 
 Has_Subtype_Type_Mark =\
     libghdl.vhdl__nodes_meta__has_subtype_type_mark
+
+Has_Subnature_Nature_Mark =\
+    libghdl.vhdl__nodes_meta__has_subnature_nature_mark
 
 Has_Type_Conversion_Subtype =\
     libghdl.vhdl__nodes_meta__has_type_conversion_subtype
@@ -1415,6 +1534,9 @@ Has_Has_Mode =\
 Has_Has_Class =\
     libghdl.vhdl__nodes_meta__has_has_class
 
+Has_Has_Delay_Mechanism =\
+    libghdl.vhdl__nodes_meta__has_has_delay_mechanism
+
 Has_Suspend_Flag =\
     libghdl.vhdl__nodes_meta__has_suspend_flag
 
@@ -1453,3 +1575,12 @@ Has_PSL_Clock_Sensitivity =\
 
 Has_PSL_EOS_Flag =\
     libghdl.vhdl__nodes_meta__has_psl_eos_flag
+
+Has_Count_Expression =\
+    libghdl.vhdl__nodes_meta__has_count_expression
+
+Has_Clock_Expression =\
+    libghdl.vhdl__nodes_meta__has_clock_expression
+
+Has_Default_Clock =\
+    libghdl.vhdl__nodes_meta__has_default_clock

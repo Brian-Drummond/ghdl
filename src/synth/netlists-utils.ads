@@ -27,6 +27,10 @@ package Netlists.Utils is
    procedure Free_Net_Array is new Ada.Unchecked_Deallocation
      (Net_Array, Net_Array_Acc);
 
+   type Instance_Array_Acc is access Instance_Array;
+   procedure Free_Instance_Array is new Ada.Unchecked_Deallocation
+     (Instance_Array, Instance_Array_Acc);
+
    function Get_Nbr_Inputs (Inst : Instance) return Port_Nbr;
    function Get_Nbr_Outputs (Inst : Instance) return Port_Nbr;
    function Get_Nbr_Params (Inst : Instance) return Param_Nbr;
@@ -36,23 +40,39 @@ package Netlists.Utils is
 
    function Get_Id (Inst : Instance) return Module_Id;
 
+   --  For the yosys plugin: name of a port or a parameter
    function Get_Input_Name (M : Module; I : Port_Idx) return Sname;
    function Get_Output_Name (M : Module; I : Port_Idx) return Sname;
+   function Get_Param_Name (M : Module; I : Param_Idx) return Sname;
+   function Get_Param_Type (M : Module; I : Param_Idx) return Param_Type;
 
+   --  For the yosys plugin: width of a port
    function Get_Input_Width (M : Module; I : Port_Idx) return Width;
    function Get_Output_Width (M : Module; I : Port_Idx) return Width;
 
+   --  For the yosys plugin: true if an output is also an input.
+   function Get_Inout_Flag (M : Module; I : Port_Idx) return Boolean;
+
+   --  Return the net (driver) connected to input IDX of INSTANCE.
    function Get_Input_Net (Inst : Instance; Idx : Port_Idx) return Net;
+
+   --  Return the instance that drives input IDX of INST.
+   function Get_Input_Instance (Inst : Instance; Idx : Port_Idx)
+                               return Instance;
 
    --  Return True iff ID describe a constant.
    function Is_Const_Module (Id : Module_Id) return Boolean;
    function Is_Const_Net (N : Net) return Boolean;
 
-   --  Assuming than N is a const net, return the value (for small values).
+   --  Assuming that N is a const net, return the value (for small values).
    function Get_Net_Uns64 (N : Net) return Uns64;
 
    function Get_Net_Int64 (N : Net) return Int64;
    pragma Inline (Get_Net_Int64);
+
+   --  Assuming that N is a const net, return the value at offset OFF.
+   procedure Get_Net_Element
+     (N : Net; Off : Uns32; Va : out Uns32; Zx : out Uns32);
 
    --  Return True iff O has at least one sink (ie is connected to at least one
    --  input).
@@ -61,11 +81,23 @@ package Netlists.Utils is
    --  Return True iff O has one sink (is connected to one input).
    function Has_One_Connection (O : Net) return Boolean;
 
-   --  Disconnect input I.  If the driver of I has no output(s) connected,
-   --  disconnect and free it.
-   procedure Disconnect_And_Free (I : Input);
+   --  Disconnect an input and return the previous driver.
+   function Disconnect_And_Get (I : Input) return Net;
+   function Disconnect_And_Get (Inst : Instance; I : Port_Idx) return Net;
+
+   --  Return true IFF L and R is the same net.
+   --  Either because L = R (obvious case) or because both are the same
+   --  selection of the same net.
+   function Same_Net (L, R : Net) return Boolean;
+
+   --  If N is the output of a signal or isignal, return the driver of the
+   --  input.
+   function Skip_Signal (N : Net) return Net;
 
    function Clog2 (W : Width) return Width;
+
+   --  Copy attribtues of SRC to DEST.
+   procedure Copy_Attributes (Dest : Instance; Src : Instance);
 
    --  Used at many places.
    package Net_Tables is new Dyn_Tables

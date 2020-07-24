@@ -70,7 +70,7 @@ package Trans.Chap6 is
    --  index violation for dimension DIM of an array.  LOC is usually
    --  the expression which has computed the index and is used only for
    --  its location.
-   procedure Check_Bound_Error (Cond : O_Enode; Loc : Iir; Dim : Natural);
+   procedure Check_Bound_Error (Cond : O_Enode; Loc : Iir);
 
    --  Get the deepest range_expression of ATYPE.
    --   This follows 'range and 'reverse_range.
@@ -84,9 +84,9 @@ package Trans.Chap6 is
    --  For unconstrained ranges, INDEX_EXPR must be NULL_IIR and RANGE_TYPE
    --   must be set.
    function Translate_Index_To_Offset (Rng        : Mnode;
-                                       Index      : O_Enode;
+                                       Index      : Mnode;
                                        Index_Expr : Iir;
                                        Range_Type : Iir;
                                        Loc        : Iir)
-                                          return O_Enode;
+                                       return O_Enode;
 end Trans.Chap6;

@@ -43,6 +43,7 @@ package body PSL.Nodes_Meta is
       Field_Hash => Type_Uns32,
       Field_Hash_Link => Type_Node,
       Field_HDL_Index => Type_Int32,
+      Field_HDL_Hash => Type_Node,
       Field_Presence => Type_PSL_Presence_Kind,
       Field_NFA => Type_NFA,
       Field_Parameter_List => Type_Node,
@@ -109,6 +110,8 @@ package body PSL.Nodes_Meta is
             return "hash_link";
          when Field_HDL_Index =>
             return "hdl_index";
+         when Field_HDL_Hash =>
+            return "hdl_hash";
          when Field_Presence =>
             return "presence";
          when Field_NFA =>
@@ -181,6 +184,8 @@ package body PSL.Nodes_Meta is
             return "overlap_imp_seq";
          when N_Log_Imp_Prop =>
             return "log_imp_prop";
+         when N_Log_Equiv_Prop =>
+            return "log_equiv_prop";
          when N_Next =>
             return "next";
          when N_Next_A =>
@@ -239,8 +244,12 @@ package body PSL.Nodes_Meta is
             return "or_bool";
          when N_Imp_Bool =>
             return "imp_bool";
+         when N_Equiv_Bool =>
+            return "equiv_bool";
          when N_HDL_Expr =>
             return "hdl_expr";
+         when N_HDL_Bool =>
+            return "hdl_bool";
          when N_False =>
             return "false";
          when N_True =>
@@ -306,6 +315,8 @@ package body PSL.Nodes_Meta is
          when Field_Hash_Link =>
             return Attr_None;
          when Field_HDL_Index =>
+            return Attr_None;
+         when Field_HDL_Hash =>
             return Attr_None;
          when Field_Presence =>
             return Attr_None;
@@ -416,6 +427,9 @@ package body PSL.Nodes_Meta is
       Field_Sequence,
       Field_Property,
       --  N_Log_Imp_Prop
+      Field_Left,
+      Field_Right,
+      --  N_Log_Equiv_Prop
       Field_Left,
       Field_Right,
       --  N_Next
@@ -535,7 +549,16 @@ package body PSL.Nodes_Meta is
       Field_Left,
       Field_Right,
       Field_Hash_Link,
+      --  N_Equiv_Bool
+      Field_Hash,
+      Field_Presence,
+      Field_Left,
+      Field_Right,
+      Field_Hash_Link,
       --  N_HDL_Expr
+      Field_HDL_Node,
+      Field_HDL_Hash,
+      --  N_HDL_Bool
       Field_HDL_Node,
       Field_HDL_Index,
       Field_Hash,
@@ -584,42 +607,45 @@ package body PSL.Nodes_Meta is
       N_Imp_Seq => 60,
       N_Overlap_Imp_Seq => 62,
       N_Log_Imp_Prop => 64,
-      N_Next => 67,
-      N_Next_A => 71,
-      N_Next_E => 75,
-      N_Next_Event => 79,
-      N_Next_Event_A => 84,
-      N_Next_Event_E => 89,
-      N_Abort => 91,
-      N_Until => 95,
-      N_Before => 99,
-      N_Or_Prop => 101,
-      N_And_Prop => 103,
-      N_Paren_Prop => 104,
-      N_Braced_SERE => 105,
-      N_Concat_SERE => 107,
-      N_Fusion_SERE => 109,
-      N_Within_SERE => 111,
-      N_Clocked_SERE => 113,
-      N_Match_And_Seq => 115,
-      N_And_Seq => 117,
-      N_Or_Seq => 119,
-      N_Star_Repeat_Seq => 122,
-      N_Goto_Repeat_Seq => 125,
-      N_Plus_Repeat_Seq => 126,
-      N_Equal_Repeat_Seq => 129,
-      N_Paren_Bool => 133,
-      N_Not_Bool => 137,
-      N_And_Bool => 142,
-      N_Or_Bool => 147,
-      N_Imp_Bool => 152,
-      N_HDL_Expr => 157,
-      N_False => 157,
-      N_True => 157,
-      N_EOS => 160,
-      N_Name => 162,
-      N_Name_Decl => 164,
-      N_Number => 165
+      N_Log_Equiv_Prop => 66,
+      N_Next => 69,
+      N_Next_A => 73,
+      N_Next_E => 77,
+      N_Next_Event => 81,
+      N_Next_Event_A => 86,
+      N_Next_Event_E => 91,
+      N_Abort => 93,
+      N_Until => 97,
+      N_Before => 101,
+      N_Or_Prop => 103,
+      N_And_Prop => 105,
+      N_Paren_Prop => 106,
+      N_Braced_SERE => 107,
+      N_Concat_SERE => 109,
+      N_Fusion_SERE => 111,
+      N_Within_SERE => 113,
+      N_Clocked_SERE => 115,
+      N_Match_And_Seq => 117,
+      N_And_Seq => 119,
+      N_Or_Seq => 121,
+      N_Star_Repeat_Seq => 124,
+      N_Goto_Repeat_Seq => 127,
+      N_Plus_Repeat_Seq => 128,
+      N_Equal_Repeat_Seq => 131,
+      N_Paren_Bool => 135,
+      N_Not_Bool => 139,
+      N_And_Bool => 144,
+      N_Or_Bool => 149,
+      N_Imp_Bool => 154,
+      N_Equiv_Bool => 159,
+      N_HDL_Expr => 161,
+      N_HDL_Bool => 166,
+      N_False => 166,
+      N_True => 166,
+      N_EOS => 169,
+      N_Name => 171,
+      N_Name_Decl => 173,
+      N_Number => 174
      );
 
    function Get_Fields (K : Nkind) return Fields_Array
@@ -801,6 +827,8 @@ package body PSL.Nodes_Meta is
             return Get_Decl (N);
          when Field_Hash_Link =>
             return Get_Hash_Link (N);
+         when Field_HDL_Hash =>
+            return Get_HDL_Hash (N);
          when Field_Parameter_List =>
             return Get_Parameter_List (N);
          when Field_Actual =>
@@ -855,6 +883,8 @@ package body PSL.Nodes_Meta is
             Set_Decl (N, V);
          when Field_Hash_Link =>
             Set_Hash_Link (N, V);
+         when Field_HDL_Hash =>
+            Set_HDL_Hash (N, V);
          when Field_Parameter_List =>
             Set_Parameter_List (N, V);
          when Field_Actual =>
@@ -1048,6 +1078,7 @@ package body PSL.Nodes_Meta is
    begin
       case K is
          when N_Log_Imp_Prop
+           | N_Log_Equiv_Prop
            | N_Until
            | N_Before
            | N_Or_Prop
@@ -1060,7 +1091,8 @@ package body PSL.Nodes_Meta is
            | N_Or_Seq
            | N_And_Bool
            | N_Or_Bool
-           | N_Imp_Bool =>
+           | N_Imp_Bool
+           | N_Equiv_Bool =>
             return True;
          when others =>
             return False;
@@ -1071,6 +1103,7 @@ package body PSL.Nodes_Meta is
    begin
       case K is
          when N_Log_Imp_Prop
+           | N_Log_Equiv_Prop
            | N_Until
            | N_Before
            | N_Or_Prop
@@ -1083,7 +1116,8 @@ package body PSL.Nodes_Meta is
            | N_Or_Seq
            | N_And_Bool
            | N_Or_Bool
-           | N_Imp_Bool =>
+           | N_Imp_Bool
+           | N_Equiv_Bool =>
             return True;
          when others =>
             return False;
@@ -1207,7 +1241,13 @@ package body PSL.Nodes_Meta is
 
    function Has_HDL_Node (K : Nkind) return Boolean is
    begin
-      return K = N_HDL_Expr;
+      case K is
+         when N_HDL_Expr
+           | N_HDL_Bool =>
+            return True;
+         when others =>
+            return False;
+      end case;
    end Has_HDL_Node;
 
    function Has_Hash (K : Nkind) return Boolean is
@@ -1218,7 +1258,8 @@ package body PSL.Nodes_Meta is
            | N_And_Bool
            | N_Or_Bool
            | N_Imp_Bool
-           | N_HDL_Expr
+           | N_Equiv_Bool
+           | N_HDL_Bool
            | N_EOS =>
             return True;
          when others =>
@@ -1234,7 +1275,8 @@ package body PSL.Nodes_Meta is
            | N_And_Bool
            | N_Or_Bool
            | N_Imp_Bool
-           | N_HDL_Expr
+           | N_Equiv_Bool
+           | N_HDL_Bool
            | N_EOS =>
             return True;
          when others =>
@@ -1245,13 +1287,18 @@ package body PSL.Nodes_Meta is
    function Has_HDL_Index (K : Nkind) return Boolean is
    begin
       case K is
-         when N_HDL_Expr
+         when N_HDL_Bool
            | N_EOS =>
             return True;
          when others =>
             return False;
       end case;
    end Has_HDL_Index;
+
+   function Has_HDL_Hash (K : Nkind) return Boolean is
+   begin
+      return K = N_HDL_Expr;
+   end Has_HDL_Hash;
 
    function Has_Presence (K : Nkind) return Boolean is
    begin
@@ -1261,7 +1308,8 @@ package body PSL.Nodes_Meta is
            | N_And_Bool
            | N_Or_Bool
            | N_Imp_Bool
-           | N_HDL_Expr =>
+           | N_Equiv_Bool
+           | N_HDL_Bool =>
             return True;
          when others =>
             return False;

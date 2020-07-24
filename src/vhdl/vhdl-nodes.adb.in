@@ -842,7 +842,6 @@ package body Vhdl.Nodes is
    begin
       Res := Create_Node (Format_Short);
       Set_Nkind (Res, Iir_Kind'Pos (Iir_Kind_Error));
-      Set_Base_Type (Res, Res);
       return Res;
    end Create_Iir_Error;
 
@@ -944,6 +943,11 @@ package body Vhdl.Nodes is
      (Source => Boolean, Target => Iir_Signal_Kind);
    function Iir_Signal_Kind_To_Boolean is new Ada.Unchecked_Conversion
      (Source => Iir_Signal_Kind, Target => Boolean);
+
+   function Boolean_To_Direction_Type is new Ada.Unchecked_Conversion
+     (Source => Boolean, Target => Direction_Type);
+   function Direction_Type_To_Boolean is new Ada.Unchecked_Conversion
+     (Source => Direction_Type, Target => Boolean);
 
    function Iir_To_String8_Id is new Ada.Unchecked_Conversion
      (Source => Iir, Target => String8_Id);

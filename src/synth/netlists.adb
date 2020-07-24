@@ -19,7 +19,9 @@
 --  MA 02110-1301, USA.
 
 with Std_Names;
+with Name_Table;
 with Tables;
+with Simple_IO;
 
 with Netlists.Utils; use Netlists.Utils;
 with Netlists.Gates;
@@ -129,7 +131,8 @@ package body Netlists is
                              Last_Sub_Module => No_Module,
                              Next_Sub_Module => No_Module,
                              First_Instance => No_Instance,
-                             Last_Instance => No_Instance));
+                             Last_Instance => No_Instance,
+                             Attrs => null));
       Res := Modules_Table.Last;
       Self := Create_Self_Instance (Res);
       pragma Unreferenced (Self);
@@ -157,7 +160,8 @@ package body Netlists is
    begin
       Ports_Desc := Port_Desc_Table.Last + 1;
       for I in 1 .. Nbr_Inputs + Nbr_Outputs loop
-         Port_Desc_Table.Append ((Name => No_Sname, W => 0));
+         Port_Desc_Table.Append
+           ((Name => No_Sname, Is_Inout => False, W => 0));
       end loop;
 
       Modules_Table.Append
@@ -173,7 +177,8 @@ package body Netlists is
           Last_Sub_Module => No_Module,
           Next_Sub_Module => No_Module,
           First_Instance => No_Instance,
-          Last_Instance => No_Instance));
+          Last_Instance => No_Instance,
+          Attrs => null));
       Res := Modules_Table.Last;
 
       --  Append
@@ -271,11 +276,18 @@ package body Netlists is
 
    --  Instances
 
+   --  List of free instances, linked by Next_Instance.
+   Free_Instances : Instance := No_Instance;
+
    package Instances_Table is new Tables
      (Table_Component_Type => Instance_Record,
       Table_Index_Type => Instance,
       Table_Low_Bound => No_Instance,
       Table_Initial => 1024);
+
+   --  List of free nets.
+   --  As most of gates have only one output, just keep a single list.
+   Free_Nets : Net := No_Net;
 
    package Nets_Table is new Tables
      (Table_Component_Type => Net_Record,
@@ -283,11 +295,19 @@ package body Netlists is
       Table_Low_Bound => No_Net,
       Table_Initial => 1024);
 
+   --  List of free consecutive inputs.
+   Free_Inputs : array (Port_Idx range 1 .. 4) of Input :=
+     (others => No_Input);
+
    package Inputs_Table is new Tables
      (Table_Component_Type => Input_Record,
       Table_Index_Type => Input,
       Table_Low_Bound => No_Input,
       Table_Initial => 1024);
+
+   Free_Params : array (Param_Idx range 1 .. 32) of Param_Idx :=
+     (others => No_Param_Idx);
+   Free_Params2 : Param_Idx := No_Param_Idx;
 
    package Params_Table is new Tables
      (Table_Component_Type => Uns32,
@@ -322,6 +342,7 @@ package body Netlists is
          Instances_Table.Table (M_Ent.Last_Instance).Next_Instance := Inst;
       end if;
       Instances_Table.Table (Inst).Prev_Instance := M_Ent.Last_Instance;
+      Instances_Table.Table (Inst).Next_Instance := No_Instance;
       M_Ent.Last_Instance := Inst;
    end Append_Instance;
 
@@ -356,7 +377,7 @@ package body Netlists is
       Nbr_Inputs : constant Port_Idx := Get_Nbr_Inputs (Inst);
    begin
       --  Check that all outputs are unused.
-      if Nbr_Outputs > 1 then
+      if Nbr_Outputs > 0 then
          for K in 0 .. Nbr_Outputs - 1 loop
             if Is_Connected (Get_Output (Inst, K)) then
                return True;
@@ -380,6 +401,7 @@ package body Netlists is
    begin
       pragma Assert (not Check_Connected (Inst));
       Extract_Instance (Inst);
+      Free_Instance (Inst);
    end Remove_Instance;
 
    function New_Instance_Internal (Parent : Module;
@@ -393,22 +415,82 @@ package body Netlists is
       pragma Assert (Is_Valid (Parent));
       pragma Assert (Is_Valid (M));
       Res : Instance;
-      Inputs : constant Input := Inputs_Table.Allocate (Natural (Nbr_Inputs));
-      Outputs : constant Net := Nets_Table.Allocate (Natural (Nbr_Outputs));
-      Params : constant Param_Idx :=
-        Params_Table.Allocate (Natural (Nbr_Params));
+      Inputs : Input;
+      Outputs : Net;
+      Params : Param_Idx;
    begin
-      Instances_Table.Append ((Parent => Parent,
-                               Next_Instance => No_Instance,
-                               Prev_Instance => No_Instance,
-                               Klass => M,
-                               Flag_Mark => False,
-                               Flag2 => False,
-                               Name => Name,
-                               First_Param => Params,
-                               First_Input => Inputs,
-                               First_Output => Outputs));
-      Res := Instances_Table.Last;
+      if Free_Instances = No_Instance then
+         Instances_Table.Increment_Last;
+         Res := Instances_Table.Last;
+      else
+         Res := Free_Instances;
+         Free_Instances := Instances_Table.Table (Res).Next_Instance;
+      end if;
+
+      if Nbr_Inputs > 0 then
+         if Nbr_Inputs <= Free_Inputs'Last then
+            if Free_Inputs (Nbr_Inputs) /= No_Input then
+               --  Get a free input from the free list.
+               Inputs := Free_Inputs (Nbr_Inputs);
+               Free_Inputs (Nbr_Inputs) :=
+                 Inputs_Table.Table (Inputs).Next_Sink;
+            elsif Nbr_Inputs = 1 and then Free_Inputs (2) /= No_Input
+            then
+               --  Ok, common case: need just one input; get it from the list
+               --  of free 2-inputs.
+               pragma Assert (Free_Inputs (1) = No_Input);
+               Inputs := Free_Inputs (2);
+               Free_Inputs (2) := Inputs_Table.Table (Inputs).Next_Sink;
+               Free_Inputs (1) := Inputs + 1;
+               Inputs_Table.Table (Inputs + 1).Next_Sink := 0;
+            else
+               Inputs := Inputs_Table.Allocate (Natural (Nbr_Inputs));
+            end if;
+         else
+            Inputs := Inputs_Table.Allocate (Natural (Nbr_Inputs));
+         end if;
+      else
+         Inputs := No_Input;
+      end if;
+
+      if Nbr_Outputs > 0 then
+         if Nbr_Outputs = 1 and then Free_Nets /= No_Net then
+            Outputs := Free_Nets;
+            Free_Nets := Net (Nets_Table.Table (Outputs).First_Sink);
+         else
+            Outputs := Nets_Table.Allocate (Natural (Nbr_Outputs));
+         end if;
+      else
+         Outputs := No_Net;
+      end if;
+
+      if Nbr_Params > 0 then
+         if Nbr_Params <= Free_Params'Last
+           and then Free_Params (Nbr_Params) /= No_Param_Idx
+         then
+            Params := Free_Params (Nbr_Params);
+            Free_Params (Nbr_Params) :=
+              Param_Idx (Params_Table.Table (Params));
+         else
+            Params := Params_Table.Allocate (Natural (Nbr_Params));
+         end if;
+      else
+         Params := No_Param_Idx;
+      end if;
+
+      Instances_Table.Table (Res) := ((Parent => Parent,
+                                       Has_Attr => False,
+                                       Flag4 => False,
+                                       Next_Instance => No_Instance,
+                                       Prev_Instance => No_Instance,
+                                       Klass => M,
+                                       Flag_Mark => False,
+                                       Flag5 | Flag6 => False,
+                                       Flag2 => False,
+                                       Name => Name,
+                                       First_Param => Params,
+                                       First_Input => Inputs,
+                                       First_Output => Outputs));
 
       --  Setup inputs.
       if Nbr_Inputs > 0 then
@@ -520,11 +602,110 @@ package body Netlists is
       return Irec.Parent = Irec.Klass;
    end Is_Self_Instance;
 
+   type Module_Counter_Type is array (Module range 1 .. 128) of Natural;
+   Free_Instances_Counter :  Module_Counter_Type :=
+     (others => 0);
+
+   procedure Free_Input (First : Input; Nbr : Port_Nbr)
+   is
+      pragma Assert (Nbr in Free_Inputs'Range);
+   begin
+      Inputs_Table.Table (First).Next_Sink := Free_Inputs (Nbr);
+      Free_Inputs (Nbr) := First;
+   end Free_Input;
+
    procedure Free_Instance (Inst : Instance)
    is
       pragma Assert (Is_Valid (Inst));
+      Inst_Rec : Instance_Record renames Instances_Table.Table (Inst);
+      Nbr_Outputs : Port_Nbr;
+      Nbr_Inputs  : Port_Nbr;
+      Nbr_Params : Param_Idx;
    begin
-      Instances_Table.Table (Inst).Klass := Free_Module;
+      pragma Assert (not Check_Connected (Inst));
+
+      --  Instance must not be linked anymore.
+      pragma Assert (Inst_Rec.Prev_Instance = No_Instance);
+      pragma Assert (Inst_Rec.Next_Instance = No_Instance);
+
+      if Inst_Rec.Klass <= Free_Instances_Counter'Last then
+         Free_Instances_Counter (Inst_Rec.Klass) :=
+           Free_Instances_Counter (Inst_Rec.Klass) + 1;
+      end if;
+
+      Nbr_Outputs := Get_Nbr_Outputs (Inst);
+      for I in 1 .. Nbr_Outputs loop
+         declare
+            N : constant Net := Get_Output (Inst, I - 1);
+         begin
+            Nets_Table.Table (N).Parent := No_Instance;
+         end;
+      end loop;
+
+      if Nbr_Outputs /= 0 then
+         --  Put all nets, one by one, on the list of free nets.
+         for I in 0 .. Net (Nbr_Outputs - 1) loop
+            Nets_Table.Table (Inst_Rec.First_Output + I).First_Sink :=
+              Input (Inst_Rec.First_Output + I + 1);
+         end loop;
+         Nets_Table.Table (Inst_Rec.First_Output
+                           + Net (Nbr_Outputs - 1)).First_Sink :=
+           Input (Free_Nets);
+         Free_Nets := Inst_Rec.First_Output;
+      end if;
+
+      Nbr_Inputs := Get_Nbr_Inputs (Inst);
+      for I in 1 .. Nbr_Inputs loop
+         declare
+            Inp : constant Input := Get_Input (Inst, I - 1);
+         begin
+            Inputs_Table.Table (Inp).Parent := No_Instance;
+         end;
+      end loop;
+
+      if Nbr_Inputs /= 0 then
+         if Nbr_Inputs <= Free_Inputs'Last then
+            Free_Input (Inst_Rec.First_Input, Nbr_Inputs);
+         else
+            declare
+               Num : Port_Nbr;
+               First : Input;
+            begin
+               --  Free per pairs.
+               Num := Nbr_Inputs;
+               First := Inst_Rec.First_Input;
+               while Num >= 2 loop
+                  Free_Input (First, 2);
+                  First := First + 2;
+                  Num := Num - 2;
+               end loop;
+               --  Free the last one.
+               if Num = 1 then
+                  Free_Input (First, 1);
+               end if;
+            end;
+         end if;
+      end if;
+
+      Nbr_Params := Get_Nbr_Params (Inst);
+      if Nbr_Params /= 0 then
+         if Nbr_Params <= Free_Params'Last then
+            Params_Table.Table (Inst_Rec.First_Param) :=
+              Uns32 (Free_Params (Nbr_Params));
+            Free_Params (Nbr_Params) := Inst_Rec.First_Param;
+         else
+            Params_Table.Table (Inst_Rec.First_Param) :=
+              Uns32 (Free_Params2);
+            Params_Table.Table (Inst_Rec.First_Param + 1) :=
+              Uns32 (Nbr_Params);
+            Free_Params2 := Inst_Rec.First_Param;
+         end if;
+      end if;
+
+      Inst_Rec.Klass := Free_Module;
+
+      Inst_Rec.Next_Instance := Free_Instances;
+      Free_Instances := Inst;
    end Free_Instance;
 
    function Get_Module (Inst : Instance) return Module is
@@ -810,6 +991,24 @@ package body Netlists is
       Params_Table.Table (Get_Param_Idx (Inst, Param)) := Val;
    end Set_Param_Uns32;
 
+   function Get_Param_Pval (Inst : Instance; Param : Param_Idx) return Pval
+   is
+      M : constant Module := Get_Module (Inst);
+      pragma Assert (Param < Get_Nbr_Params (Inst));
+      pragma Assert (Get_Param_Desc (M, Param).Typ in Param_Types_Pval);
+   begin
+      return Pval (Params_Table.Table (Get_Param_Idx (Inst, Param)));
+   end Get_Param_Pval;
+
+   procedure Set_Param_Pval (Inst : Instance; Param : Param_Idx; Val : Pval)
+   is
+      M : constant Module := Get_Module (Inst);
+      pragma Assert (Param < Get_Nbr_Params (Inst));
+      pragma Assert (Get_Param_Desc (M, Param).Typ in Param_Types_Pval);
+   begin
+      Params_Table.Table (Get_Param_Idx (Inst, Param)) := Uns32 (Val);
+   end Set_Param_Pval;
+
    procedure Connect (I : Input; O : Net)
    is
       pragma Assert (Is_Valid (I));
@@ -860,15 +1059,16 @@ package body Netlists is
    procedure Redirect_Inputs (Old : Net; N : Net)
    is
       First_I, I : Input;
-      Prev_I : Input;
+      Last_I : Input;
    begin
       First_I := Get_First_Sink (Old);
       if First_I = No_Input then
+         --  Nothing to do if no input.
          return;
       end if;
 
       I := First_I;
-      Prev_I := No_Input;
+      Last_I := No_Input;
       while I /= No_Input loop
          declare
             I_Rec : Input_Record renames Inputs_Table.Table (I);
@@ -876,19 +1076,334 @@ package body Netlists is
             pragma Assert (I_Rec.Driver = Old);
             I_Rec.Driver := N;
 
-            if Prev_I /= No_Input then
-               Inputs_Table.Table (Prev_I).Next_Sink := I;
-            end if;
-            Prev_I := I;
+            Last_I := I;
 
             I := I_Rec.Next_Sink;
          end;
       end loop;
-      if Prev_I /= No_Input then
-         Inputs_Table.Table (Prev_I).Next_Sink := Get_First_Sink (N);
-         Nets_Table.Table (N).First_Sink := First_I;
-      end if;
+      Inputs_Table.Table (Last_I).Next_Sink := Get_First_Sink (N);
+      Nets_Table.Table (N).First_Sink := First_I;
+
+      --  Also disconnect OLD
+      Nets_Table.Table (Old).First_Sink := No_Input;
    end Redirect_Inputs;
+
+   type Pval_Record is record
+      Len : Uns32;
+      Va_Idx : Uns32;
+      Zx_Idx : Uns32;
+   end record;
+
+   package Pval_Table is new Tables
+     (Table_Component_Type => Pval_Record,
+      Table_Index_Type => Pval,
+      Table_Low_Bound => 0,
+      Table_Initial => 32);
+
+   package Pval_Word_Table is new Tables
+     (Table_Component_Type => Uns32,
+      Table_Index_Type => Uns32,
+      Table_Low_Bound => 0,
+      Table_Initial => 32);
+
+   function Create_Pval4 (Len : Uns32) return Pval
+   is
+      pragma Assert (Len > 0);
+      Nwords : constant Uns32 := (Len + 31) / 32;
+      Idx : constant Uns32 := Pval_Word_Table.Last + 1;
+      Res : Uns32;
+   begin
+      Pval_Table.Append ((Len => Len,
+                          Va_Idx => Idx,
+                          Zx_Idx => Idx + Nwords));
+      Res := Pval_Word_Table.Allocate (Natural (2 * Nwords));
+      pragma Assert (Res = Idx);
+      return Pval_Table.Last;
+   end Create_Pval4;
+
+   function Create_Pval2 (Len : Uns32) return Pval
+   is
+      pragma Assert (Len > 0);
+      Nwords : constant Uns32 := (Len + 31) / 32;
+      Idx : constant Uns32 := Pval_Word_Table.Last + 1;
+      Res : Uns32;
+   begin
+      Pval_Table.Append ((Len => Len,
+                          Va_Idx => Idx,
+                          Zx_Idx => 0));
+      Res := Pval_Word_Table.Allocate (Natural (Nwords));
+      pragma Assert (Res = Idx);
+      return Pval_Table.Last;
+   end Create_Pval2;
+
+   function Get_Pval_Length (P : Pval) return Uns32
+   is
+      pragma Assert (P <= Pval_Table.Last);
+   begin
+      return Pval_Table.Table (P).Len;
+   end Get_Pval_Length;
+
+   function Read_Pval (P : Pval; Off : Uns32) return Logic_32
+   is
+      pragma Assert (P <= Pval_Table.Last);
+      Pval_Rec : Pval_Record renames Pval_Table.Table (P);
+      pragma Assert (Off <= (Pval_Rec.Len - 1) / 32);
+      Res : Logic_32;
+   begin
+      Res.Val := Pval_Word_Table.Table (Pval_Rec.Va_Idx + Off);
+      if Pval_Rec.Zx_Idx = 0 then
+         Res.Zx := 0;
+      else
+         Res.Zx := Pval_Word_Table.Table (Pval_Rec.Zx_Idx + Off);
+      end if;
+      return Res;
+   end Read_Pval;
+
+   procedure Write_Pval (P : Pval; Off : Uns32; Val : Logic_32)
+   is
+      pragma Assert (P <= Pval_Table.Last);
+      Pval_Rec : Pval_Record renames Pval_Table.Table (P);
+      pragma Assert (Off <= (Pval_Rec.Len - 1) / 32);
+   begin
+      Pval_Word_Table.Table (Pval_Rec.Va_Idx + Off) := Val.Val;
+      if Pval_Rec.Zx_Idx = 0 then
+         pragma Assert (Val.Zx = 0);
+         null;
+      else
+         Pval_Word_Table.Table (Pval_Rec.Zx_Idx + Off) := Val.Zx;
+      end if;
+   end Write_Pval;
+
+   --  Attributes
+
+   function Attribute_Hash (Params : Instance) return Hash_Value_Type is
+   begin
+      return Hash_Value_Type (Params);
+   end Attribute_Hash;
+
+   function Attribute_Build (Params : Instance) return Instance is
+   begin
+      return Params;
+   end Attribute_Build;
+
+   function Attribute_Build_Value (Obj : Instance) return Attribute
+   is
+      pragma Unreferenced (Obj);
+   begin
+      return No_Attribute;
+   end Attribute_Build_Value;
+
+   package Attributes_Table is new Tables
+     (Table_Component_Type => Attribute_Record,
+      Table_Index_Type     => Attribute,
+      Table_Low_Bound      => 0,
+      Table_Initial        => 64);
+
+   procedure Set_Attribute
+     (Inst : Instance; Id : Name_Id; Ptype : Param_Type; Pv : Pval)
+   is
+      pragma Assert (Is_Valid (Inst));
+      M          : constant Module := Get_Instance_Parent (Inst);
+      Module_Rec : Module_Record renames Modules_Table.Table (M);
+      Attr       : Attribute;
+      Idx        : Attribute_Maps.Index_Type;
+      Prev       : Attribute;
+   begin
+      if Module_Rec.Attrs = null then
+         Module_Rec.Attrs := new Attribute_Maps.Instance;
+         Attribute_Maps.Init (Module_Rec.Attrs.all);
+      end if;
+
+      --  There is now at least one attribute for INST.
+      Instances_Table.Table (Inst).Has_Attr := True;
+
+      Attribute_Maps.Get_Index (Module_Rec.Attrs.all, Inst, Idx);
+
+      Prev := Attribute_Maps.Get_Value (Module_Rec.Attrs.all, Idx);
+      Attributes_Table.Append ((Name => Id,
+                                Typ => Ptype,
+                                Val => Pv,
+                                Chain => Prev));
+      Attr := Attributes_Table.Last;
+
+      Attribute_Maps.Set_Value (Module_Rec.Attrs.all, Idx, Attr);
+   end Set_Attribute;
+
+   function Get_Attributes (M : Module) return Attribute_Map_Acc is
+   begin
+      return Modules_Table.Table (M).Attrs;
+   end Get_Attributes;
+
+   function Get_First_Attribute (Inst : Instance) return Attribute
+   is
+      pragma Assert (Is_Valid (Inst));
+   begin
+      if not Instances_Table.Table (Inst).Has_Attr then
+         return No_Attribute;
+      end if;
+      declare
+         M          : constant Module := Get_Instance_Parent (Inst);
+         Attrs      : constant Attribute_Map_Acc := Get_Attributes (M);
+         Idx        : Attribute_Maps.Index_Type;
+         Res        : Attribute;
+      begin
+         pragma Assert (Attrs /= null);
+         Attribute_Maps.Get_Index (Attrs.all, Inst, Idx);
+         Res := Attribute_Maps.Get_Value (Attrs.all, Idx);
+         return Res;
+      end;
+   end Get_First_Attribute;
+
+   function Is_Valid (Attr : Attribute) return Boolean is
+   begin
+      return Attr > No_Attribute and then Attr <= Attributes_Table.Last;
+   end Is_Valid;
+
+   function Get_Attribute_Name (Attr : Attribute) return Name_Id
+   is
+      pragma Assert (Is_Valid (Attr));
+   begin
+      return Attributes_Table.Table (Attr).Name;
+   end Get_Attribute_Name;
+
+   function Get_Attribute_Type (Attr : Attribute) return Param_Type
+   is
+      pragma Assert (Is_Valid (Attr));
+   begin
+      return Attributes_Table.Table (Attr).Typ;
+   end Get_Attribute_Type;
+
+   function Get_Attribute_Pval (Attr : Attribute) return Pval
+   is
+      pragma Assert (Is_Valid (Attr));
+   begin
+      return Attributes_Table.Table (Attr).Val;
+   end Get_Attribute_Pval;
+
+   function Get_Attribute_Next (Attr : Attribute) return Attribute
+   is
+      pragma Assert (Is_Valid (Attr));
+   begin
+      return Attributes_Table.Table (Attr).Chain;
+   end Get_Attribute_Next;
+
+   --  Statistics
+
+   function Count_Free_Inputs (Head : Input) return Natural
+   is
+      Unused : Natural;
+      Inp : Input;
+   begin
+      Unused := 0;
+      Inp := Head;
+      while Inp /= No_Input loop
+         Unused := Unused + 1;
+         Inp := Inputs_Table.Table (Inp).Next_Sink;
+      end loop;
+      return Unused;
+   end Count_Free_Inputs;
+
+   procedure Disp_Stats
+   is
+      use Simple_IO;
+      Unused : Natural;
+      Nbr_Modules : Module_Counter_Type := (others => 0);
+   begin
+      Put_Line_Err ("Statistics for netlists:");
+      Put_Line_Err
+        (" snames:    " & Sname'Image (Snames_Table.Last));
+      Put_Line_Err
+        (" modules:   " & Module'Image (Modules_Table.Last));
+
+      Put_Err
+        (" instances: " & Instance'Image (Instances_Table.Last));
+      Unused := 0;
+      for I in No_Instance + 1 .. Instances_Table.Last loop
+         if Get_Module (I) = Free_Module then
+            Unused := Unused + 1;
+         end if;
+      end loop;
+      Put_Line_Err
+        (" (free:" & Natural'Image (Unused) & ')');
+
+      Put_Err
+        (" nets:      " & Net'Image (Nets_Table.Last));
+      Unused := 0;
+      for I in No_Net + 1 .. Nets_Table.Last loop
+         if Get_Net_Parent (I) = No_Instance then
+            Unused := Unused + 1;
+         end if;
+      end loop;
+      Put_Line_Err
+        (" (free:" & Natural'Image (Unused) & ')');
+
+      Put_Err
+        (" inputs:    " & Input'Image (Inputs_Table.Last));
+      Unused := 0;
+      for I in No_Input + 1 .. Inputs_Table.Last loop
+         if Get_Input_Parent (I) = No_Instance then
+            Unused := Unused + 1;
+         end if;
+      end loop;
+      Put_Line_Err
+        (" (free:" & Natural'Image (Unused) & ')');
+      for I in Free_Inputs'Range loop
+         Unused := Count_Free_Inputs (Free_Inputs (I));
+         if Unused /= 0 then
+            Put_Line_Err ("  free" & Port_Nbr'Image (I) & " inputs:"
+                          & Natural'Image (Unused)
+                          & " *" & Port_Nbr'Image (I)
+                          & " =" & Natural'Image (Unused * Natural (I)));
+         end if;
+      end loop;
+
+      Put_Line_Err
+        (" params:    " & Param_Idx'Image (Params_Table.Last));
+
+      for I in No_Instance + 1 .. Instances_Table.Last loop
+         declare
+            M : constant Module := Get_Module (I);
+         begin
+            if M <= Nbr_Modules'Last then
+               Nbr_Modules (M) := Nbr_Modules (M) + 1;
+            end if;
+         end;
+      end loop;
+
+      for J in 1 .. 2 loop
+         case J is
+            when 1 =>
+               Put_Line_Err (" Number of instances (per module):");
+            when 2 =>
+               Put_Line_Err (" Number of freed instances (per module):");
+         end case;
+         for I in Module_Counter_Type'Range loop
+            case J is
+               when 1 =>
+                  Unused := Nbr_Modules (I);
+               when 2 =>
+                  Unused := Free_Instances_Counter (I);
+            end case;
+
+            if Unused /= 0 then
+               declare
+                  Name : constant Sname := Get_Module_Name (I);
+               begin
+                  case Get_Sname_Kind (Name) is
+                     when Sname_User
+                        | Sname_Artificial =>
+                        Put_Err
+                          ("  " & Name_Table.Image (Get_Sname_Suffix (Name)));
+                     when others =>
+                        Put_Err
+                          ("  module " & Module_Id'Image (Get_Id (I)));
+                  end case;
+                  Put_Line_Err (":" & Natural'Image (Unused));
+               end;
+            end if;
+         end loop;
+      end loop;
+   end Disp_Stats;
 
 begin
    --  Initialize snames_table: create the first entry for No_Sname.
@@ -909,7 +1424,8 @@ begin
                           Last_Sub_Module => No_Module,
                           Next_Sub_Module => No_Module,
                           First_Instance => No_Instance,
-                          Last_Instance => No_Instance));
+                          Last_Instance => No_Instance,
+                          Attrs => null));
    pragma Assert (Modules_Table.Last = No_Module);
 
    Modules_Table.Append ((Parent => No_Module,
@@ -925,13 +1441,17 @@ begin
                           Last_Sub_Module => No_Module,
                           Next_Sub_Module => No_Module,
                           First_Instance => No_Instance,
-                          Last_Instance => No_Instance));
+                          Last_Instance => No_Instance,
+                          Attrs => null));
    pragma Assert (Modules_Table.Last = Free_Module);
 
    Instances_Table.Append ((Parent => No_Module,
+                            Has_Attr => False,
+                            Flag4 => False,
                             Next_Instance => No_Instance,
                             Prev_Instance => No_Instance,
                             Klass => No_Module,
+                            Flag5 | Flag6 => False,
                             Flag_Mark => False,
                             Flag2 => False,
                             Name => No_Sname,
@@ -951,6 +1471,7 @@ begin
    pragma Assert (Inputs_Table.Last = No_Input);
 
    Port_Desc_Table.Append ((Name => No_Sname,
+                            Is_Inout => False,
                             W => 0));
    pragma Assert (Port_Desc_Table.Last = No_Port_Desc_Idx);
 
@@ -960,4 +1481,17 @@ begin
 
    Params_Table.Append (0);
    pragma Assert (Params_Table.Last = No_Param_Idx);
+
+   Pval_Table.Append ((Len => 0,
+                       Va_Idx => 0,
+                       Zx_Idx => 0));
+   pragma Assert (Pval_Table.Last = No_Pval);
+
+   Pval_Word_Table.Append (0);
+
+   Attributes_Table.Append ((Name => No_Name_Id,
+                             Typ => Param_Invalid,
+                             Val => No_Pval,
+                             Chain => No_Attribute));
+   pragma Assert (Attributes_Table.Last = No_Attribute);
 end Netlists;

@@ -197,7 +197,7 @@ package body PSL.QM is
    function Build_Primes (N : Node; Negate : Boolean) return Primes_Set is
    begin
       case Get_Kind (N) is
-         when N_HDL_Expr
+         when N_HDL_Bool
            | N_EOS =>
             declare
                Res : Primes_Set (1);
@@ -274,6 +274,22 @@ package body PSL.QM is
                -- !(a -> b)  <->  a && !b
                return Build_Primes_And (Build_Primes (Get_Left (N), False),
                                         Build_Primes (Get_Right (N), True));
+            end if;
+         when N_Equiv_Bool =>
+            if not Negate then
+               --  a <-> b  <->  (a && b) || (!a && !b)
+               return Build_Primes_Or
+                 (Build_Primes_And (Build_Primes (Get_Left (N), False),
+                                    Build_Primes (Get_Right (N), False)),
+                  Build_Primes_And (Build_Primes (Get_Left (N), True),
+                                    Build_Primes (Get_Right (N), True)));
+            else
+               -- !(a <-> b)  <->  (!a && b) || (a && !b)
+               return Build_Primes_Or
+                 (Build_Primes_And (Build_Primes (Get_Left (N), True),
+                                    Build_Primes (Get_Right (N), False)),
+                  Build_Primes_And (Build_Primes (Get_Left (N), False),
+                                    Build_Primes (Get_Right (N), True)));
             end if;
          when others =>
             Error_Kind ("build_primes", N);

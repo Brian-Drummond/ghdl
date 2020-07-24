@@ -28,13 +28,13 @@ package Vhdl.Nodes_Meta is
       Type_Boolean,
       Type_Date_State_Type,
       Type_Date_Type,
+      Type_Direction_Type,
       Type_File_Checksum_Id,
       Type_Fp64,
       Type_Iir,
       Type_Iir_All_Sensitized,
       Type_Iir_Constraint,
       Type_Iir_Delay_Mechanism,
-      Type_Iir_Direction,
       Type_Iir_Flist,
       Type_Iir_Index32,
       Type_Iir_Int32,
@@ -50,6 +50,7 @@ package Vhdl.Nodes_Meta is
       Type_Number_Base_Type,
       Type_PSL_NFA,
       Type_PSL_Node,
+      Type_Scalar_Size,
       Type_Source_File_Entry,
       Type_Source_Ptr,
       Type_String8_Id,
@@ -107,6 +108,7 @@ package Vhdl.Nodes_Meta is
       Field_Attribute_Specification_Chain,
       Field_Attribute_Specification,
       Field_Signal_List,
+      Field_Quantity_List,
       Field_Designated_Entity,
       Field_Formal,
       Field_Actual,
@@ -146,6 +148,7 @@ package Vhdl.Nodes_Meta is
       Field_Inherit_Spec_Chain,
       Field_Vunit_Item_Chain,
       Field_Bound_Vunit_Chain,
+      Field_Verification_Block_Configuration,
       Field_Block_Configuration,
       Field_Concurrent_Statement_Chain,
       Field_Chain,
@@ -158,7 +161,9 @@ package Vhdl.Nodes_Meta is
       Field_Subtype_Definition,
       Field_Incomplete_Type_Declaration,
       Field_Interface_Type_Subprograms,
+      Field_Nature_Definition,
       Field_Nature,
+      Field_Subnature_Indication,
       Field_Mode,
       Field_Guarded_Signal_Flag,
       Field_Signal_Kind,
@@ -166,6 +171,7 @@ package Vhdl.Nodes_Meta is
       Field_Interface_Declaration_Chain,
       Field_Subprogram_Specification,
       Field_Sequential_Statement_Chain,
+      Field_Simultaneous_Statement_Chain,
       Field_Subprogram_Body,
       Field_Overload_Number,
       Field_Subprogram_Depth,
@@ -205,23 +211,33 @@ package Vhdl.Nodes_Meta is
       Field_Right_Limit,
       Field_Left_Limit_Expr,
       Field_Right_Limit_Expr,
-      Field_Base_Type,
+      Field_Parent_Type,
+      Field_Simple_Nature,
+      Field_Base_Nature,
       Field_Resolution_Indication,
       Field_Record_Element_Resolution_Chain,
       Field_Tolerance,
+      Field_Plus_Terminal_Name,
+      Field_Minus_Terminal_Name,
       Field_Plus_Terminal,
       Field_Minus_Terminal,
+      Field_Magnitude_Expression,
+      Field_Phase_Expression,
+      Field_Power_Expression,
       Field_Simultaneous_Left,
       Field_Simultaneous_Right,
       Field_Text_File_Flag,
       Field_Only_Characters_Flag,
       Field_Is_Character_Type,
+      Field_Nature_Staticness,
       Field_Type_Staticness,
       Field_Constraint_State,
       Field_Index_Subtype_List,
       Field_Index_Subtype_Definition_List,
       Field_Element_Subtype_Indication,
       Field_Element_Subtype,
+      Field_Element_Subnature_Indication,
+      Field_Element_Subnature,
       Field_Index_Constraint_List,
       Field_Array_Element_Constraint,
       Field_Elements_Declaration_List,
@@ -231,6 +247,10 @@ package Vhdl.Nodes_Meta is
       Field_Index_List,
       Field_Reference,
       Field_Nature_Declarator,
+      Field_Across_Type_Mark,
+      Field_Through_Type_Mark,
+      Field_Across_Type_Definition,
+      Field_Through_Type_Definition,
       Field_Across_Type,
       Field_Through_Type,
       Field_Target,
@@ -242,6 +262,9 @@ package Vhdl.Nodes_Meta is
       Field_Process_Origin,
       Field_Package_Origin,
       Field_Condition_Clause,
+      Field_Break_Element,
+      Field_Selector_Quantity,
+      Field_Break_Quantity,
       Field_Timeout_Clause,
       Field_Postponed_Flag,
       Field_Callees_List,
@@ -257,6 +280,7 @@ package Vhdl.Nodes_Meta is
       Field_Has_Signal_Flag,
       Field_Purity_State,
       Field_Elab_Flag,
+      Field_Vendor_Library_Flag,
       Field_Configuration_Mark_Flag,
       Field_Configuration_Done_Flag,
       Field_Index_Constraint_Flag,
@@ -307,6 +331,7 @@ package Vhdl.Nodes_Meta is
       Field_Alias_Declaration,
       Field_Referenced_Name,
       Field_Expr_Staticness,
+      Field_Scalar_Size,
       Field_Error_Origin,
       Field_Operand,
       Field_Left,
@@ -325,6 +350,9 @@ package Vhdl.Nodes_Meta is
       Field_Suffix,
       Field_Index_Subtype,
       Field_Parameter,
+      Field_Parameter_2,
+      Field_Parameter_3,
+      Field_Parameter_4,
       Field_Attr_Chain,
       Field_Signal_Attribute_Declaration,
       Field_Actual_Type,
@@ -349,6 +377,7 @@ package Vhdl.Nodes_Meta is
       Field_Parameter_Association_Chain,
       Field_Method_Object,
       Field_Subtype_Type_Mark,
+      Field_Subnature_Nature_Mark,
       Field_Type_Conversion_Subtype,
       Field_Type_Mark,
       Field_File_Type_Mark,
@@ -380,6 +409,7 @@ package Vhdl.Nodes_Meta is
       Field_Has_Identifier_List,
       Field_Has_Mode,
       Field_Has_Class,
+      Field_Has_Delay_Mechanism,
       Field_Suspend_Flag,
       Field_Is_Ref,
       Field_Is_Forward_Ref,
@@ -392,7 +422,10 @@ package Vhdl.Nodes_Meta is
       Field_PSL_NFA,
       Field_PSL_Nbr_States,
       Field_PSL_Clock_Sensitivity,
-      Field_PSL_EOS_Flag
+      Field_PSL_EOS_Flag,
+      Field_Count_Expression,
+      Field_Clock_Expression,
+      Field_Default_Clock
      );
    pragma Discard_Names (Fields_Enum);
 
@@ -454,6 +487,11 @@ package Vhdl.Nodes_Meta is
    procedure Set_Date_Type
       (N : Iir; F : Fields_Enum; V: Date_Type);
 
+   function Get_Direction_Type
+      (N : Iir; F : Fields_Enum) return Direction_Type;
+   procedure Set_Direction_Type
+      (N : Iir; F : Fields_Enum; V: Direction_Type);
+
    function Get_File_Checksum_Id
       (N : Iir; F : Fields_Enum) return File_Checksum_Id;
    procedure Set_File_Checksum_Id
@@ -483,11 +521,6 @@ package Vhdl.Nodes_Meta is
       (N : Iir; F : Fields_Enum) return Iir_Delay_Mechanism;
    procedure Set_Iir_Delay_Mechanism
       (N : Iir; F : Fields_Enum; V: Iir_Delay_Mechanism);
-
-   function Get_Iir_Direction
-      (N : Iir; F : Fields_Enum) return Iir_Direction;
-   procedure Set_Iir_Direction
-      (N : Iir; F : Fields_Enum; V: Iir_Direction);
 
    function Get_Iir_Flist
       (N : Iir; F : Fields_Enum) return Iir_Flist;
@@ -563,6 +596,11 @@ package Vhdl.Nodes_Meta is
       (N : Iir; F : Fields_Enum) return PSL_Node;
    procedure Set_PSL_Node
       (N : Iir; F : Fields_Enum; V: PSL_Node);
+
+   function Get_Scalar_Size
+      (N : Iir; F : Fields_Enum) return Scalar_Size;
+   procedure Set_Scalar_Size
+      (N : Iir; F : Fields_Enum; V: Scalar_Size);
 
    function Get_Source_File_Entry
       (N : Iir; F : Fields_Enum) return Source_File_Entry;
@@ -641,6 +679,7 @@ package Vhdl.Nodes_Meta is
       return Boolean;
    function Has_Attribute_Specification (K : Iir_Kind) return Boolean;
    function Has_Signal_List (K : Iir_Kind) return Boolean;
+   function Has_Quantity_List (K : Iir_Kind) return Boolean;
    function Has_Designated_Entity (K : Iir_Kind) return Boolean;
    function Has_Formal (K : Iir_Kind) return Boolean;
    function Has_Actual (K : Iir_Kind) return Boolean;
@@ -680,6 +719,8 @@ package Vhdl.Nodes_Meta is
    function Has_Inherit_Spec_Chain (K : Iir_Kind) return Boolean;
    function Has_Vunit_Item_Chain (K : Iir_Kind) return Boolean;
    function Has_Bound_Vunit_Chain (K : Iir_Kind) return Boolean;
+   function Has_Verification_Block_Configuration (K : Iir_Kind)
+      return Boolean;
    function Has_Block_Configuration (K : Iir_Kind) return Boolean;
    function Has_Concurrent_Statement_Chain (K : Iir_Kind) return Boolean;
    function Has_Chain (K : Iir_Kind) return Boolean;
@@ -692,7 +733,9 @@ package Vhdl.Nodes_Meta is
    function Has_Subtype_Definition (K : Iir_Kind) return Boolean;
    function Has_Incomplete_Type_Declaration (K : Iir_Kind) return Boolean;
    function Has_Interface_Type_Subprograms (K : Iir_Kind) return Boolean;
+   function Has_Nature_Definition (K : Iir_Kind) return Boolean;
    function Has_Nature (K : Iir_Kind) return Boolean;
+   function Has_Subnature_Indication (K : Iir_Kind) return Boolean;
    function Has_Mode (K : Iir_Kind) return Boolean;
    function Has_Guarded_Signal_Flag (K : Iir_Kind) return Boolean;
    function Has_Signal_Kind (K : Iir_Kind) return Boolean;
@@ -700,6 +743,7 @@ package Vhdl.Nodes_Meta is
    function Has_Interface_Declaration_Chain (K : Iir_Kind) return Boolean;
    function Has_Subprogram_Specification (K : Iir_Kind) return Boolean;
    function Has_Sequential_Statement_Chain (K : Iir_Kind) return Boolean;
+   function Has_Simultaneous_Statement_Chain (K : Iir_Kind) return Boolean;
    function Has_Subprogram_Body (K : Iir_Kind) return Boolean;
    function Has_Overload_Number (K : Iir_Kind) return Boolean;
    function Has_Subprogram_Depth (K : Iir_Kind) return Boolean;
@@ -739,18 +783,26 @@ package Vhdl.Nodes_Meta is
    function Has_Right_Limit (K : Iir_Kind) return Boolean;
    function Has_Left_Limit_Expr (K : Iir_Kind) return Boolean;
    function Has_Right_Limit_Expr (K : Iir_Kind) return Boolean;
-   function Has_Base_Type (K : Iir_Kind) return Boolean;
+   function Has_Parent_Type (K : Iir_Kind) return Boolean;
+   function Has_Simple_Nature (K : Iir_Kind) return Boolean;
+   function Has_Base_Nature (K : Iir_Kind) return Boolean;
    function Has_Resolution_Indication (K : Iir_Kind) return Boolean;
    function Has_Record_Element_Resolution_Chain (K : Iir_Kind)
       return Boolean;
    function Has_Tolerance (K : Iir_Kind) return Boolean;
+   function Has_Plus_Terminal_Name (K : Iir_Kind) return Boolean;
+   function Has_Minus_Terminal_Name (K : Iir_Kind) return Boolean;
    function Has_Plus_Terminal (K : Iir_Kind) return Boolean;
    function Has_Minus_Terminal (K : Iir_Kind) return Boolean;
+   function Has_Magnitude_Expression (K : Iir_Kind) return Boolean;
+   function Has_Phase_Expression (K : Iir_Kind) return Boolean;
+   function Has_Power_Expression (K : Iir_Kind) return Boolean;
    function Has_Simultaneous_Left (K : Iir_Kind) return Boolean;
    function Has_Simultaneous_Right (K : Iir_Kind) return Boolean;
    function Has_Text_File_Flag (K : Iir_Kind) return Boolean;
    function Has_Only_Characters_Flag (K : Iir_Kind) return Boolean;
    function Has_Is_Character_Type (K : Iir_Kind) return Boolean;
+   function Has_Nature_Staticness (K : Iir_Kind) return Boolean;
    function Has_Type_Staticness (K : Iir_Kind) return Boolean;
    function Has_Constraint_State (K : Iir_Kind) return Boolean;
    function Has_Index_Subtype_List (K : Iir_Kind) return Boolean;
@@ -758,6 +810,8 @@ package Vhdl.Nodes_Meta is
       return Boolean;
    function Has_Element_Subtype_Indication (K : Iir_Kind) return Boolean;
    function Has_Element_Subtype (K : Iir_Kind) return Boolean;
+   function Has_Element_Subnature_Indication (K : Iir_Kind) return Boolean;
+   function Has_Element_Subnature (K : Iir_Kind) return Boolean;
    function Has_Index_Constraint_List (K : Iir_Kind) return Boolean;
    function Has_Array_Element_Constraint (K : Iir_Kind) return Boolean;
    function Has_Elements_Declaration_List (K : Iir_Kind) return Boolean;
@@ -768,6 +822,10 @@ package Vhdl.Nodes_Meta is
    function Has_Index_List (K : Iir_Kind) return Boolean;
    function Has_Reference (K : Iir_Kind) return Boolean;
    function Has_Nature_Declarator (K : Iir_Kind) return Boolean;
+   function Has_Across_Type_Mark (K : Iir_Kind) return Boolean;
+   function Has_Through_Type_Mark (K : Iir_Kind) return Boolean;
+   function Has_Across_Type_Definition (K : Iir_Kind) return Boolean;
+   function Has_Through_Type_Definition (K : Iir_Kind) return Boolean;
    function Has_Across_Type (K : Iir_Kind) return Boolean;
    function Has_Through_Type (K : Iir_Kind) return Boolean;
    function Has_Target (K : Iir_Kind) return Boolean;
@@ -779,6 +837,9 @@ package Vhdl.Nodes_Meta is
    function Has_Process_Origin (K : Iir_Kind) return Boolean;
    function Has_Package_Origin (K : Iir_Kind) return Boolean;
    function Has_Condition_Clause (K : Iir_Kind) return Boolean;
+   function Has_Break_Element (K : Iir_Kind) return Boolean;
+   function Has_Selector_Quantity (K : Iir_Kind) return Boolean;
+   function Has_Break_Quantity (K : Iir_Kind) return Boolean;
    function Has_Timeout_Clause (K : Iir_Kind) return Boolean;
    function Has_Postponed_Flag (K : Iir_Kind) return Boolean;
    function Has_Callees_List (K : Iir_Kind) return Boolean;
@@ -794,6 +855,7 @@ package Vhdl.Nodes_Meta is
    function Has_Has_Signal_Flag (K : Iir_Kind) return Boolean;
    function Has_Purity_State (K : Iir_Kind) return Boolean;
    function Has_Elab_Flag (K : Iir_Kind) return Boolean;
+   function Has_Vendor_Library_Flag (K : Iir_Kind) return Boolean;
    function Has_Configuration_Mark_Flag (K : Iir_Kind) return Boolean;
    function Has_Configuration_Done_Flag (K : Iir_Kind) return Boolean;
    function Has_Index_Constraint_Flag (K : Iir_Kind) return Boolean;
@@ -845,6 +907,7 @@ package Vhdl.Nodes_Meta is
    function Has_Alias_Declaration (K : Iir_Kind) return Boolean;
    function Has_Referenced_Name (K : Iir_Kind) return Boolean;
    function Has_Expr_Staticness (K : Iir_Kind) return Boolean;
+   function Has_Scalar_Size (K : Iir_Kind) return Boolean;
    function Has_Error_Origin (K : Iir_Kind) return Boolean;
    function Has_Operand (K : Iir_Kind) return Boolean;
    function Has_Left (K : Iir_Kind) return Boolean;
@@ -863,6 +926,9 @@ package Vhdl.Nodes_Meta is
    function Has_Suffix (K : Iir_Kind) return Boolean;
    function Has_Index_Subtype (K : Iir_Kind) return Boolean;
    function Has_Parameter (K : Iir_Kind) return Boolean;
+   function Has_Parameter_2 (K : Iir_Kind) return Boolean;
+   function Has_Parameter_3 (K : Iir_Kind) return Boolean;
+   function Has_Parameter_4 (K : Iir_Kind) return Boolean;
    function Has_Attr_Chain (K : Iir_Kind) return Boolean;
    function Has_Signal_Attribute_Declaration (K : Iir_Kind) return Boolean;
    function Has_Actual_Type (K : Iir_Kind) return Boolean;
@@ -888,6 +954,7 @@ package Vhdl.Nodes_Meta is
    function Has_Parameter_Association_Chain (K : Iir_Kind) return Boolean;
    function Has_Method_Object (K : Iir_Kind) return Boolean;
    function Has_Subtype_Type_Mark (K : Iir_Kind) return Boolean;
+   function Has_Subnature_Nature_Mark (K : Iir_Kind) return Boolean;
    function Has_Type_Conversion_Subtype (K : Iir_Kind) return Boolean;
    function Has_Type_Mark (K : Iir_Kind) return Boolean;
    function Has_File_Type_Mark (K : Iir_Kind) return Boolean;
@@ -919,6 +986,7 @@ package Vhdl.Nodes_Meta is
    function Has_Has_Identifier_List (K : Iir_Kind) return Boolean;
    function Has_Has_Mode (K : Iir_Kind) return Boolean;
    function Has_Has_Class (K : Iir_Kind) return Boolean;
+   function Has_Has_Delay_Mechanism (K : Iir_Kind) return Boolean;
    function Has_Suspend_Flag (K : Iir_Kind) return Boolean;
    function Has_Is_Ref (K : Iir_Kind) return Boolean;
    function Has_Is_Forward_Ref (K : Iir_Kind) return Boolean;
@@ -932,4 +1000,7 @@ package Vhdl.Nodes_Meta is
    function Has_PSL_Nbr_States (K : Iir_Kind) return Boolean;
    function Has_PSL_Clock_Sensitivity (K : Iir_Kind) return Boolean;
    function Has_PSL_EOS_Flag (K : Iir_Kind) return Boolean;
+   function Has_Count_Expression (K : Iir_Kind) return Boolean;
+   function Has_Clock_Expression (K : Iir_Kind) return Boolean;
+   function Has_Default_Clock (K : Iir_Kind) return Boolean;
 end Vhdl.Nodes_Meta;

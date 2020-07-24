@@ -56,6 +56,10 @@ package Vhdl.Sem_Types is
    --  none.
    function Copy_Resolution_Indication (Subdef : Iir) return Iir;
 
+   --  If ATYPE is not fully constrained, build a fully constrained subtype.
+   --  This is for 'subtype attribute.
+   function Build_Constrained_Subtype (Atype : Iir; Loc : Iir) return Iir;
+
    --  Adjust the constraint state CONSTRAINT given new element EL_TYPE.
    --  Initially CONSTRAINT must be Fully_Constrained and COMPOSITE_FOUND
    --  must be false.
@@ -65,4 +69,26 @@ package Vhdl.Sem_Types is
 
    --  Although a nature is not a type, it is patterned like a type.
    function Sem_Subnature_Indication (Def: Iir) return Iir;
+
+   function Sem_Nature_Definition (Def : Iir; Decl : Iir) return Iir;
+
+   --  AMS-LRM17 6.4.2.7 Quantity declarations
+   --  A nature type is a floating-point type of a composite type whose
+   --  elements are of a nature type.
+   --
+   --  Return true iff DTYPE is a nature type.
+   function Is_Nature_Type (Dtype : Iir) return Boolean;
+
+   --  Return the simple nature of NAT.
+   --
+   --  AMS-LRM17 5.8.2 Scalar natures
+   --  The simple nature of a scalar nature is the nature itself.
+   --
+   --  AMS-LRM17 5.8.3 Composite natures
+   --  The scalar subelements of a composite nature shall have the same simple
+   --  nature, which is also the simple nature of the composite nature.
+   function Get_Nature_Simple_Nature (Nat : Iir) return Iir;
+
+   --  Return TRUE iff nature NAT is a composite nature.
+   function Is_Composite_Nature (Nat : Iir) return Boolean;
 end Vhdl.Sem_Types;

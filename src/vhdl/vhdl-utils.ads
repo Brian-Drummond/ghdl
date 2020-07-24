@@ -32,6 +32,11 @@ package Vhdl.Utils is
    function Is_Overflow_Literal (N : Iir) return Boolean;
    pragma Inline (Is_Overflow_Literal);
 
+   --  If N is a literal and has a literal origin, return the literal origin.
+   --  Otherwise return N.
+   --  In other words, return the node as it was.
+   function Strip_Literal_Origin (N : Iir) return Iir;
+
    --  Find LIT in the list of identifiers or characters LIST.
    --  Return the literal (whose name is LIT) or null_iir if not found.
    function Find_Name_In_Chain (Chain: Iir; Lit: Name_Id) return Iir;
@@ -76,8 +81,11 @@ package Vhdl.Utils is
    --  also be an expression like a function call or an attribute.
    function Name_To_Value (Name : Iir) return Iir;
 
-   --  Return TRUE if EXPR is a signal name.
+   --  Return TRUE iff EXPR is a signal name.
    function Is_Signal_Name (Expr : Iir) return Boolean;
+
+   --  Return TRUE iff EXPR is a quantity name.
+   function Is_Quantity_Name (Expr : Iir) return Boolean;
 
    --  Get the interface corresponding to the formal name FORMAL.  This is
    --  always an interface, even if the formal is a name.
@@ -152,14 +160,29 @@ package Vhdl.Utils is
    --  Clear flag of TOP and all of its callees.
    procedure Clear_Seen_Flag (Top : Iir);
 
+   --  Return the base type of ATYPE.  Will always return ATYPE if ATYPE is
+   --  a proper type (and not a subtype).
+   function Get_Base_Type (Atype : Iir) return Iir;
+
    --  Return TRUE iff DEF is an anonymous type (or subtype) definition.
    --  Note: DEF is required to be a type (or subtype) definition.
    --  Note: type (and not subtype) are never anonymous.
    function Is_Anonymous_Type_Definition (Def : Iir) return Boolean;
    pragma Inline (Is_Anonymous_Type_Definition);
 
+   --  Likewise but for natures.
+   function Is_Anonymous_Nature_Definition (Def : Iir) return Boolean;
+   pragma Inline (Is_Anonymous_Nature_Definition);
+
    --  Return TRUE iff DEF is a fully constrained type (or subtype) definition.
    function Is_Fully_Constrained_Type (Def : Iir) return Boolean;
+
+   --  Return True iff OBJ can be the target of an aggregate with an others
+   --  choice (cf LRM08 9.3.3.3).
+   --  Return True iff object or member of it is declared to be a fully
+   --  constrained subtype.
+   function Is_Object_Fully_Constrained (Decl : Iir) return Boolean;
+   function Is_Object_Name_Fully_Constrained (Obj : Iir) return Boolean;
 
    --  Return the type definition/subtype indication of NAME if NAME denotes
    --  a type or subtype name.  Otherwise, return Null_Iir;
@@ -216,6 +239,9 @@ package Vhdl.Utils is
    --  an index_constraint.
    function Get_Index_Type (Index_Type : Iir) return Iir
      renames Get_Type_Of_Subtype_Indication;
+
+   --  Get the nature from a subnature indication.
+   function Get_Nature_Of_Subnature_Indication (Ind : Iir) return Iir;
 
    --  Return the IDX-th index type for index subtype definition list or
    --  index_constraint INDEXES.  Return Null_Iir if IDX is out of dimension
@@ -281,14 +307,12 @@ package Vhdl.Utils is
    --  Return True is component instantiation statement INST instantiate a
    --  component.
    function Is_Component_Instantiation
-     (Inst : Iir_Component_Instantiation_Statement)
-     return Boolean;
+     (Inst : Iir_Component_Instantiation_Statement) return Boolean;
 
    --  Return True is component instantiation statement INST instantiate a
    --  design entity.
    function Is_Entity_Instantiation
-     (Inst : Iir_Component_Instantiation_Statement)
-     return Boolean;
+     (Inst : Iir_Component_Instantiation_Statement) return Boolean;
 
    --  Get the expression of the attribute specification corresponding to the
    --  attribute name NAME.  Meaningful only for static values.
@@ -372,6 +396,26 @@ package Vhdl.Utils is
    --  Return True IFF kind of N is K1 or K2.
    function Kind_In (N : Iir; K1, K2 : Iir_Kind) return Boolean;
    pragma Inline (Kind_In);
+
+   subtype Parameter_Index is Natural range 1 .. 4;
+
+   --  Get/Set attribute parameter by index (for AMS attributes).
+   procedure Set_Attribute_Parameter
+     (Attr : Iir; N : Parameter_Index; Param : Iir);
+   function Get_Attribute_Parameter
+     (Attr : Iir; N : Parameter_Index) return Iir;
+
+   --  Return the expected signature length that will be used by
+   --  Get_File_Signature.
+   function Get_File_Signature_Length (Def : Iir) return Natural;
+
+   --  Store in RES the file signature for type DEF.
+   --  Set the length of the buffer to OFF.
+   --  Parameters are 'in out' as they are updated, so you should call this
+   --  procedure with OFF = RES'First.
+   procedure Get_File_Signature (Def : Iir;
+                                 Res : in out String;
+                                 Off : in out Natural);
 
    --  IIR wrapper around Get_HDL_Node/Set_HDL_Node.
    function Get_HDL_Node (N : PSL_Node) return Iir;

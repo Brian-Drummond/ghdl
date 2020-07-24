@@ -25,8 +25,6 @@
 with Grt.Types; use Grt.Types;
 
 package Grt.Lib is
-   pragma Preelaborate (Grt.Lib);
-
    procedure Ghdl_Memcpy
      (Dest : Ghdl_Ptr; Src : Ghdl_Ptr; Size : Ghdl_Index_Type);
 
@@ -50,16 +48,17 @@ package Grt.Lib is
    procedure Ghdl_Report
      (Str : Std_String_Ptr; Severity : Integer; Loc : Ghdl_Location_Ptr);
 
-   Note_Severity    : constant Integer := 0;
-   Warning_Severity : constant Integer := 1;
-   Error_Severity   : constant Integer := 2;
-   Failure_Severity : constant Integer := 3;
-
    --  Bound / Direction error.
    procedure Ghdl_Bound_Check_Failed (Filename : Ghdl_C_String;
                                       Line: Ghdl_I32);
    procedure Ghdl_Direction_Check_Failed (Filename : Ghdl_C_String;
                                           Line: Ghdl_I32);
+
+   procedure Ghdl_Integer_Index_Check_Failed
+     (Filename : Ghdl_C_String;
+      Line     : Ghdl_I32;
+      Val      : Std_Integer;
+      Rng      : Std_Integer_Range_Ptr);
 
    --  Program error has occurred:
    --  * configuration of an already configured block.
@@ -72,8 +71,6 @@ package Grt.Lib is
 
    --  Called before allocation of large (complex) objects.
    procedure Ghdl_Check_Stack_Allocation (Size : Ghdl_Index_Type);
-
-   Max_Stack_Allocation : Ghdl_Index_Type := 128 * 1024;
 
    function Ghdl_Malloc (Size : Ghdl_Index_Type) return Ghdl_Ptr;
 
@@ -126,6 +123,9 @@ private
                   "__ghdl_bound_check_failed");
    pragma Export (C, Ghdl_Direction_Check_Failed,
                   "__ghdl_direction_check_failed");
+   pragma Export (C, Ghdl_Integer_Index_Check_Failed,
+                  "__ghdl_integer_index_check_failed");
+
    pragma Export (C, Ghdl_Program_Error, "__ghdl_program_error");
 
    pragma Export (C, Ghdl_Check_Stack_Allocation,

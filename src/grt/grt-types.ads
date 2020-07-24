@@ -31,7 +31,8 @@ package Grt.Types is
    pragma Preelaborate (Grt.Types);
 
    type Ghdl_B1 is new Boolean;
-   type Ghdl_E8 is new Unsigned_8;
+   type Ghdl_U8 is new Unsigned_8;
+   subtype Ghdl_E8 is Ghdl_U8;
    type Ghdl_U32 is new Unsigned_32;
    subtype Ghdl_E32 is Ghdl_U32;
    type Ghdl_I32 is new Integer_32;
@@ -70,6 +71,9 @@ package Grt.Types is
       Dir : Ghdl_Dir_Type;
       Length : Ghdl_Index_Type;
    end record;
+
+   type Std_Integer_Range_Ptr is access Std_Integer_Trt;
+   pragma Convention (C, Std_Integer_Range_Ptr);
 
    subtype Std_Character is Character;
    type Std_String_Uncons is array (Ghdl_Index_Type range <>) of Std_Character;
@@ -166,6 +170,9 @@ package Grt.Types is
    type Ghdl_Location_Ptr is access Ghdl_Location;
    function To_Ghdl_Location_Ptr is new Ada.Unchecked_Conversion
      (Source => Address, Target => Ghdl_Location_Ptr);
+
+   type C_Boolean is new Boolean;
+   pragma Convention (C, C_Boolean);
 
    --  Signal index.
    type Sig_Table_Index is new Integer;

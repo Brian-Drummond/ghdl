@@ -86,6 +86,8 @@ package body Vhdl.Sem_Assocs is
             if Get_Kind (Actual) = Iir_Kind_String_Literal8 then
                Actual := Vhdl.Parse.String_To_Operator_Symbol (Actual);
             end if;
+         when Iir_Kind_Interface_Terminal_Declaration =>
+            N_Assoc := Create_Iir (Iir_Kind_Association_Element_Terminal);
          when others =>
             Error_Kind ("rewrite_non_object_association", Inter);
       end case;
@@ -351,7 +353,9 @@ package body Vhdl.Sem_Assocs is
                            --  LRM87 4.3.1.4
                            --  Such an object is a member of the variable
                            --  class of objects;
-                           if Flags.Vhdl_Std >= Vhdl_93 then
+                           if Flags.Vhdl_Std >= Vhdl_93
+                             and then not Flags.Flag_Relaxed_Files87
+                           then
                               Error_Msg_Sem
                                 (+Assoc, "variable parameter cannot be a "
                                    & "file (vhdl93)");
@@ -370,9 +374,12 @@ package body Vhdl.Sem_Assocs is
                            null;
                         when Iir_Kind_Variable_Declaration
                           | Iir_Kind_Interface_Variable_Declaration =>
-                           if Flags.Vhdl_Std >= Vhdl_93 then
-                              Error_Msg_Sem (+Assoc, "file parameter "
-                                               & "must be a file (vhdl93)");
+                           if Flags.Vhdl_Std >= Vhdl_93
+                             and then not Flags.Flag_Relaxed_Files87
+                           then
+                              Error_Msg_Sem
+                                (+Assoc,
+                                 "file parameter must be a file (vhdl93)");
                            end if;
                         when others =>
                            Error_Msg_Sem
@@ -490,7 +497,7 @@ package body Vhdl.Sem_Assocs is
       pragma Assert (Amode /= Iir_Unknown_Mode);
 
       case Flags.Vhdl_Std is
-         when Vhdl_87 | Vhdl_93c | Vhdl_93 | Vhdl_00 =>
+         when Vhdl_87 | Vhdl_93 | Vhdl_00 =>
             if Vhdl93_Assocs_Map (Fmode, Amode) then
                return True;
             end if;
@@ -542,9 +549,8 @@ package body Vhdl.Sem_Assocs is
          --  (during elaboration).
 
          --  In vhdl08, the subtypes must be compatible.  Use the that rule
-         --  for 93c and relaxed rules.
+         --  for relaxed rules.
          if Vhdl_Std >= Vhdl_08
-           or else Vhdl_Std = Vhdl_93c
            or else Flag_Relaxed_Rules
          then
             return Eval_Is_Range_In_Bound (Src, Dest, True);
@@ -875,6 +881,8 @@ package body Vhdl.Sem_Assocs is
       end if;
    end Add_Individual_Association;
 
+   procedure Finish_Individual_Association1 (Assoc : Iir; Atype : Iir);
+
    procedure Finish_Individual_Assoc_Array_Subtype
      (Assoc : Iir; Atype : Iir; Dim : Positive)
    is
@@ -883,6 +891,7 @@ package body Vhdl.Sem_Assocs is
       Index_Type : constant Iir := Get_Nth_Element (Index_Tlist, Dim - 1);
       Chain : constant Iir := Get_Individual_Association_Chain (Assoc);
       Low, High : Iir;
+      El_Type : Iir;
       El : Iir;
    begin
       Sem_Check_Continuous_Choices
@@ -895,6 +904,14 @@ package body Vhdl.Sem_Assocs is
               (Get_Associated_Expr (El), Atype, Dim + 1);
             El := Get_Chain (El);
          end loop;
+      else
+         El_Type := Get_Element_Subtype (Atype);
+         El := Chain;
+         while El /= Null_Iir loop
+            Finish_Individual_Association1
+              (Get_Associated_Expr (El), El_Type);
+            El := Get_Chain (El);
+         end loop;
       end if;
    end Finish_Individual_Assoc_Array_Subtype;
 
@@ -902,14 +919,14 @@ package body Vhdl.Sem_Assocs is
      (Actual : Iir; Assoc : Iir; Dim : Natural)
    is
       Actual_Type : constant Iir := Get_Actual_Type (Actual);
+      Index_Tlist : constant Iir_Flist := Get_Index_Subtype_List (Actual_Type);
       Actual_Index : Iir;
       Base_Type : Iir;
       Base_Index : Iir;
       Low, High : Iir;
       Chain : Iir;
    begin
-      Actual_Index := Get_Nth_Element (Get_Index_Subtype_List (Actual_Type),
-                                       Dim - 1);
+      Actual_Index := Get_Nth_Element (Index_Tlist, Dim - 1);
       if Actual_Index /= Null_Iir then
          Base_Index := Actual_Index;
       else
@@ -938,7 +955,7 @@ package body Vhdl.Sem_Assocs is
                   Error_Kind ("finish_individual_assoc_array", Base_Index);
             end case;
             Location_Copy (Actual_Index, Actual);
-            Set_Base_Type (Actual_Index, Get_Base_Type (Base_Index));
+            Set_Parent_Type (Actual_Index, Base_Index);
             Index_Constraint := Get_Range_Constraint (Base_Index);
 
             Index_Subtype_Constraint := Create_Iir (Iir_Kind_Range_Expression);
@@ -955,12 +972,12 @@ package body Vhdl.Sem_Assocs is
             High := Copy_Constant (High);
 
             case Get_Direction (Index_Constraint) is
-               when Iir_To =>
+               when Dir_To =>
                   Set_Left_Limit (Index_Subtype_Constraint, Low);
                   Set_Left_Limit_Expr (Index_Subtype_Constraint, Low);
                   Set_Right_Limit (Index_Subtype_Constraint, High);
                   Set_Right_Limit_Expr (Index_Subtype_Constraint, High);
-               when Iir_Downto =>
+               when Dir_Downto =>
                   Set_Left_Limit (Index_Subtype_Constraint, High);
                   Set_Left_Limit_Expr (Index_Subtype_Constraint, High);
                   Set_Right_Limit (Index_Subtype_Constraint, Low);
@@ -984,6 +1001,22 @@ package body Vhdl.Sem_Assocs is
             end if;
          end;
       end if;
+
+      declare
+         Nbr_Dims : constant Natural := Get_Nbr_Elements (Index_Tlist);
+         El_Type : Iir;
+         El : Iir;
+      begin
+         if Dim = Nbr_Dims then
+            El_Type := Get_Element_Subtype (Actual_Type);
+            El := Chain;
+            while El /= Null_Iir loop
+               Finish_Individual_Association1
+                 (Get_Associated_Expr (El), El_Type);
+               El := Get_Chain (El);
+            end loop;
+         end if;
+      end;
    end Finish_Individual_Assoc_Array;
 
    procedure Finish_Individual_Assoc_Record (Assoc : Iir; Atype : Iir)
@@ -1015,6 +1048,9 @@ package body Vhdl.Sem_Assocs is
          Rec_El := Get_Nth_Element (El_List, I);
          if Matches (I) = Null_Iir then
             Error_Msg_Sem (+Assoc, "%n not associated", +Rec_El);
+         else
+            Finish_Individual_Association1
+              (Get_Associated_Expr (Matches (I)), Get_Type (Rec_El));
          end if;
       end loop;
 
@@ -1023,15 +1059,18 @@ package body Vhdl.Sem_Assocs is
          declare
             Inter : constant Iir :=
               Get_Interface_Of_Formal (Get_Formal (Assoc));
-            Ntype : Iir;
-            Nel_List : Iir_Flist;
-            Nrec_El : Iir;
+            Ntype       : Iir;
+            Nel_List    : Iir_Flist;
+            Nrec_El     : Iir;
             Rec_El_Type : Iir;
-            Staticness : Iir_Staticness;
+            Staticness  : Iir_Staticness;
+            Assoc_Expr  : Iir;
+            Assoc_Type  : Iir;
          begin
             Ntype := Create_Iir (Iir_Kind_Record_Subtype_Definition);
+            Set_Is_Ref (Ntype, True);
             Location_Copy (Ntype, Assoc);
-            Set_Base_Type (Ntype, Get_Base_Type (Atype));
+            Set_Parent_Type (Ntype, Atype);
             if Get_Kind (Atype) = Iir_Kind_Record_Subtype_Definition then
                Set_Resolution_Indication
                  (Ntype, Get_Resolution_Indication (Atype));
@@ -1065,8 +1104,16 @@ package body Vhdl.Sem_Assocs is
                   Set_Identifier (Nrec_El, Get_Identifier (Rec_El));
                   pragma Assert (I = Natural (Get_Element_Position (Rec_El)));
                   Set_Element_Position (Nrec_El, Iir_Index32 (I));
-                  Ch := Get_Associated_Expr (Ch);
-                  Set_Type (Nrec_El, Get_Type (Get_Actual (Ch)));
+                  Assoc_Expr := Get_Associated_Expr (Ch);
+                  if (Get_Kind (Assoc_Expr)
+                      = Iir_Kind_Association_Element_By_Individual)
+                  then
+                     Assoc_Type := Get_Actual_Type (Assoc_Expr);
+                     Set_Subtype_Indication (Nrec_El, Assoc_Type);
+                  else
+                     Assoc_Type := Get_Type (Get_Actual (Assoc_Expr));
+                  end if;
+                  Set_Type (Nrec_El, Assoc_Type);
                   Append_Owned_Element_Constraint (Ntype, Nrec_El);
                end if;
                Staticness := Min (Staticness,
@@ -1077,6 +1124,7 @@ package body Vhdl.Sem_Assocs is
             Set_Constraint_State (Ntype, Fully_Constrained);
 
             Set_Actual_Type (Assoc, Ntype);
+            Set_Actual_Type_Definition (Assoc, Ntype);
          end;
       else
          Set_Actual_Type (Assoc, Atype);
@@ -1108,21 +1156,15 @@ package body Vhdl.Sem_Assocs is
       end loop;
    end Clean_Individual_Association;
 
-   --  Called by sem_individual_association to finish the analyze of
-   --  individual association ASSOC: compute bounds, detect missing elements.
-   procedure Finish_Individual_Association (Assoc : Iir)
+   procedure Finish_Individual_Association1 (Assoc : Iir; Atype : Iir)
    is
-      Inter : Iir;
-      Atype : Iir;
+      Ntype : Iir;
    begin
-      --  Guard.
-      if Assoc = Null_Iir or else Get_Choice_Staticness (Assoc) /= Locally then
+      if Get_Kind (Assoc) /= Iir_Kind_Association_Element_By_Individual then
+         --  End of recursion.  The association is an element association,
+         --  not an individual one.
          return;
       end if;
-
-      Inter := Get_Interface_Of_Formal (Get_Formal (Assoc));
-      Atype := Get_Type (Inter);
-      Set_Whole_Association_Flag (Assoc, True);
 
       case Get_Kind (Atype) is
          when Iir_Kind_Array_Subtype_Definition
@@ -1131,24 +1173,41 @@ package body Vhdl.Sem_Assocs is
                Finish_Individual_Assoc_Array_Subtype (Assoc, Atype, 1);
                Set_Actual_Type (Assoc, Atype);
             else
-               Atype := Create_Array_Subtype (Atype, Get_Location (Assoc));
-               Set_Index_Constraint_Flag (Atype, True);
-               Set_Constraint_State (Atype, Fully_Constrained);
-               if Get_Kind (Inter) = Iir_Kind_Interface_Signal_Declaration
-               then
-                  --  The subtype is used for signals.
-                  Set_Has_Signal_Flag (Atype, True);
-               end if;
-               Set_Actual_Type (Assoc, Atype);
-               Set_Actual_Type_Definition (Assoc, Atype);
+               Ntype := Create_Array_Subtype (Atype, Get_Location (Assoc));
+               Set_Index_Constraint_Flag (Ntype, True);
+               Set_Constraint_State (Ntype, Fully_Constrained);
+               Set_Has_Signal_Flag (Ntype, Get_Has_Signal_Flag (Atype));
+               Set_Actual_Type (Assoc, Ntype);
+               Set_Actual_Type_Definition (Assoc, Ntype);
                Finish_Individual_Assoc_Array (Assoc, Assoc, 1);
             end if;
          when Iir_Kind_Record_Type_Definition
            | Iir_Kind_Record_Subtype_Definition =>
             Finish_Individual_Assoc_Record (Assoc, Atype);
+         when Iir_Kinds_Scalar_Type_And_Subtype_Definition =>
+            null;
          when others =>
             Error_Kind ("finish_individual_association", Atype);
       end case;
+   end Finish_Individual_Association1;
+
+   --  Called by sem_individual_association to finish the analyze of
+   --  individual association ASSOC: compute bounds, detect missing elements.
+   procedure Finish_Individual_Association (Assoc : Iir)
+   is
+      Inter : Iir;
+      Atype : Iir;
+   begin
+      --  Guard.
+      if Get_Choice_Staticness (Assoc) /= Locally then
+         return;
+      end if;
+
+      Inter := Get_Interface_Of_Formal (Get_Formal (Assoc));
+      Atype := Get_Type (Inter);
+      Set_Whole_Association_Flag (Assoc, True);
+
+      Finish_Individual_Association1 (Assoc, Atype);
 
       --  Free the hierarchy, keep only the top individual association.
       Clean_Individual_Association (Assoc);
@@ -1192,7 +1251,9 @@ package body Vhdl.Sem_Assocs is
          if Formal = Null_Iir or else Formal /= Cur_Iface then
             --  New formal name, analyze the current individual association
             --  (if any).
-            Finish_Individual_Association (Iassoc);
+            if Iassoc /= Null_Iir then
+               Finish_Individual_Association (Iassoc);
+            end if;
             Cur_Iface := Formal;
             Iassoc := Null_Iir;
          end if;
@@ -1226,7 +1287,9 @@ package body Vhdl.Sem_Assocs is
          Assoc := Get_Chain (Assoc);
       end loop;
       --  There is maybe a remaining iassoc.
-      Finish_Individual_Association (Iassoc);
+      if Iassoc /= Null_Iir then
+         Finish_Individual_Association (Iassoc);
+      end if;
    end Sem_Individual_Association;
 
    function Is_Conversion_Function (Assoc_Chain : Iir) return Boolean is
@@ -1247,44 +1310,44 @@ package body Vhdl.Sem_Assocs is
       return True;
    end Is_Conversion_Function;
 
-   function Is_Valid_Conversion
-     (Func : Iir; Res_Base_Type : Iir; Param_Base_Type : Iir) return Boolean
+   function Is_Valid_Type_Conversion
+     (Conv : Iir; Res_Base_Type : Iir; Param_Base_Type : Iir) return Boolean
    is
-      R_Type : Iir;
-      P_Type : Iir;
+      Atype : constant Iir := Get_Type (Conv);
+   begin
+      return Get_Base_Type (Atype) = Res_Base_Type
+        and then Are_Types_Closely_Related (Atype, Param_Base_Type);
+   end Is_Valid_Type_Conversion;
+
+   function Is_Valid_Function_Conversion
+     (Call : Iir; Res_Base_Type : Iir; Param_Base_Type : Iir) return Boolean
+   is
+      Imp : constant Iir := Get_Implementation (Call);
+      Res_Type : constant Iir := Get_Type (Imp);
+      Inters : constant Iir := Get_Interface_Declaration_Chain (Imp);
+      Param_Type : Iir;
+   begin
+      if Inters = Null_Iir then
+         return False;
+      end if;
+      Param_Type := Get_Type (Inters);
+
+      return Get_Base_Type (Res_Type) = Res_Base_Type
+        and then Get_Base_Type (Param_Type) = Param_Base_Type;
+   end Is_Valid_Function_Conversion;
+
+   function Is_Valid_Conversion
+     (Func : Iir; Res_Base_Type : Iir; Param_Base_Type : Iir) return Boolean is
    begin
       case Get_Kind (Func) is
-         when Iir_Kind_Function_Declaration =>
-            R_Type := Get_Type (Func);
-            P_Type := Get_Type (Get_Interface_Declaration_Chain (Func));
-            if Get_Base_Type (R_Type) = Res_Base_Type
-              and then Get_Base_Type (P_Type) = Param_Base_Type
-            then
-               return True;
-            else
-               return False;
-            end if;
-         when Iir_Kind_Type_Declaration
-           | Iir_Kind_Subtype_Declaration =>
-            R_Type := Get_Type (Func);
-            if Get_Base_Type (R_Type) = Res_Base_Type
-              and then Are_Types_Closely_Related (R_Type, Param_Base_Type)
-            then
-               return True;
-            else
-               return False;
-            end if;
          when Iir_Kind_Function_Call =>
-            return Is_Valid_Conversion (Get_Implementation (Func),
-                                        Res_Base_Type, Param_Base_Type);
+            return Is_Valid_Function_Conversion
+              (Func, Res_Base_Type, Param_Base_Type);
          when Iir_Kind_Type_Conversion =>
-            return Is_Valid_Conversion (Get_Type_Mark (Func),
-                                        Res_Base_Type, Param_Base_Type);
-         when Iir_Kinds_Denoting_Name =>
-            return Is_Valid_Conversion (Get_Named_Entity (Func),
-                                        Res_Base_Type, Param_Base_Type);
+            return Is_Valid_Type_Conversion
+              (Func, Res_Base_Type, Param_Base_Type);
          when others =>
-            return False;
+            Error_Kind ("is_valid_conversion", Func);
       end case;
    end Is_Valid_Conversion;
 
@@ -1323,10 +1386,31 @@ package body Vhdl.Sem_Assocs is
          if Is_Valid_Conversion (Conv, Res_Base_Type, Param_Base_Type) then
             Res := Conv;
          else
-            Res := Null_Iir;
             Error_Msg_Sem (+Loc, "conversion function or type does not match");
+            return Null_Iir;
          end if;
       end if;
+
+      if Get_Kind (Res) = Iir_Kind_Function_Call then
+         declare
+            Imp : constant Iir := Get_Implementation (Res);
+            Inter : constant Iir := Get_Interface_Declaration_Chain (Imp);
+         begin
+            if Get_Kind (Inter) /= Iir_Kind_Interface_Constant_Declaration then
+               Error_Msg_Sem
+                 (+Loc, "interface of function must be a constant interface");
+            end if;
+            if Get_Chain (Inter) /= Null_Iir then
+               --  LRM08 6.5.7 Association lists
+               --  In this case, the function name shall denote a function
+               --  whose single parameter is of the type of the formal
+               --  and [...]
+               Error_Msg_Sem
+                 (+Loc, "conversion function must have only one parameter");
+            end if;
+         end;
+      end if;
+
       return Res;
    end Extract_Conversion;
 
@@ -1475,7 +1559,7 @@ package body Vhdl.Sem_Assocs is
       --  LRM08 6.5.7.2 Generic map aspects
       --  b) If the formal generic package declaration includes an interface
       --     generic map aspect in the form that includes the box (<>) symbol,
-      --     then the instantiaed package denotes by the actual may be any
+      --     then the instantiated package denotes by the actual may be any
       --     instance of the uninstantiated package named in the formal
       --     generic package declaration.
       if Get_Generic_Map_Aspect_Chain (Inter) = Null_Iir then
@@ -1787,6 +1871,61 @@ package body Vhdl.Sem_Assocs is
       Sem_Decls.Mark_Subprogram_Used (Res);
    end Sem_Association_Subprogram;
 
+   procedure Sem_Association_Terminal
+     (Assoc : Iir;
+      Inter : Iir;
+      Finish : Boolean;
+      Match : out Compatibility_Level)
+   is
+      Actual_Name : Iir;
+      Actual : Iir;
+   begin
+      if not Finish then
+         Sem_Association_Package_Type_Not_Finish (Assoc, Inter, Match);
+         return;
+      end if;
+
+      Match := Not_Compatible;
+      Sem_Association_Package_Type_Finish (Assoc, Inter);
+
+      --  Analyze actual.
+      Actual_Name := Get_Actual (Assoc);
+      Sem_Name (Actual_Name);
+      Actual := Get_Named_Entity (Actual_Name);
+
+      if Is_Error (Actual) then
+         return;
+      elsif Is_Overload_List (Actual) then
+         Error_Msg_Sem (+Actual_Name, "terminal name expected");
+         return;
+      else
+         Actual := Finish_Sem_Name (Actual_Name);
+         case Get_Kind (Get_Object_Prefix (Actual)) is
+            when Iir_Kind_Terminal_Declaration
+              | Iir_Kind_Interface_Terminal_Declaration =>
+               null;
+            when others =>
+               Error_Msg_Sem
+                 (+Actual_Name, "%n is not a terminal name", +Actual);
+               return;
+         end case;
+      end if;
+
+      Set_Actual (Assoc, Actual);
+
+      if (Get_Base_Nature (Get_Nature (Get_Named_Entity (Actual)))
+            /= Get_Base_Nature (Get_Nature (Inter)))
+      then
+         Error_Msg_Sem
+           (+Actual, "nature of actual is not the same as formal nature");
+         return;
+      end if;
+
+      Match := Fully_Compatible;
+
+      return;
+   end Sem_Association_Terminal;
+
    --  Associate ASSOC with interface INTERFACE
    --  This sets MATCH.
    procedure Sem_Association_By_Expression
@@ -2042,7 +2181,7 @@ package body Vhdl.Sem_Assocs is
          Expr := Eval_Expr_Check_If_Static (Expr, Res_Type);
          Set_Actual (Assoc, Expr);
          if In_Conv = Null_Iir and then Out_Conv = Null_Iir then
-            if not Eval_Is_In_Bound (Expr, Formal_Type) then
+            if not Eval_Is_In_Bound (Expr, Formal_Type, True) then
                Error_Msg_Sem
                  (+Assoc, "actual constraints don't match formal ones");
             end if;
@@ -2066,6 +2205,13 @@ package body Vhdl.Sem_Assocs is
             else
                Sem_Association_By_Expression
                  (Assoc, Inter, Formal, Formal_Conv, Finish, Match);
+            end if;
+
+         when Iir_Kind_Interface_Terminal_Declaration =>
+            if Get_Kind (Assoc) = Iir_Kind_Association_Element_Open then
+               Sem_Association_Open (Assoc, Finish, Match);
+            else
+               Sem_Association_Terminal (Assoc, Inter, Finish, Match);
             end if;
 
          when Iir_Kind_Interface_Package_Declaration =>
@@ -2211,16 +2357,8 @@ package body Vhdl.Sem_Assocs is
             end if;
             Formal_Name := Get_Named_Entity (Formal);
             if Is_Error (Formal_Name) then
-               if Finish then
-                  --  FIXME: display the name of subprg or component/entity.
-                  --  FIXME: fetch the interface (for parenthesis_name).
-                  --  FIXME: this is always a duplicate of a message from
-                  --     Sem_Name.
-                  Error_Msg_Sem (+Assoc, "no interface for %n in association",
-                                 +Get_Formal (Assoc));
-               end if;
                Match := Not_Compatible;
-               exit;
+               --  Continue analysis in order to catch more errors.
             end if;
 
             Assoc := Get_Chain (Assoc);
@@ -2512,63 +2650,13 @@ package body Vhdl.Sem_Assocs is
       Pos := 0;
       while Inter /= Null_Iir loop
          if Inter_Matched (Pos) <= Open then
-            --  Interface is unassociated (none or open).
-            case Get_Kind (Inter) is
-               when Iir_Kinds_Interface_Object_Declaration =>
-                  case Missing is
-                     when Missing_Parameter
-                       | Missing_Generic =>
-                        if Get_Mode (Inter) /= Iir_In_Mode
-                          or else Get_Default_Value (Inter) = Null_Iir
-                        then
-                           if Finish then
-                              Error_Msg_Sem (+Loc, "no actual for %n", +Inter);
-                           end if;
-                           Match := Not_Compatible;
-                           return;
-                        end if;
-                     when Missing_Port =>
-                        case Get_Mode (Inter) is
-                           when Iir_In_Mode =>
-                              --  No overloading for components/entities.
-                              pragma Assert (Finish);
-                              if Get_Default_Value (Inter) = Null_Iir then
-                                 Error_Msg_Sem
-                                   (+Loc,
-                                    "%n of mode IN must be connected", +Inter);
-                                 Match := Not_Compatible;
-                                 return;
-                              end if;
-                           when Iir_Out_Mode
-                             | Iir_Linkage_Mode
-                             | Iir_Inout_Mode
-                             | Iir_Buffer_Mode =>
-                              --  No overloading for components/entities.
-                              pragma Assert (Finish);
-                              if not (Is_Fully_Constrained_Type
-                                        (Get_Type (Inter)))
-                              then
-                                 Error_Msg_Sem
-                                   (+Loc,
-                                    "unconstrained %n must be connected",
-                                    +Inter);
-                                 Match := Not_Compatible;
-                                 return;
-                              end if;
-                           when Iir_Unknown_Mode =>
-                              raise Internal_Error;
-                           end case;
-                     when Missing_Allowed =>
-                        null;
-                  end case;
-               when Iir_Kind_Interface_Package_Declaration
-                 | Iir_Kind_Interface_Function_Declaration
-                 | Iir_Kind_Interface_Procedure_Declaration =>
-                  Error_Msg_Sem (+Loc, "%n must be associated", +Inter);
-                  Match := Not_Compatible;
-               when others =>
-                  Error_Kind ("sem_association_chain", Inter);
-            end case;
+            if Sem_Check_Missing_Association (Inter, Missing, Finish, Loc)
+            then
+               Match := Not_Compatible;
+               if not Finish then
+                  return;
+               end if;
+            end if;
          end if;
 
          --  Clear associated type of interface type.
@@ -2580,4 +2668,71 @@ package body Vhdl.Sem_Assocs is
          Pos := Pos + 1;
       end loop;
    end Sem_Association_Chain;
+
+   function Sem_Check_Missing_Association
+     (Inter : Iir; Missing : Missing_Type; Finish : Boolean; Loc : Iir)
+      return Boolean
+   is
+      Err : Boolean;
+   begin
+      --  Interface is unassociated (none or open).
+      Err := False;
+      case Get_Kind (Inter) is
+         when Iir_Kinds_Interface_Object_Declaration =>
+            case Missing is
+               when Missing_Parameter
+                  | Missing_Generic =>
+                  if Get_Mode (Inter) /= Iir_In_Mode
+                    or else Get_Default_Value (Inter) = Null_Iir
+                  then
+                     Err := True;
+                     if Finish then
+                        Error_Msg_Sem (+Loc, "no actual for %n", +Inter);
+                     else
+                        return True;
+                     end if;
+                  end if;
+               when Missing_Port =>
+                  case Get_Mode (Inter) is
+                     when Iir_In_Mode =>
+                        --  No overloading for components/entities.
+                        pragma Assert (Finish);
+                        if Get_Default_Value (Inter) = Null_Iir then
+                           Error_Msg_Sem
+                             (+Loc, "%n of mode IN must be connected", +Inter);
+                           Err := True;
+                        end if;
+                     when Iir_Out_Mode
+                        | Iir_Linkage_Mode
+                        | Iir_Inout_Mode
+                        | Iir_Buffer_Mode =>
+                        --  No overloading for components/entities.
+                        pragma Assert (Finish);
+                        if not Is_Fully_Constrained_Type (Get_Type (Inter))
+                        then
+                           Error_Msg_Sem
+                             (+Loc,
+                              "unconstrained %n must be connected", +Inter);
+                           Err := True;
+                        end if;
+                     when Iir_Unknown_Mode =>
+                        raise Internal_Error;
+                  end case;
+               when Missing_Allowed =>
+                  null;
+            end case;
+         when Iir_Kind_Interface_Package_Declaration =>
+            if Get_Generic_Map_Aspect_Chain (Inter) = Null_Iir then
+               Error_Msg_Sem (+Loc, "%n must be associated", +Inter);
+               Err := True;
+            end if;
+         when Iir_Kind_Interface_Function_Declaration
+            | Iir_Kind_Interface_Procedure_Declaration =>
+            Error_Msg_Sem (+Loc, "%n must be associated", +Inter);
+            Err := True;
+         when others =>
+            Error_Kind ("sem_association_chain", Inter);
+      end case;
+      return Err;
+   end Sem_Check_Missing_Association;
 end Vhdl.Sem_Assocs;

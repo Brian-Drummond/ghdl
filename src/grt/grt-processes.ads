@@ -29,7 +29,6 @@ with Grt.Types; use Grt.Types;
 with Grt.Signals; use Grt.Signals;
 with Grt.Rtis; use Grt.Rtis;
 with Grt.Rtis_Addr;
-with Grt.Stdio;
 
 package Grt.Processes is
    pragma Suppress (All_Checks);
@@ -45,8 +44,19 @@ package Grt.Processes is
 
    --  Broken down version of Simulation.
    function Simulation_Init return Integer;
+   pragma Export (Ada, Simulation_Init, "__ghdl_simulation_init");
    function Simulation_Cycle return Integer;
    procedure Simulation_Finish;
+
+   function Simulation_Step return Integer;
+   pragma Export (Ada, Simulation_Step, "__ghdl_simulation_step");
+   --  Return value:
+   --  0: delta cycle
+   --  1: non-delta cycle
+   --  2: stop
+   --  3: finished
+   --  4: stop-time reached
+   --  5: stop-delta reached
 
    --  True if simulation has reached a user timeout (--stop-time or
    --  --stop-delta).  Emit an info message as a side effect.
@@ -77,8 +87,6 @@ package Grt.Processes is
    --  Total number of resumed processes.
    function Get_Nbr_Resumed_Processes return Long_Long_Integer;
 
-   --  Disp the name of process PROC.
-   procedure Disp_Process_Name (Stream : Grt.Stdio.FILEs; Proc : Process_Acc);
 
    --  Instance is the parameter of the process procedure.
    --  This is in fact a fully opaque type whose content is private to the
@@ -123,6 +131,9 @@ package Grt.Processes is
                                     Proc : Proc_Acc);
    procedure Ghdl_Always_Register (Instance : Instance_Acc;
                                    Proc : Proc_Acc);
+
+   function Ghdl_Register_Foreign_Process
+     (Instance : Instance_Acc; Proc : Proc_Acc) return Process_Acc;
 
    --  Add a simple signal in the sensitivity of the last registered
    --  (sensitized) process.
@@ -251,6 +262,8 @@ private
 
    pragma Export (C, Ghdl_Always_Register, "__ghdl_always_register");
    pragma Export (C, Ghdl_Initial_Register, "__ghdl_initial_register");
+   pragma Export (C, Ghdl_Register_Foreign_Process,
+                  "__ghdl_register_foreign_process");
 
    pragma Export (C, Ghdl_Process_Add_Sensitivity,
                   "__ghdl_process_add_sensitivity");

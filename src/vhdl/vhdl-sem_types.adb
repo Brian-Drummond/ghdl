@@ -162,12 +162,12 @@ package body Vhdl.Sem_Types is
       if Get_Kind (Left) = Iir_Kind_Overflow_Literal then
          Error_Msg_Sem (+Left, "overflow in left bound");
          Left := Build_Extreme_Value
-           (Get_Direction (Expr) = Iir_Downto, Left);
+           (Get_Direction (Expr) = Dir_Downto, Left);
       end if;
       if Get_Kind (Right) = Iir_Kind_Overflow_Literal then
          Error_Msg_Sem (+Right, "overflow in right bound");
          Right := Build_Extreme_Value
-           (Get_Direction (Expr) = Iir_To, Right);
+           (Get_Direction (Expr) = Dir_To, Right);
       end if;
       Set_Left_Limit_Expr (Expr, Left);
       Set_Right_Limit_Expr (Expr, Right);
@@ -221,6 +221,22 @@ package body Vhdl.Sem_Types is
       return Expr;
    end Sem_Type_Range_Expression;
 
+   function Compute_Scalar_Size (Rng : Iir) return Scalar_Size
+   is
+      L, H   : Iir;
+      Lv, Hv : Int64;
+      subtype Int64_32 is Int64 range -(2 ** 31) .. 2 ** 31 - 1;
+   begin
+      Get_Low_High_Limit (Rng, L, H);
+      Lv := Get_Value (L);
+      Hv := Get_Value (H);
+      if Lv in Int64_32 and then Hv in Int64_32 then
+         return Scalar_32;
+      else
+         return Scalar_64;
+      end if;
+   end Compute_Scalar_Size;
+
    function Create_Integer_Type (Loc : Iir; Constraint : Iir; Decl : Iir)
                                 return Iir
    is
@@ -231,11 +247,10 @@ package body Vhdl.Sem_Types is
       Location_Copy (Ntype, Loc);
       Ndef := Create_Iir (Iir_Kind_Integer_Type_Definition);
       Location_Copy (Ndef, Loc);
-      Set_Base_Type (Ndef, Ndef);
       Set_Type_Declarator (Ndef, Decl);
       Set_Type_Staticness (Ndef, Locally);
       Set_Signal_Type_Flag (Ndef, True);
-      Set_Base_Type (Ntype, Ndef);
+      Set_Parent_Type (Ntype, Ndef);
       Set_Type_Declarator (Ntype, Decl);
       Set_Range_Constraint (Ntype, Constraint);
       Set_Type_Staticness (Ntype, Get_Expr_Staticness (Constraint));
@@ -244,6 +259,9 @@ package body Vhdl.Sem_Types is
       if Get_Type_Staticness (Ntype) /= Locally then
          Error_Msg_Sem
            (+Decl, "range constraint of type must be locally static");
+         Set_Scalar_Size (Ndef, Scalar_32);
+      else
+         Set_Scalar_Size (Ndef, Compute_Scalar_Size (Constraint));
       end if;
       return Ntype;
    end Create_Integer_Type;
@@ -283,11 +301,11 @@ package body Vhdl.Sem_Types is
                Location_Copy (Ntype, Expr);
                Ndef := Create_Iir (Iir_Kind_Floating_Type_Definition);
                Location_Copy (Ndef, Expr);
-               Set_Base_Type (Ndef, Ndef);
                Set_Type_Declarator (Ndef, Decl);
                Set_Type_Staticness (Ndef, Get_Expr_Staticness (Expr));
+               Set_Scalar_Size (Ndef, Scalar_64);
                Set_Signal_Type_Flag (Ndef, True);
-               Set_Base_Type (Ntype, Ndef);
+               Set_Parent_Type (Ntype, Ndef);
                Set_Type_Declarator (Ntype, Decl);
                Set_Range_Constraint (Ntype, Rng);
                Set_Resolved_Flag (Ntype, False);
@@ -349,7 +367,6 @@ package body Vhdl.Sem_Types is
       --  type and a subtype of the base type, in which case the simple name
       --  denotes the subtype, and the base type is anonymous.
       Set_Type_Declarator (Def, Decl);
-      Set_Base_Type (Def, Def);
       Set_Resolved_Flag (Def, False);
       Set_Type_Staticness (Def, Locally);
       Set_Signal_Type_Flag (Def, True);
@@ -389,11 +406,12 @@ package body Vhdl.Sem_Types is
                "physical type %i has a null range", (1 => +Decl));
          end if;
       end if;
+      Set_Scalar_Size (Def, Compute_Scalar_Size (Range_Expr1));
 
       --  Create the subtype.
       Sub_Type := Create_Iir (Iir_Kind_Physical_Subtype_Definition);
       Location_Copy (Sub_Type, Range_Expr);
-      Set_Base_Type (Sub_Type, Def);
+      Set_Parent_Type (Sub_Type, Def);
       Set_Signal_Type_Flag (Sub_Type, True);
 
       --  Analyze the primary unit.
@@ -558,7 +576,6 @@ package body Vhdl.Sem_Types is
       El : Iir;
    begin
       Decl := Get_Type_Definition (Type_Decl);
-      Set_Base_Type (Decl, Decl);
       Set_Resolved_Flag (Decl, False);
       Set_Signal_Type_Flag (Decl, False);
       Set_Type_Staticness (Decl, None);
@@ -801,7 +818,6 @@ package body Vhdl.Sem_Types is
       El: Iir;
       Only_Characters : Boolean;
    begin
-      Set_Base_Type (Def, Def);
       Set_Type_Staticness (Def, Locally);
       Set_Signal_Type_Flag (Def, True);
 
@@ -830,6 +846,13 @@ package body Vhdl.Sem_Types is
       Set_Resolved_Flag (Def, False);
 
       Create_Range_Constraint_For_Enumeration_Type (Def);
+
+      --  Set the size.
+      if Get_Nbr_Elements (Literal_List) <= 256 then
+         Set_Scalar_Size (Def, Scalar_8);
+      else
+         Set_Scalar_Size (Def, Scalar_32);
+      end if;
 
       --  Identifier IEEE.Std_Logic_1164.Std_Ulogic.
       if Get_Identifier (Decl) = Std_Names.Name_Std_Ulogic
@@ -911,21 +934,18 @@ package body Vhdl.Sem_Types is
          Xref_Decl (El);
       end loop;
       Close_Declarative_Region;
-      Set_Base_Type (Def, Def);
       Set_Resolved_Flag (Def, Resolved_Flag);
       Set_Type_Staticness (Def, Type_Staticness);
       Set_Constraint_State (Def, Constraint);
       return Def;
    end Sem_Record_Type_Definition;
 
-   function Sem_Unbounded_Array_Type_Definition (Def: Iir) return Iir
+   procedure Sem_Unbounded_Array_Indexes (Def: Iir)
    is
       Index_List : constant Iir_Flist :=
         Get_Index_Subtype_Definition_List (Def);
       Index_Type : Iir;
    begin
-      Set_Base_Type (Def, Def);
-
       for I in Flist_First .. Flist_Last (Index_List) loop
          Index_Type := Get_Nth_Element (Index_List, I);
 
@@ -943,6 +963,11 @@ package body Vhdl.Sem_Types is
       end loop;
 
       Set_Index_Subtype_List (Def, Index_List);
+   end Sem_Unbounded_Array_Indexes;
+
+   function Sem_Unbounded_Array_Type_Definition (Def: Iir) return Iir is
+   begin
+      Sem_Unbounded_Array_Indexes (Def);
 
       Sem_Array_Element (Def);
       Set_Constraint_State (Def, Get_Array_Constraint (Def));
@@ -1011,7 +1036,6 @@ package body Vhdl.Sem_Types is
       -- Create a definition for the base type of subtype DEF.
       Base_Type := Create_Iir (Iir_Kind_Array_Type_Definition);
       Location_Copy (Base_Type, Def);
-      Set_Base_Type (Base_Type, Base_Type);
       Set_Type_Declarator (Base_Type, Decl);
       Base_Index_List := Create_Iir_Flist (Get_Nbr_Elements (Index_List));
       Set_Index_Subtype_Definition_List (Base_Type, Base_Index_List);
@@ -1083,7 +1107,7 @@ package body Vhdl.Sem_Types is
       Set_Index_Constraint_Flag (Def, True);
       Set_Constraint_State (Def, Get_Array_Constraint (Def));
       Set_Constraint_State (Base_Type, Get_Array_Constraint (Base_Type));
-      Set_Base_Type (Def, Base_Type);
+      Set_Parent_Type (Def, Base_Type);
       Set_Subtype_Type_Mark (Def, Null_Iir);
       return Def;
    end Sem_Constrained_Array_Type_Definition;
@@ -1118,7 +1142,6 @@ package body Vhdl.Sem_Types is
          end case;
          Set_Designated_Type (Def, D_Type);
       end if;
-      Set_Base_Type (Def, Def);
       Set_Type_Staticness (Def, None);
       Set_Resolved_Flag (Def, False);
       Set_Signal_Type_Flag (Def, False);
@@ -1177,7 +1200,6 @@ package body Vhdl.Sem_Types is
          end case;
       end if;
 
-      Set_Base_Type (Def, Def);
       Set_Resolved_Flag (Def, False);
       Set_Text_File_Flag (Def, Is_Text_Type_Declaration (Decl));
       Set_Signal_Type_Flag (Def, False);
@@ -1278,7 +1300,7 @@ package body Vhdl.Sem_Types is
       end case;
       Location_Copy (Sub_Type, A_Range);
       Set_Range_Constraint (Sub_Type, A_Range);
-      Set_Base_Type (Sub_Type, Get_Base_Type (Range_Type));
+      Set_Parent_Type (Sub_Type, Get_Base_Type (Range_Type));
       Set_Type_Staticness (Sub_Type, Get_Expr_Staticness (A_Range));
       Set_Signal_Type_Flag (Sub_Type, True);
       return Sub_Type;
@@ -1331,7 +1353,7 @@ package body Vhdl.Sem_Types is
       end if;
       -- LRM93 2.4
       --  A resolution function must be a [pure] function;
-      if Flags.Vhdl_Std >= Vhdl_93 and then Get_Pure_Flag (Func) = False then
+      if not Flags.Flag_Relaxed_Rules and then not Get_Pure_Flag (Func) then
          if Atype /= Null_Iir then
             Error_Msg_Sem (+Atype, "resolution %n must be pure", +Func);
          end if;
@@ -1506,29 +1528,74 @@ package body Vhdl.Sem_Types is
             Error_Kind ("copy_subtype_indication", Def);
       end case;
       Location_Copy (Res, Def);
-      Set_Base_Type (Res, Get_Base_Type (Def));
+      Set_Parent_Type (Res, Get_Base_Type (Def));
       Set_Type_Staticness (Res, Get_Type_Staticness (Def));
       Set_Signal_Type_Flag (Res, Get_Signal_Type_Flag (Def));
       return Res;
    end Copy_Subtype_Indication;
 
-   procedure Sem_Array_Constraint_Indexes (Def : Iir; Type_Mark : Iir)
+   function Build_Constrained_Subtype (Atype : Iir; Loc : Iir) return Iir
    is
-      El_Type : constant Iir := Get_Element_Subtype (Type_Mark);
-      Base_Type : constant Iir := Get_Base_Type (Type_Mark);
+      Res : Iir;
+   begin
+      if Is_Fully_Constrained_Type (Atype) then
+         --  Already constrained, nothing to do.
+         return Atype;
+      end if;
+
+      --  The type defined by 'subtype is always constrained.  Create
+      --  a subtype if it is not.
+      case Get_Kind (Atype) is
+         when Iir_Kind_Array_Subtype_Definition
+            | Iir_Kind_Array_Type_Definition =>
+            Res := Create_Iir (Iir_Kind_Array_Subtype_Definition);
+            --  Humm, the element is also constrained...
+            Set_Element_Subtype (Res, Get_Element_Subtype (Atype));
+            Set_Index_Subtype_List (Res, Get_Index_Subtype_List (Atype));
+            Set_Index_Constraint_Flag (Res, True);
+         when Iir_Kind_Record_Subtype_Definition
+            | Iir_Kind_Record_Type_Definition =>
+            Res := Create_Iir (Iir_Kind_Record_Subtype_Definition);
+            --  Humm, the elements are also constrained.
+            Set_Elements_Declaration_List
+              (Res, Get_Elements_Declaration_List (Atype));
+            Set_Is_Ref (Res, True);
+         when others =>
+            Error_Kind ("build_constrained_subtype", Atype);
+      end case;
+      Location_Copy (Res, Loc);
+      --  FIXME: can be globally!
+      Set_Type_Staticness (Res, None);
+      Set_Parent_Type (Res, Get_Base_Type (Atype));
+      Set_Signal_Type_Flag (Res, Get_Signal_Type_Flag (Atype));
+      Set_Resolved_Flag (Res, Get_Resolved_Flag (Atype));
+      Set_Constraint_State (Res, Fully_Constrained);
+      if Get_Kind (Atype) in Iir_Kinds_Subtype_Definition then
+         Set_Resolution_Indication (Res, Copy_Resolution_Indication (Atype));
+      end if;
+      return Res;
+   end Build_Constrained_Subtype;
+
+   --  DEF is an array_subtype_definition or array_subnature_definition
+   --   which contains indexes constraints.
+   --  MARK_DEF is the parent type or nature, given by the type or nature mark.
+   --  BASE_DEF is the (unbounded) base definition.
+   --  INDEX_STATICNESS is the staticness of the indexes.
+   procedure Sem_Array_Constraint_Indexes
+     (Def : Iir;
+      Mark_Def : Iir;
+      Base_Def : Iir;
+      Index_Staticness : out Iir_Staticness)
+   is
       Type_Index, Subtype_Index: Iir;
-      Index_Staticness : Iir_Staticness;
       Type_Nbr_Dim : Natural;
       Subtype_Nbr_Dim : Natural;
       Type_Index_List : Iir_Flist;
       Subtype_Index_List : Iir_Flist;
       Subtype_Index_List2 : Iir_Flist;
    begin
-      -- Check each index constraint against array type.
-      Set_Base_Type (Def, Base_Type);
-
       Index_Staticness := Locally;
-      Type_Index_List := Get_Index_Subtype_Definition_List (Base_Type);
+      Type_Index_List := Get_Index_Subtype_Definition_List (Base_Def);
       Subtype_Index_List := Get_Index_Constraint_List (Def);
 
       --  LRM08 5.3.2.2
@@ -1541,19 +1608,10 @@ package body Vhdl.Sem_Types is
       if Subtype_Index_List = Null_Iir_Flist then
          --  Array is not constrained, but the type mark may already have
          --  constrained on indexes.
-         if Get_Kind (Type_Mark) = Iir_Kind_Array_Subtype_Definition then
-            Set_Index_Constraint_Flag
-              (Def, Get_Index_Constraint_Flag (Type_Mark));
-            Set_Index_Subtype_List
-              (Def, Get_Index_Subtype_List (Type_Mark));
-         else
-            Set_Index_Constraint_Flag (Def, False);
-            Set_Index_Subtype_List (Def, Type_Index_List);
-         end if;
+         Set_Index_Constraint_Flag (Def, Get_Index_Constraint_Flag (Mark_Def));
+         Set_Index_Subtype_List (Def, Get_Index_Subtype_List (Mark_Def));
       else
-         if Get_Kind (Type_Mark) = Iir_Kind_Array_Subtype_Definition
-           and then Get_Index_Constraint_Flag (Type_Mark)
-         then
+         if Get_Index_Constraint_Flag (Mark_Def) then
             Error_Msg_Sem (+Def, "constrained array cannot be re-constrained");
          end if;
          Type_Nbr_Dim := Get_Nbr_Elements (Type_Index_List);
@@ -1573,7 +1631,7 @@ package body Vhdl.Sem_Types is
                Error_Msg_Sem
                  (+Def,
                   "subtype has less indexes than %n defined at %l",
-                  (+Type_Mark, +Type_Mark));
+                  (+Mark_Def, +Mark_Def));
 
                --  Clear extra indexes.
                for I in Subtype_Nbr_Dim + 1 .. Type_Nbr_Dim loop
@@ -1583,7 +1641,7 @@ package body Vhdl.Sem_Types is
                Error_Msg_Sem
                  (+Get_Nth_Element (Subtype_Index_List, Type_Nbr_Dim),
                   "subtype has more indexes than %n defined at %l",
-                  (+Type_Mark, +Type_Mark));
+                  (+Mark_Def, +Mark_Def));
 
                --  Forget extra indexes.
             end if;
@@ -1621,10 +1679,25 @@ package body Vhdl.Sem_Types is
          Set_Index_Subtype_List (Def, Subtype_Index_List);
          Set_Index_Constraint_Flag (Def, True);
       end if;
+   end Sem_Array_Constraint_Indexes;
+
+   --  DEF is an array_subtype_definition.
+   procedure Sem_Array_Type_Constraint_Indexes (Def : Iir; Type_Mark : Iir)
+   is
+      El_Type : constant Iir := Get_Element_Subtype (Type_Mark);
+      Base_Type : constant Iir := Get_Base_Type (Type_Mark);
+      Index_Staticness : Iir_Staticness;
+   begin
+      -- Check each index constraint against array type.
+      Set_Parent_Type (Def, Base_Type);
+
+      Sem_Array_Constraint_Indexes
+        (Def, Type_Mark, Base_Type, Index_Staticness);
+
       Set_Type_Staticness
         (Def, Min (Get_Type_Staticness (El_Type), Index_Staticness));
       Set_Signal_Type_Flag (Def, Get_Signal_Type_Flag (Type_Mark));
-   end Sem_Array_Constraint_Indexes;
+   end Sem_Array_Type_Constraint_Indexes;
 
    --  DEF is an incomplete subtype_indication or array_constraint,
    --  TYPE_MARK is the base type of the subtype_indication.
@@ -1670,19 +1743,17 @@ package body Vhdl.Sem_Types is
                   return Copy_Subtype_Indication (Type_Mark);
                end if;
 
+               Res := Copy_Subtype_Indication (Type_Mark);
+               Location_Copy (Res, Def);
+               Free_Name (Def);
+
                --  LRM08 6.3 Subtype declarations
                --
                --  If the subtype indication does not include a constraint, the
                --  subtype is the same as that denoted by the type mark.
                if Resolution = Null_Iir then
-                  --  FIXME: is it reachable ?
-                  Free_Name (Def);
-                  return Type_Mark;
+                  return Res;
                end if;
-
-               Res := Copy_Subtype_Indication (Type_Mark);
-               Location_Copy (Res, Def);
-               Free_Name (Def);
 
                --  No element constraint.
                El_Def := Null_Iir;
@@ -1690,7 +1761,7 @@ package body Vhdl.Sem_Types is
             when Iir_Kind_Array_Subtype_Definition =>
                -- Case of a constraint for an array.
                El_Def := Get_Array_Element_Constraint (Def);
-               Sem_Array_Constraint_Indexes (Def, Type_Mark);
+               Sem_Array_Type_Constraint_Indexes (Def, Type_Mark);
                Res := Def;
 
             when others =>
@@ -1845,6 +1916,7 @@ package body Vhdl.Sem_Types is
       if Parent /= Null_Iir then
          Set_Prefix (Parent, Null_Iir);
       end if;
+
       Res := Create_Iir (Iir_Kind_Array_Subtype_Definition);
       Location_Copy (Res, Name);
       Chain := Get_Association_Chain (Name);
@@ -1871,7 +1943,7 @@ package body Vhdl.Sem_Types is
       if Parent /= Null_Iir then
          case Get_Kind (Def_El_Type) is
             when Iir_Kinds_Array_Type_Definition =>
-               Set_Element_Subtype_Indication
+               Set_Array_Element_Constraint
                  (Res, Reparse_As_Array_Constraint (Def, Def_El_Type));
             when others =>
                Error_Kind ("reparse_as_array_constraint", Def_El_Type);
@@ -1897,7 +1969,7 @@ package body Vhdl.Sem_Types is
       Res := Create_Iir (Iir_Kind_Record_Subtype_Definition);
       Set_Is_Ref (Res, True);
       Location_Copy (Res, Def);
-      Set_Base_Type (Res, Get_Base_Type (Type_Mark));
+      Set_Parent_Type (Res, Type_Mark);
       if Get_Kind (Type_Mark) = Iir_Kind_Record_Subtype_Definition then
          Set_Resolution_Indication
            (Res, Get_Resolution_Indication (Type_Mark));
@@ -1912,7 +1984,8 @@ package body Vhdl.Sem_Types is
             El_List := Null_Iir_Flist;
 
          when Iir_Kind_Array_Subtype_Definition =>
-            --  Record constraints are parsed as array constraints.
+            --  Record constraints were parsed as array constraints.
+            --  Reparse.
             pragma Assert (Get_Kind (Def) = Iir_Kind_Array_Subtype_Definition);
             Index_List := Get_Index_Constraint_List (Def);
             El_List := Create_Iir_Flist (Get_Nbr_Elements (Index_List));
@@ -1985,7 +2058,9 @@ package body Vhdl.Sem_Types is
                      else
                         Els (Pos) := El;
                         Set_Parent (El, Res);
+                        Append_Owned_Element_Constraint (Res, El);
                      end if;
+                     Xref_Ref (El, Tm_El);
                      El_Type := Get_Type (El);
                      Tm_El_Type := Get_Type (Tm_El);
                      if Get_Kind (El_Type) = Iir_Kind_Parenthesis_Name then
@@ -2005,6 +2080,7 @@ package body Vhdl.Sem_Types is
                                 (+El_Type,
                                  "only composite types may be constrained");
                         end case;
+                        Set_Subtype_Indication (El, El_Type);
                      end if;
                      Set_Type (El, El_Type);
                   end if;
@@ -2069,6 +2145,7 @@ package body Vhdl.Sem_Types is
                                                      Get_Type (Tm_El),
                                                      Res_Els (I));
                   Set_Type (El, El_Type);
+                  Set_Subtype_Indication (El, El_Type);
                   Set_Element_Position (El, Get_Element_Position (Tm_El));
                end if;
                Set_Nth_Element (El_List, I, El);
@@ -2134,7 +2211,7 @@ package body Vhdl.Sem_Types is
             Res := Create_Iir (Get_Kind (Type_Mark));
          end if;
          Location_Copy (Res, Def);
-         Set_Base_Type (Res, Get_Base_Type (Type_Mark));
+         Set_Parent_Type (Res, Type_Mark);
          Set_Resolution_Indication (Res, Get_Resolution_Indication (Def));
          A_Range := Get_Range_Constraint (Def);
          if A_Range = Null_Iir then
@@ -2236,7 +2313,7 @@ package body Vhdl.Sem_Types is
                        (Def, Base_Type, Null_Iir);
                      Res := Create_Iir (Iir_Kind_Access_Subtype_Definition);
                      Location_Copy (Res, Def);
-                     Set_Base_Type (Res, Type_Mark);
+                     Set_Parent_Type (Res, Type_Mark);
                      Set_Designated_Subtype_Indication (Res, Sub_Type);
                      Set_Signal_Type_Flag (Res, False);
 
@@ -2321,7 +2398,6 @@ package body Vhdl.Sem_Types is
             Type_Mark := Sem_Type_Mark (Def, Incomplete);
             return Type_Mark;
          when Iir_Kind_Error =>
-            Set_Base_Type (Def, Def);
             return Def;
          when others =>
             null;
@@ -2329,6 +2405,9 @@ package body Vhdl.Sem_Types is
 
       --  Analyze the type mark.
       Type_Mark_Name := Get_Subtype_Type_Mark (Def);
+      if Type_Mark_Name = Null_Iir then
+         return Create_Error_Type (Def);
+      end if;
       Type_Mark_Name := Sem_Type_Mark (Type_Mark_Name);
       Set_Subtype_Type_Mark (Def, Type_Mark_Name);
       if Is_Error (Type_Mark_Name) then
@@ -2353,31 +2432,421 @@ package body Vhdl.Sem_Types is
       return Res;
    end Sem_Subtype_Indication;
 
-   function Sem_Subnature_Indication (Def: Iir) return Iir
+   --  From a composite nature, two types are created: one for the across
+   --  branch and one for the through branch.  As they are very similar, these
+   --  utilities are created.
+   type Branch_Type is (Branch_Across, Branch_Through);
+
+   function Get_Branch_Type (Nat : Iir; Branch : Branch_Type) return Iir
    is
-      Nature_Mark: Iir;
       Res : Iir;
    begin
-      -- LRM 4.8 Nature declatation
+      case Branch is
+         when Branch_Across =>
+            Res := Get_Across_Type (Nat);
+         when Branch_Through =>
+            Res := Get_Through_Type (Nat);
+      end case;
+      pragma Assert (Res /= Null_Iir);
+      return Res;
+   end Get_Branch_Type;
+
+   procedure Set_Branch_Type_Definition
+     (Nat : Iir; Branch : Branch_Type; Def : Iir) is
+   begin
+      case Branch is
+         when Branch_Across =>
+            Set_Across_Type_Definition (Nat, Def);
+            Set_Across_Type (Nat, Def);
+         when Branch_Through =>
+            Set_Through_Type_Definition (Nat, Def);
+            Set_Through_Type (Nat, Def);
+      end case;
+   end Set_Branch_Type_Definition;
+
+   --  Analyze NAME as a nature name.  Return NAME or an error node.
+   function Sem_Nature_Mark (Name : Iir) return Iir
+   is
+      Nature_Mark : constant Iir := Sem_Denoting_Name (Name);
+      Res : Iir;
+   begin
+      Res := Get_Named_Entity (Nature_Mark);
+      if Is_Error (Res) then
+         return Name;
+      end if;
+      Res := Get_Nature (Res);
+      case Get_Kind (Res) is
+         when Iir_Kind_Scalar_Nature_Definition
+           | Iir_Kind_Array_Nature_Definition
+           | Iir_Kind_Record_Nature_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
+            return Name;
+         when others =>
+            Error_Class_Match (Nature_Mark, "nature");
+            raise Program_Error; --  TODO
+      end case;
+   end Sem_Nature_Mark;
+
+   function Sem_Array_Subnature_Definition (Def : Iir) return Iir
+   is
+      Nature_Mark : Iir;
+      Parent_Def : Iir;
+      Base_Nature : Iir;
+      Index_Staticness : Iir_Staticness;
+   begin
+      Nature_Mark := Get_Subnature_Nature_Mark (Def);
+      Nature_Mark := Sem_Nature_Mark (Nature_Mark);
+      Set_Subnature_Nature_Mark (Def, Nature_Mark);
+
+      --  NATURE_MARK is a name of a nature or subnature declaration.
+      --  Extract the nature definition.
+      Parent_Def := Get_Nature_Definition (Get_Named_Entity (Nature_Mark));
+      Base_Nature := Get_Base_Nature (Parent_Def);
+      Set_Base_Nature (Def, Base_Nature);
+
+      Sem_Array_Constraint_Indexes
+        (Def, Parent_Def, Base_Nature, Index_Staticness);
+
+      --  Create subtypes.
+      for I in Branch_Type loop
+         declare
+            Br_Def : constant Iir := Get_Branch_Type (Parent_Def, I);
+            St_Def : Iir;
+         begin
+            St_Def := Create_Iir (Iir_Kind_Array_Subtype_Definition);
+            Location_Copy (St_Def, Def);
+            Set_Index_Subtype_List (St_Def, Get_Index_Subtype_List (Def));
+            Set_Element_Subtype (St_Def, Get_Element_Subtype (Br_Def));
+            Set_Parent_Type (St_Def, Br_Def);
+            Set_Type_Staticness (St_Def, Get_Nature_Staticness (Def));
+            Set_Constraint_State (St_Def, Get_Constraint_State (Def));
+            Set_Type_Declarator (St_Def, Get_Nature_Declarator (Def));
+            Set_Branch_Type_Definition (Def, I, St_Def);
+         end;
+      end loop;
+
+      return Def;
+   end Sem_Array_Subnature_Definition;
+
+   function Sem_Subnature_Indication (Def: Iir) return Iir is
+   begin
+      --  LRM 4.8 Nature declatation
       --
-      -- If the subnature indication does not include a constraint, the
-      -- subnature is the same as that denoted by the type mark.
+      --  If the subnature indication does not include a constraint, the
+      --  subnature is the same as that denoted by the type mark.
       case Get_Kind (Def) is
          when Iir_Kind_Scalar_Nature_Definition =>
             --  Used for reference declared by a nature
             return Def;
          when Iir_Kinds_Denoting_Name =>
-            Nature_Mark := Sem_Denoting_Name (Def);
-            Res := Get_Named_Entity (Nature_Mark);
-            if Get_Kind (Res) /= Iir_Kind_Scalar_Nature_Definition then
-               Error_Class_Match (Nature_Mark, "nature");
-               raise Program_Error; --  TODO
-            else
-               return Nature_Mark;
-            end if;
+            return Sem_Nature_Mark (Def);
+         when Iir_Kind_Array_Subnature_Definition =>
+            return Sem_Array_Subnature_Definition (Def);
          when others =>
-            raise Program_Error; --  TODO
+            Error_Kind ("sem_subnature_indication", Def);
       end case;
    end Sem_Subnature_Indication;
 
+   function Sem_Scalar_Nature_Definition (Def : Iir; Decl : Iir) return Iir
+   is
+      function Sem_Scalar_Nature_Typemark (T : Iir; Name : String) return Iir
+      is
+         Res : Iir;
+      begin
+         Res := Sem_Type_Mark (T);
+         Res := Get_Type (Res);
+         if Is_Error (Res) then
+            return Real_Type_Definition;
+         end if;
+         --  LRM93 3.5.1
+         --  The type marks must denote floating point types
+         case Get_Kind (Res) is
+            when Iir_Kind_Floating_Subtype_Definition
+              | Iir_Kind_Floating_Type_Definition =>
+               return Res;
+            when others =>
+               Error_Msg_Sem (+T, Name & "type must be a floating point type");
+               return Real_Type_Definition;
+         end case;
+      end Sem_Scalar_Nature_Typemark;
+
+      Tm : Iir;
+      Ref : Iir;
+   begin
+      Tm := Get_Across_Type_Mark (Def);
+      Tm := Sem_Scalar_Nature_Typemark (Tm, "across");
+      Set_Across_Type (Def, Tm);
+
+      Tm := Get_Through_Type_Mark (Def);
+      Tm := Sem_Scalar_Nature_Typemark (Tm, "through");
+      Set_Through_Type (Def, Tm);
+
+      Set_Base_Nature (Def, Def);
+
+      --  AMS-LRM17 9.4.2 Locally static primaries
+      --  A locally static scalar subnature is a scalar subnature. [...]
+      --  A locally static subnature is either a locally static scalar
+      --  subnature, [...]
+      Set_Nature_Staticness (Def, Locally);
+
+      --  Declare the reference
+      Ref := Get_Reference (Def);
+      Set_Name_Staticness (Ref, Locally);
+      Set_Nature (Ref, Def);
+      Set_Chain (Ref, Get_Chain (Decl));
+      Set_Chain (Decl, Ref);
+
+      return Def;
+   end Sem_Scalar_Nature_Definition;
+
+   function Sem_Unbounded_Array_Nature_Definition (Def : Iir; Decl : Iir)
+                                                  return Iir
+   is
+      El_Nat : Iir;
+      Arr : Iir;
+   begin
+      El_Nat := Get_Element_Subnature_Indication (Def);
+      El_Nat := Sem_Subnature_Indication (El_Nat);
+
+      if El_Nat /= Null_Iir then
+         El_Nat := Get_Named_Entity (El_Nat);
+         El_Nat := Get_Nature (El_Nat);
+         Set_Element_Subnature (Def, El_Nat);
+
+         Set_Simple_Nature (Def, Get_Nature_Simple_Nature (El_Nat));
+      end if;
+
+      Set_Base_Nature (Def, Def);
+      Sem_Unbounded_Array_Indexes (Def);
+
+      --  Create through/across type.
+      for I in Branch_Type loop
+         Arr := Create_Iir (Iir_Kind_Array_Type_Definition);
+         Location_Copy (Arr, Def);
+         Set_Index_Subtype_List (Arr, Get_Index_Subtype_List (Def));
+         Set_Type_Staticness (Arr, None);
+         Set_Type_Declarator (Arr, Decl);
+         Set_Element_Subtype (Arr, Get_Branch_Type (El_Nat, I));
+         Set_Branch_Type_Definition (Def, I, Arr);
+         Set_Constraint_State (Arr, Get_Array_Constraint (Arr));
+      end loop;
+
+      return Def;
+   end Sem_Unbounded_Array_Nature_Definition;
+
+   function Sem_Record_Nature_Definition (Def: Iir; Decl : Iir) return Iir
+   is
+      --  Analyzed nature of previous element
+      Last_Nat : Iir;
+
+      El_List : constant Iir_Flist := Get_Elements_Declaration_List (Def);
+      El : Iir;
+      El_Nat : Iir;
+      Nature_Staticness : Iir_Staticness;
+      Constraint : Iir_Constraint;
+      Composite_Found : Boolean;
+      Simple_Nature : Iir;
+   begin
+      --  AMS-LRM17 12.1 Declarative region
+      --  f) A record nature declaration
+      Open_Declarative_Region;
+
+      Last_Nat := Null_Iir;
+      Nature_Staticness := Locally;
+      Constraint := Fully_Constrained;
+      Composite_Found := False;
+      Simple_Nature := Null_Iir;
+
+      for I in Flist_First .. Flist_Last (El_List) loop
+         El := Get_Nth_Element (El_List, I);
+         El_Nat := Get_Subnature_Indication (El);
+         if El_Nat /= Null_Iir then
+            --  Be careful for a declaration list
+            El_Nat := Sem_Subnature_Indication (El_Nat);
+            Set_Subnature_Indication (El, El_Nat);
+            El_Nat := Get_Nature_Of_Subnature_Indication (El_Nat);
+            Last_Nat := El_Nat;
+         else
+            El_Nat := Last_Nat;
+         end if;
+         if El_Nat /= Null_Iir then
+            Set_Nature (El, El_Nat);
+
+            --  AMS-LRM17 5.8.3 Composite natures
+            --  The scalar subelements of a composite nature shall all have
+            --  the same simple nature, [...]
+            if Simple_Nature = Null_Iir then
+               Simple_Nature := Get_Nature_Simple_Nature (El_Nat);
+               Set_Simple_Nature (Def, El_Nat);
+            elsif Get_Nature_Simple_Nature (El_Nat) /= Simple_Nature then
+               Error_Msg_Sem
+                 (+El, "elements must have the same simple nature");
+            end if;
+
+            --  LRM93 3.2.1.1
+            --  The same requirement [must define a constrained array
+            --  subtype] exits for the subtype indication of an
+            --  element declaration, if the type of the record
+            --  element is an array type.
+            if Vhdl_Std < Vhdl_08
+              and then not Is_Fully_Constrained_Type (El_Nat)
+            then
+               Error_Msg_Sem
+                 (+El,
+                  "element declaration of unconstrained %n is not allowed",
+                  +El_Nat);
+            end if;
+            Nature_Staticness := Min (Nature_Staticness,
+                                      Get_Nature_Staticness (El_Nat));
+            Update_Record_Constraint (Constraint, Composite_Found, El_Nat);
+         else
+            Nature_Staticness := None;
+         end if;
+         Sem_Scopes.Add_Name (El);
+         Name_Visible (El);
+         Xref_Decl (El);
+      end loop;
+      Close_Declarative_Region;
+      Set_Nature_Staticness (Def, Nature_Staticness);
+      Set_Base_Nature (Def, Def);
+      Set_Constraint_State (Def, Constraint);
+
+      --  AMS-LRM17 5.8.3.3 Record natures
+      --  The across type defined by a record nature definition is equivalent
+      --  to the type defined by a record type definition in which there is a
+      --  matching element declaration for each nature element declaration.
+      --  For each element declaration of the record type definition, the
+      --  identifier list is the same as the identifier list of the matching
+      --  nature element declaration, and the subtype indication of the
+      --  element subtype definition is the across type defined by the nature
+      --  of the subnature indication of the nature element declaration,
+      --  together with the index constraint of the subnature indication of
+      --  the nature element declaration.
+      --
+      --  GHDL: likewise for through type.
+      for I in Branch_Type loop
+         declare
+            St_Def : Iir;
+            St_El : Iir;
+            St_List : Iir_Flist;
+            St_El_Type : Iir;
+            Staticness : Iir_Staticness;
+         begin
+            St_Def := Create_Iir (Iir_Kind_Record_Type_Definition);
+            Location_Copy (St_Def, Def);
+            Set_Type_Declarator (St_Def, Decl);
+            St_List := Create_Iir_Flist (Get_Nbr_Elements (El_List));
+            Set_Elements_Declaration_List (St_Def, St_List);
+            Staticness := Locally;
+
+            for J in Flist_First .. Flist_Last (El_List) loop
+               El := Get_Nth_Element (El_List, J);
+               St_El := Create_Iir (Iir_Kind_Element_Declaration);
+               Location_Copy (St_El, El);
+               Set_Parent (St_El, St_Def);
+               Set_Identifier (St_El, Get_Identifier (El));
+               --  No subtype indication, only a type.
+               El_Nat := Get_Nature (El);
+               St_El_Type := Get_Branch_Type (El_Nat, I);
+               pragma Assert (St_El_Type /= Null_Iir);
+               Set_Type (St_El, St_El_Type);
+               Staticness := Min (Staticness,
+                                  Get_Type_Staticness (St_El_Type));
+               Set_Element_Position (St_El, Get_Element_Position (El));
+               Set_Has_Identifier_List (St_El, Get_Has_Identifier_List (El));
+               Set_Nth_Element (St_List, J, St_El);
+            end loop;
+            Set_Type_Staticness (St_Def, Staticness);
+            Set_Constraint_State (St_Def, Get_Constraint_State (Def));
+            Set_Branch_Type_Definition (Def, I, St_Def);
+         end;
+      end loop;
+
+      return Def;
+   end Sem_Record_Nature_Definition;
+
+   function Sem_Nature_Definition (Def : Iir; Decl : Iir) return Iir is
+   begin
+      case Get_Kind (Def) is
+         when Iir_Kind_Scalar_Nature_Definition =>
+            return Sem_Scalar_Nature_Definition (Def, Decl);
+         when Iir_Kind_Array_Nature_Definition =>
+            return Sem_Unbounded_Array_Nature_Definition (Def, Decl);
+         when Iir_Kind_Record_Nature_Definition =>
+            return Sem_Record_Nature_Definition (Def, Decl);
+         when others =>
+            Error_Kind ("sem_nature_definition", Def);
+            return Null_Iir;
+      end case;
+   end Sem_Nature_Definition;
+
+   function Is_Nature_Type (Dtype : Iir) return Boolean is
+   begin
+      case Get_Kind (Dtype) is
+         when Iir_Kind_Error =>
+            return True;
+         when Iir_Kind_Floating_Type_Definition
+           | Iir_Kind_Floating_Subtype_Definition =>
+            return True;
+         when Iir_Kind_Record_Subtype_Definition
+           | Iir_Kind_Record_Type_Definition =>
+            declare
+               Els : constant Iir_Flist :=
+                 Get_Elements_Declaration_List (Dtype);
+               El : Iir;
+            begin
+               for I in Flist_First .. Flist_Last (Els) loop
+                  El := Get_Nth_Element (Els, I);
+                  if not Is_Nature_Type (Get_Type (El)) then
+                     return False;
+                  end if;
+               end loop;
+               return True;
+            end;
+         when Iir_Kind_Array_Type_Definition
+           | Iir_Kind_Array_Subtype_Definition =>
+            return Is_Nature_Type (Get_Element_Subtype (Dtype));
+         when Iir_Kind_Incomplete_Type_Definition
+           | Iir_Kind_Interface_Type_Definition =>
+            return False;
+         when Iir_Kind_File_Type_Definition
+           | Iir_Kind_Protected_Type_Declaration
+           | Iir_Kind_Access_Type_Definition
+           | Iir_Kind_Access_Subtype_Definition
+           | Iir_Kind_Integer_Subtype_Definition
+           | Iir_Kind_Integer_Type_Definition
+           | Iir_Kind_Physical_Type_Definition
+           | Iir_Kind_Physical_Subtype_Definition
+           | Iir_Kind_Enumeration_Subtype_Definition
+           | Iir_Kind_Enumeration_Type_Definition =>
+            return False;
+         when others =>
+            Error_Kind ("is_nature_type", Dtype);
+      end case;
+   end Is_Nature_Type;
+
+   function Get_Nature_Simple_Nature (Nat : Iir) return Iir is
+   begin
+      case Iir_Kinds_Nature_Indication (Get_Kind (Nat)) is
+         when Iir_Kind_Scalar_Nature_Definition =>
+            return Nat;
+         when Iir_Kind_Array_Nature_Definition
+           | Iir_Kind_Record_Nature_Definition =>
+            return Get_Simple_Nature (Nat);
+         when Iir_Kind_Array_Subnature_Definition =>
+            return Get_Simple_Nature (Get_Base_Nature (Nat));
+      end case;
+   end Get_Nature_Simple_Nature;
+
+   function Is_Composite_Nature (Nat : Iir) return Boolean is
+   begin
+      case Iir_Kinds_Nature_Indication (Get_Kind (Nat)) is
+         when Iir_Kind_Scalar_Nature_Definition =>
+            return False;
+         when Iir_Kind_Array_Nature_Definition
+           | Iir_Kind_Record_Nature_Definition
+           | Iir_Kind_Array_Subnature_Definition =>
+            return True;
+      end case;
+   end Is_Composite_Nature;
 end Vhdl.Sem_Types;

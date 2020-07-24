@@ -21,18 +21,20 @@ with Errorout; use Errorout;
 with Name_Table;
 with Str_Table;
 with Flags; use Flags;
+
 with Vhdl.Std_Package; use Vhdl.Std_Package;
-with Vhdl.Sem_Scopes; use Vhdl.Sem_Scopes;
-with Vhdl.Sem_Names; use Vhdl.Sem_Names;
-with Vhdl.Sem;
 with Vhdl.Errors; use Vhdl.Errors;
 with Vhdl.Utils; use Vhdl.Utils;
 with Vhdl.Evaluation; use Vhdl.Evaluation;
 with Vhdl.Nodes_Utils; use Vhdl.Nodes_Utils;
+with Vhdl.Sem_Scopes; use Vhdl.Sem_Scopes;
+with Vhdl.Sem_Names; use Vhdl.Sem_Names;
+with Vhdl.Sem;
 with Vhdl.Sem_Types;
 with Vhdl.Sem_Stmts; use Vhdl.Sem_Stmts;
 with Vhdl.Sem_Assocs; use Vhdl.Sem_Assocs;
 with Vhdl.Sem_Decls;
+with Vhdl.Sem_Psl;
 with Vhdl.Xrefs; use Vhdl.Xrefs;
 
 package body Vhdl.Sem_Expr is
@@ -375,7 +377,9 @@ package body Vhdl.Sem_Expr is
            | Iir_Kind_Element_Declaration
            | Iir_Kind_Attribute_Declaration
            | Iir_Kind_Psl_Declaration
-           | Iir_Kind_Signature =>
+           | Iir_Kind_Signature
+           | Iir_Kind_Interface_Terminal_Declaration
+           | Iir_Kind_Terminal_Declaration =>
             Error_Msg_Sem (+Loc, "%n not allowed in an expression", +Expr);
             return Null_Iir;
          when Iir_Kind_Function_Declaration =>
@@ -394,9 +398,8 @@ package body Vhdl.Sem_Expr is
            | Iir_Kind_Aggregate
            | Iir_Kind_Allocator_By_Expression
            | Iir_Kind_Allocator_By_Subtype
-           | Iir_Kind_Qualified_Expression =>
-            return Expr;
-         when Iir_Kinds_Quantity_Declaration =>
+           | Iir_Kind_Qualified_Expression
+           | Iir_Kind_Overflow_Literal =>
             return Expr;
          when Iir_Kinds_Dyadic_Operator
            | Iir_Kinds_Monadic_Operator =>
@@ -412,7 +415,11 @@ package body Vhdl.Sem_Expr is
            | Iir_Kind_Type_Conversion
            | Iir_Kind_Function_Call =>
             return Expr;
-         when Iir_Kind_Psl_Endpoint_Declaration =>
+         when Iir_Kind_Psl_Endpoint_Declaration
+           | Iir_Kind_Psl_Prev
+           | Iir_Kind_Psl_Stable
+           | Iir_Kind_Psl_Rose
+           | Iir_Kind_Psl_Fell =>
             return Expr;
          when Iir_Kind_Simple_Name
            | Iir_Kind_Parenthesis_Name
@@ -631,6 +638,9 @@ package body Vhdl.Sem_Expr is
          end if;
       end if;
 
+      Check_Read (Left);
+      Check_Read (Right);
+
       Left := Eval_Expr_If_Static (Left);
       Right := Eval_Expr_If_Static (Right);
 
@@ -835,7 +845,7 @@ package body Vhdl.Sem_Expr is
             --  predefined type INTEGER is assumed if the type of both bounds
             --  (prior the implicit conversion) is the type universal_integer.
             null;
-         elsif Vhdl_Std = Vhdl_93c or else Flag_Relaxed_Rules then
+         elsif Flag_Relaxed_Rules then
             null;
          elsif Vhdl_Std /= Vhdl_93 then
             --  GHDL: this is not allowed, however often used:
@@ -1529,6 +1539,14 @@ package body Vhdl.Sem_Expr is
       Inter : Iir;
    begin
       Name := Get_Prefix (Call);
+      if Name = Null_Iir
+        or else Is_Error (Name)
+        or else Get_Kind (Name) = Iir_Kind_String_Literal8
+      then
+         pragma Assert (Flags.Flag_Force_Analysis);
+         return;
+      end if;
+
       --  FIXME: check for denoting name.
       Sem_Name (Name);
 
@@ -1756,7 +1774,7 @@ package body Vhdl.Sem_Expr is
    begin
       Operator := Utils.Get_Operator_Name (Expr);
       Report_Start_Group;
-      Error_Msg_Sem (+Expr, "operator ""%i"" is overloaded", +Operator);
+      Error_Msg_Sem (+Expr, "operator %i is overloaded", +Operator);
       Disp_Overload_List (List, Expr);
       Report_End_Group;
    end Error_Operator_Overload;
@@ -1793,18 +1811,80 @@ package body Vhdl.Sem_Expr is
       return True;
    end Sem_Operator_Operands;
 
+   --  Return the compatibility level between operation EXPR (either monadic
+   --  or dyadic) and operator DECL (also monadic or dyadic).
+   --  RES_TYPE is the expected expression type, which can be NULL_IIR.
+   --  Note: even if the result is fully_compatible, at the end the
+   --  compatibility could be via_conversion if the result has be to be
+   --  converted.
+   function Sem_Operator_Compatibility
+     (Decl : Iir; Expr : Iir; Is_Dyadic : Boolean; Res_Type : Iir)
+     return Compatibility_Level
+   is
+      Left_Inter, Right_Inter : Iir;
+      Res, Level : Compatibility_Level;
+   begin
+      --  Check return type.
+      if Res_Type /= Null_Iir then
+         Res := Are_Types_Compatible (Res_Type, Get_Return_Type (Decl));
+         if Res = Not_Compatible then
+            return Not_Compatible;
+         end if;
+      else
+         Res := Fully_Compatible;
+      end if;
+
+      Left_Inter := Get_Interface_Declaration_Chain (Decl);
+      Right_Inter := Get_Chain (Left_Inter);
+
+      --  Operator can be either monadic or dyadic.
+      pragma Assert (Right_Inter = Null_Iir
+                       or else Get_Chain (Right_Inter) = Null_Iir);
+
+      --  Check arity.
+
+      --  LRM93 2.5.2 Operator overloading
+      --  The subprogram specification of a unary operator must have
+      --  a single parameter [...]
+      --  The subprogram specification of a binary operator must have
+      --  two parameters [...]
+      --
+      --  GHDL: So even in presence of default expression in a parameter,
+      --  a unary operation has to match with a binary operator.
+      if (Right_Inter /= Null_Iir) /= Is_Dyadic then
+         return Not_Compatible;
+      end if;
+
+      -- Check operands.
+      Level := Is_Expr_Compatible (Get_Type (Left_Inter), Get_Left (Expr));
+      if Level = Not_Compatible then
+         return Not_Compatible;
+      end if;
+      Res := Compatibility_Level'Min (Res, Level);
+
+      if Is_Dyadic then
+         Level := Is_Expr_Compatible (Get_Type (Right_Inter),
+                                      Get_Right (Expr));
+         if Level = Not_Compatible then
+            return Not_Compatible;
+         end if;
+         Res := Compatibility_Level'Min (Res, Level);
+      end if;
+
+      return Res;
+   end Sem_Operator_Compatibility;
+
    function Sem_Operator_Pass1 (Expr : Iir; Res_Type : Iir) return Iir
    is
       Is_Dyadic : constant Boolean :=
         Get_Kind (Expr) in Iir_Kinds_Dyadic_Operator;
       Operator : constant Name_Id := Utils.Get_Operator_Name (Expr);
       Interpretation : Name_Interpretation_Type;
+      Level : Compatibility_Level;
       Decl : Iir;
       Overload_List : Iir_List;
       Res_Type_List : Iir;
       It : List_Iterator;
-
-      Interfaces : Iir;
    begin
       --  First pass.
       --  Analyze operands.
@@ -1828,53 +1908,16 @@ package body Vhdl.Sem_Expr is
          --  [...] or all visible declarations denote the same named entity.
          --
          --  GHDL: If DECL has already been seen, then skip it.
-         if Get_Seen_Flag (Decl) then
-            goto Continue;
+         if not Get_Seen_Flag (Decl) then
+            Level := Sem_Operator_Compatibility
+              (Decl, Expr, Is_Dyadic, Res_Type);
+            if Level /= Not_Compatible then
+               --  Match.
+               Set_Seen_Flag (Decl, True);
+               Append_Element (Overload_List, Decl);
+            end if;
          end if;
 
-         --  Check return type.
-         if Res_Type /= Null_Iir
-           and then (Are_Types_Compatible (Res_Type, Get_Return_Type (Decl))
-                       = Not_Compatible)
-         then
-            goto Continue;
-         end if;
-
-         Interfaces := Get_Interface_Declaration_Chain (Decl);
-
-         --  Check arity.
-
-         --  LRM93 2.5.2 Operator overloading
-         --  The subprogram specification of a unary operator must have
-         --  a single parameter [...]
-         --  The subprogram specification of a binary operator must have
-         --  two parameters [...]
-         --
-         --  GHDL: So even in presence of default expression in a parameter,
-         --  a unary operation has to match with a binary operator.
-         if Get_Chain_Length (Interfaces) /= 1 + Boolean'Pos (Is_Dyadic) then
-            goto Continue;
-         end if;
-
-         -- Check operands.
-         if Is_Expr_Compatible (Get_Type (Interfaces), Get_Left (Expr))
-           = Not_Compatible
-         then
-            goto Continue;
-         end if;
-         if Is_Dyadic
-           and then (Is_Expr_Compatible (Get_Type (Get_Chain (Interfaces)),
-                                         Get_Right (Expr))
-                       = Not_Compatible)
-         then
-            goto Continue;
-         end if;
-
-         --  Match.
-         Set_Seen_Flag (Decl, True);
-         Append_Element (Overload_List, Decl);
-
-         << Continue >> null;
          Interpretation := Get_Next_Interpretation (Interpretation);
       end loop;
 
@@ -1962,33 +2005,66 @@ package body Vhdl.Sem_Expr is
    function Sem_Operator_Pass2_Interpretation
      (Expr : Iir; Res_Type : Iir) return Iir
    is
+      Is_Dyadic : constant Boolean :=
+        Get_Kind (Expr) in Iir_Kinds_Dyadic_Operator;
       Decl : Iir;
       Overload : Iir;
       Overload_List : Iir_List;
       Full_Compat : Iir;
+      Conv_Compat : Iir;
       It : List_Iterator;
+      Level : Compatibility_Level;
    begin
       --  Second pass
       --  Find the uniq implementation for this call.
       Overload := Get_Implementation (Expr);
       Overload_List := Get_Overload_List (Overload);
+
       Full_Compat := Null_Iir;
+      Conv_Compat := Null_Iir;
+
       It := List_Iterate (Overload_List);
       while Is_Valid (It) loop
          Decl := Get_Element (It);
-         --  FIXME: wrong: compatibilty with return type and args.
-         if Are_Types_Compatible (Get_Return_Type (Decl), Res_Type)
-           /= Not_Compatible
-         then
-            if Full_Compat /= Null_Iir then
-               Error_Operator_Overload (Expr, Overload_List);
-               return Null_Iir;
-            else
-               Full_Compat := Decl;
-            end if;
-         end if;
+         Level := Sem_Operator_Compatibility (Decl, Expr, Is_Dyadic, Res_Type);
+         case Level is
+            when Not_Compatible =>
+               --  Ignored
+               null;
+            when Fully_Compatible =>
+               if Full_Compat = Null_Iir then
+                  Full_Compat := Decl;
+               else
+                  --  There are several fully compatible functions.
+                  --  TODO: remove non-fully compatible functions from the list
+                  --   before displaying the list.
+                  Error_Operator_Overload (Expr, Overload_List);
+                  return Null_Iir;
+               end if;
+            when Via_Conversion =>
+               if Conv_Compat = Null_Iir then
+                  Conv_Compat := Decl;
+               else
+                  --  Not yet an error, as there can be one fully compatible
+                  --  function.
+                  Conv_Compat := Overload;
+               end if;
+         end case;
          Next (It);
       end loop;
+
+      if Full_Compat = Null_Iir then
+         if Conv_Compat = Overload then
+            --  Several results through implicit conversion.
+            --  TODO: remove incompatible declarations from the list before
+            --   displaying it.
+            Error_Operator_Overload (Expr, Overload_List);
+            return Null_Iir;
+         else
+            Full_Compat := Conv_Compat;
+         end if;
+      end if;
+
       Free_Iir (Overload);
       Overload := Get_Type (Expr);
       Free_Overload_List (Overload);
@@ -1998,7 +2074,6 @@ package body Vhdl.Sem_Expr is
                         "no matching function declarations for %n", +Expr);
          return Null_Iir;
       else
-         Destroy_Iir_List (Overload_List);
          return Full_Compat;
       end if;
    end Sem_Operator_Pass2_Interpretation;
@@ -2298,6 +2373,13 @@ package body Vhdl.Sem_Expr is
               (+Expr, "bound error during evaluation of choice expression");
             Has_Length_Error := True;
             return;
+         end if;
+
+         --  If the choice is an aggregate (which could be static in vhdl08),
+         --  transform it into a simple aggregate to ease the comparisons.
+         if Get_Kind (Expr) = Iir_Kind_Aggregate then
+            Expr := Eval_String_Literal (Expr);
+            Set_Choice_Expression (Choice, Expr);
          end if;
 
          Choice_Len := Eval_Discrete_Type_Length
@@ -2727,6 +2809,9 @@ package body Vhdl.Sem_Expr is
       --  Staticness of all the choices.
       Staticness : Iir_Staticness;
 
+      --  The choice was parsed as a choice by expression, but in fact the
+      --  expression is a range (eg: a subtype name).  Change the choice by
+      --  a range choice.
       function Replace_By_Range_Choice (Name : Iir; Range_Type : Iir)
                                        return Boolean
       is
@@ -2908,6 +2993,8 @@ package body Vhdl.Sem_Expr is
          Pos_Max := Eval_Discrete_Type_Length (Choice_Type);
          if (not Has_Others and not Is_Sub_Range)
            and then Nbr_Pos < Pos_Max
+           --  For aggregates, a positional association can be a vector.
+           and then (Vhdl_Std < Vhdl_08 or Is_Case_Stmt)
          then
             Error_Msg_Sem (+Loc, "not enough elements associated");
          elsif Nbr_Pos > Pos_Max then
@@ -2947,7 +3034,8 @@ package body Vhdl.Sem_Expr is
    -- Perform semantisation on a (sub)aggregate AGGR, which is of type
    -- A_TYPE.
    -- return FALSE is case of failure
-   function Sem_Record_Aggregate (Aggr: Iir_Aggregate; A_Type: Iir)
+   function Sem_Record_Aggregate
+     (Aggr : Iir_Aggregate; A_Type : Iir; Constrained : Boolean)
      return boolean
    is
       El_List : constant Iir_Flist := Get_Elements_Declaration_List (A_Type);
@@ -3108,7 +3196,8 @@ package body Vhdl.Sem_Expr is
          if not Get_Same_Alternative_Flag (El) then
             if El_Type /= Null_Iir then
                --  Analyze the expression only if the choice is correct.
-               Expr := Sem_Expression (Expr, El_Type);
+               Expr := Sem_Expression_Wildcard
+                 (Expr, El_Type, Constrained);
                if Expr /= Null_Iir then
                   Set_Associated_Expr (El, Eval_Expr_If_Static (Expr));
                   Expr_Staticness := Min (Expr_Staticness,
@@ -3315,7 +3404,8 @@ package body Vhdl.Sem_Expr is
                        (+Get_Associated_Expr (El),
                         "type of element not compatible with the "
                           & "expected type");
-                     Set_Type (El_Expr, Error_Type);
+                     Set_Type (Expr, Error_Type);
+                     Set_Associated_Expr (El, Expr);
                      Expr := Null_Iir;
                   elsif Is_Overload_List (Res_Type) then
                      Error_Msg_Sem
@@ -3391,6 +3481,41 @@ package body Vhdl.Sem_Expr is
       end if;
    end Sem_Array_Aggregate_Elements;
 
+   procedure Sem_Array_Aggregate_Choice_Length
+     (Choice : Iir;
+      Len : in out Natural;
+      Len_Staticness : in out Iir_Staticness)
+   is
+      --  Extract length from associated expression.
+      --  Always has an associated expr, as not named.
+      Expr : constant Iir := Get_Associated_Expr (Choice);
+      Expr_Type : constant Iir := Get_Type (Expr);
+      Expr_Index : Iir;
+      Index_Staticness : Iir_Staticness;
+   begin
+      if Is_Error (Expr_Type) then
+         return;
+      end if;
+      if Get_Constraint_State (Expr_Type) /= Fully_Constrained then
+         Len_Staticness := None;
+         return;
+      end if;
+
+      Expr_Index := Get_Index_Type (Expr_Type, 0);
+      Index_Staticness := Get_Type_Staticness (Expr_Index);
+      case Index_Staticness is
+         when Locally =>
+            Len := Len + Natural
+              (Eval_Discrete_Type_Length (Expr_Index));
+         when Globally | None =>
+            Len_Staticness := Nodes.Min
+              (Len_Staticness, Index_Staticness);
+         when Unknown =>
+            --  Must have been caught by Is_Error.
+            raise Internal_Error;
+      end case;
+   end Sem_Array_Aggregate_Choice_Length;
+
    --  Analyze an array aggregate AGGR of *base type* A_TYPE.
    --  The type of the array is computed into A_SUBTYPE.
    --  DIM is the dimension index in A_TYPE.
@@ -3417,7 +3542,7 @@ package body Vhdl.Sem_Expr is
 
       Index_Subtype_Constraint : Iir_Range_Expression;
       Index_Constraint : Iir_Range_Expression; -- FIXME: 'range.
-      Dir : Iir_Direction;
+      Dir : Direction_Type;
       Choice_Staticness : Iir_Staticness;
       Len_Staticness : Iir_Staticness;
       Expr_Staticness : Iir_Staticness;
@@ -3538,30 +3663,8 @@ package body Vhdl.Sem_Expr is
                         Len := Len + 1;
                      else
                         --  Extract length from associated expression.
-                        declare
-                           --  Always has an associated expr, as not named.
-                           Expr : constant Iir := Get_Associated_Expr (Choice);
-                           Expr_Type : constant Iir := Get_Type (Expr);
-                           Expr_Index : Iir;
-                           Index_Staticness : Iir_Staticness;
-                        begin
-                           if not Is_Error (Expr_Type) then
-                              Expr_Index := Get_Index_Type (Expr_Type, 0);
-                              Index_Staticness :=
-                                Get_Type_Staticness (Expr_Index);
-                              case Index_Staticness is
-                                 when Locally =>
-                                    Len := Len + Natural
-                                      (Eval_Discrete_Type_Length (Expr_Index));
-                                 when Globally | None =>
-                                    Len_Staticness := Nodes.Min
-                                      (Len_Staticness, Index_Staticness);
-                                 when Unknown =>
-                                    --  Must have been caught by Is_Error.
-                                    raise Internal_Error;
-                              end case;
-                           end if;
-                        end;
+                        Sem_Array_Aggregate_Choice_Length
+                          (Choice, Len, Len_Staticness);
                      end if;
                   when Iir_Kind_Choice_By_Others =>
                      if not Constrained then
@@ -3672,7 +3775,7 @@ package body Vhdl.Sem_Expr is
                   Error_Kind ("sem_array_aggregate(2)", Index_Type);
             end case;
             Location_Copy (Info.Index_Subtype, Aggr);
-            Set_Base_Type (Info.Index_Subtype, Get_Base_Type (Index_Type));
+            Set_Parent_Type (Info.Index_Subtype, Get_Base_Type (Index_Type));
             Index_Constraint := Get_Range_Constraint (Index_Type);
 
             --  LRM93 7.3.2.2
@@ -3694,7 +3797,7 @@ package body Vhdl.Sem_Expr is
                --  at analysis time (if 'Range), and it doesn't really matter
                --  because of implicit subtype conversion.  So choose one
                --  arbitrary direction.
-               Dir := Iir_To;
+               Dir := Dir_To;
             end if;
 
             --  LRM93 7.3.2.2
@@ -3711,10 +3814,10 @@ package body Vhdl.Sem_Expr is
                else
                   Set_Direction (Index_Subtype_Constraint, Dir);
                   case Dir is
-                     when Iir_To =>
+                     when Dir_To =>
                         Set_Left_Limit (Index_Subtype_Constraint, Low);
                         Set_Right_Limit (Index_Subtype_Constraint, High);
-                     when Iir_Downto =>
+                     when Dir_Downto =>
                         Set_Left_Limit (Index_Subtype_Constraint, High);
                         Set_Right_Limit (Index_Subtype_Constraint, Low);
                   end case;
@@ -3938,11 +4041,7 @@ package body Vhdl.Sem_Expr is
    --     the target is a fully constrained array subtype or the target is a
    --     slice name.
    function Sem_Aggregate
-     (Expr: Iir_Aggregate; A_Type: Iir; Force_Constrained : Boolean)
-     return Iir_Aggregate
-   is
-      Force_Constrained2 : constant Boolean :=
-        Force_Constrained and Flag_Relaxed_Rules;
+     (Expr: Iir_Aggregate; A_Type: Iir; Constrained : Boolean) return Iir is
    begin
       pragma Assert (A_Type /= Null_Iir);
 
@@ -3960,12 +4059,12 @@ package body Vhdl.Sem_Expr is
          when Iir_Kind_Array_Subtype_Definition =>
             return Sem_Array_Aggregate
               (Expr, A_Type,
-               Force_Constrained2 or else Get_Index_Constraint_Flag (A_Type));
+               Constrained or Get_Index_Constraint_Flag (A_Type));
          when Iir_Kind_Array_Type_Definition =>
-            return Sem_Array_Aggregate (Expr, A_Type, Force_Constrained2);
+            return Sem_Array_Aggregate (Expr, A_Type, Constrained);
          when Iir_Kind_Record_Type_Definition
-           | Iir_Kind_Record_Subtype_Definition =>
-            if not Sem_Record_Aggregate (Expr, A_Type) then
+            | Iir_Kind_Record_Subtype_Definition =>
+            if not Sem_Record_Aggregate (Expr, A_Type, Constrained) then
                return Null_Iir;
             end if;
             return Expr;
@@ -4164,6 +4263,12 @@ package body Vhdl.Sem_Expr is
       N_Type := Sem_Type_Mark (Get_Type_Mark (Expr));
       Set_Type_Mark (Expr, N_Type);
       N_Type := Get_Type (N_Type);
+      if N_Type = Null_Iir then
+         --  Stop now in case of error.  It is highly possible that the
+         --  expression is ambiguous.
+         return Null_Iir;
+      end if;
+
       Set_Type (Expr, N_Type);
       if A_Type /= Null_Iir
         and then Are_Types_Compatible (A_Type, N_Type) = Not_Compatible
@@ -4176,6 +4281,7 @@ package body Vhdl.Sem_Expr is
          return Null_Iir;
       end if;
       Check_Read (Res);
+      Res := Eval_Expr_If_Static (Res);
       Set_Expression (Expr, Res);
 
       --  LRM93 7.4.1 Locally static primaries
@@ -4202,6 +4308,16 @@ package body Vhdl.Sem_Expr is
          when others =>
             null;
       end case;
+
+      --  Emit a warning if the value is known not to be within the bounds.
+      if Get_Expr_Staticness (Res) = Locally
+        and then not Eval_Is_In_Bound (Res, N_Type)
+      then
+         Warning_Msg_Sem
+           (Warnid_Runtime_Error, +Expr,
+            "static expression out of prefix type bounds");
+         return Build_Overflow (Expr, N_Type);
+      end if;
 
       return Expr;
    end Sem_Qualified_Expression;
@@ -4313,7 +4429,8 @@ package body Vhdl.Sem_Expr is
               | Iir_Kind_Iterator_Declaration
               | Iir_Kind_Guard_Signal_Declaration =>
                return;
-            when Iir_Kinds_Quantity_Declaration =>
+            when Iir_Kinds_Quantity_Declaration
+              | Iir_Kind_Interface_Quantity_Declaration =>
                return;
             when Iir_Kinds_External_Name =>
                return;
@@ -4368,7 +4485,15 @@ package body Vhdl.Sem_Expr is
               | Iir_Kind_Value_Attribute
               | Iir_Kinds_Name_Attribute
               | Iir_Kinds_Signal_Attribute
-              | Iir_Kinds_Signal_Value_Attribute =>
+              | Iir_Kinds_Signal_Value_Attribute
+              | Iir_Kind_Above_Attribute
+              | Iir_Kind_Zoh_Attribute
+              | Iir_Kind_Ltf_Attribute
+              | Iir_Kind_Ztf_Attribute
+              | Iir_Kind_Dot_Attribute
+              | Iir_Kind_Integ_Attribute
+              | Iir_Kind_Ramp_Attribute
+              | Iir_Kind_Quantity_Delayed_Attribute =>
                return;
             when Iir_Kind_Aggregate =>
                Check_Read_Aggregate (Obj);
@@ -4382,6 +4507,8 @@ package body Vhdl.Sem_Expr is
             when Iir_Kind_Simple_Name
               | Iir_Kind_Selected_Name =>
                Obj := Get_Named_Entity (Obj);
+            when Iir_Kinds_Psl_Builtin =>
+               return;
             when Iir_Kind_Error =>
                return;
             when others =>
@@ -4554,6 +4681,21 @@ package body Vhdl.Sem_Expr is
          end;
       end if;
    end Sem_Dyadic_Operator;
+
+   function Sem_Parenthesis_Expression (Expr : Iir; Atype: Iir) return Iir
+   is
+      Sub_Expr : Iir;
+   begin
+      Sub_Expr := Get_Expression (Expr);
+      Sub_Expr := Sem_Expression_Ov (Sub_Expr, Atype);
+      if Sub_Expr = Null_Iir then
+         return Null_Iir;
+      end if;
+      Set_Expression (Expr, Sub_Expr);
+      Set_Type (Expr, Get_Type (Sub_Expr));
+      Set_Expr_Staticness (Expr, Get_Expr_Staticness (Sub_Expr));
+      return Expr;
+   end Sem_Parenthesis_Expression;
 
    -- Set semantic to EXPR.
    --  Replace simple_name with the referenced node,
@@ -4731,19 +4873,7 @@ package body Vhdl.Sem_Expr is
             end if;
 
          when Iir_Kind_Parenthesis_Expression =>
-            declare
-               Sub_Expr : Iir;
-            begin
-               Sub_Expr := Get_Expression (Expr);
-               Sub_Expr := Sem_Expression_Ov (Sub_Expr, A_Type1);
-               if Sub_Expr = Null_Iir then
-                  return Null_Iir;
-               end if;
-               Set_Expression (Expr, Sub_Expr);
-               Set_Type (Expr, Get_Type (Sub_Expr));
-               Set_Expr_Staticness (Expr, Get_Expr_Staticness (Sub_Expr));
-               return Expr;
-            end;
+            return Sem_Parenthesis_Expression (Expr, A_Type1);
 
          when Iir_Kind_Qualified_Expression =>
             return Sem_Qualified_Expression (Expr, A_Type);
@@ -4767,11 +4897,22 @@ package body Vhdl.Sem_Expr is
                return Create_Error_Expr (Res, A_Type);
             end;
 
+         when Iir_Kind_Psl_Prev =>
+            return Sem_Psl.Sem_Prev_Builtin (Expr, A_Type);
+
+         when Iir_Kind_Psl_Stable =>
+            return Sem_Psl.Sem_Stable_Builtin (Expr);
+
+         when Iir_Kind_Psl_Rose =>
+            return Sem_Psl.Sem_Rose_Builtin (Expr);
+
+         when Iir_Kind_Psl_Fell =>
+            return Sem_Psl.Sem_Fell_Builtin (Expr);
+
          when Iir_Kind_Error =>
             --  Always ok.
             --  Use the error as a type.
             Set_Type (Expr, Expr);
-            Set_Base_Type (Expr, Expr);
             return Expr;
 
          when others =>
@@ -4804,25 +4945,92 @@ package body Vhdl.Sem_Expr is
                      return Wildcard_Any_Aggregate_Type;
                   when Wildcard_Any_String_Type =>
                      return Wildcard_Any_String_Type;
-                  when Wildcard_Any_Access_Type =>
+                  when Wildcard_Psl_Bitvector_Type =>
+                     return Wildcard_Psl_Bitvector_Type;
+                  when Wildcard_Any_Access_Type
+                     | Wildcard_Any_Integer_Type
+                     | Wildcard_Psl_Bit_Type
+                     | Wildcard_Psl_Boolean_Type =>
                      return Null_Iir;
                end case;
             when Wildcard_Any_String_Type =>
                case Iir_Wildcard_Types (Atype) is
                   when Wildcard_Any_Type
-                    | Wildcard_Any_Aggregate_Type
-                    | Wildcard_Any_String_Type =>
+                     | Wildcard_Any_Aggregate_Type
+                     | Wildcard_Any_String_Type =>
                      return Wildcard_Any_String_Type;
-                  when Wildcard_Any_Access_Type =>
+                  when Wildcard_Psl_Bitvector_Type =>
+                     return Wildcard_Psl_Bitvector_Type;
+                  when Wildcard_Any_Access_Type
+                     | Wildcard_Any_Integer_Type
+                     | Wildcard_Psl_Bit_Type
+                     | Wildcard_Psl_Boolean_Type =>
                      return Null_Iir;
                end case;
             when Wildcard_Any_Access_Type =>
                case Iir_Wildcard_Types (Atype) is
                   when Wildcard_Any_Type
-                    | Wildcard_Any_Access_Type =>
+                     | Wildcard_Any_Access_Type =>
                      return Wildcard_Any_Access_Type;
                   when Wildcard_Any_Aggregate_Type
-                    | Wildcard_Any_String_Type =>
+                     | Wildcard_Any_String_Type
+                     | Wildcard_Any_Integer_Type
+                     | Wildcard_Psl_Bit_Type
+                     | Wildcard_Psl_Bitvector_Type
+                     | Wildcard_Psl_Boolean_Type =>
+                     return Null_Iir;
+               end case;
+            when Wildcard_Any_Integer_Type =>
+               case Iir_Wildcard_Types (Atype) is
+                  when Wildcard_Any_Type
+                     | Wildcard_Any_Integer_Type =>
+                     return Wildcard_Any_Integer_Type;
+                  when Wildcard_Any_Access_Type
+                     | Wildcard_Any_Aggregate_Type
+                     | Wildcard_Any_String_Type
+                     | Wildcard_Psl_Bit_Type
+                     | Wildcard_Psl_Boolean_Type
+                     | Wildcard_Psl_Bitvector_Type =>
+                     return Null_Iir;
+               end case;
+            when Wildcard_Psl_Bit_Type =>
+               case Iir_Wildcard_Types (Atype) is
+                  when Wildcard_Any_Type
+                     | Wildcard_Psl_Bit_Type =>
+                     return Wildcard_Psl_Bit_Type;
+                  when Wildcard_Any_Access_Type
+                     | Wildcard_Any_Aggregate_Type
+                     | Wildcard_Any_String_Type
+                     | Wildcard_Any_Integer_Type
+                     | Wildcard_Psl_Bitvector_Type
+                     | Wildcard_Psl_Boolean_Type =>
+                     return Null_Iir;
+               end case;
+            when Wildcard_Psl_Bitvector_Type =>
+               case Iir_Wildcard_Types (Atype) is
+                  when Wildcard_Any_Type
+                     | Wildcard_Any_Aggregate_Type
+                     | Wildcard_Any_String_Type
+                     | Wildcard_Psl_Bitvector_Type =>
+                     return Wildcard_Psl_Bitvector_Type;
+                  when Wildcard_Any_Access_Type
+                     | Wildcard_Any_Integer_Type
+                     | Wildcard_Psl_Bit_Type
+                     | Wildcard_Psl_Boolean_Type =>
+                     return Null_Iir;
+               end case;
+            when Wildcard_Psl_Boolean_Type =>
+               case Iir_Wildcard_Types (Atype) is
+                  when Wildcard_Any_Type
+                     | Wildcard_Psl_Boolean_Type =>
+                     return Wildcard_Psl_Boolean_Type;
+                  when Wildcard_Psl_Bit_Type =>
+                     return Wildcard_Psl_Bit_Type;
+                  when Wildcard_Any_Access_Type
+                     | Wildcard_Any_Aggregate_Type
+                     | Wildcard_Any_String_Type
+                     | Wildcard_Any_Integer_Type
+                     | Wildcard_Psl_Bitvector_Type =>
                      return Null_Iir;
                end case;
          end case;
@@ -4843,6 +5051,24 @@ package body Vhdl.Sem_Expr is
                if Get_Kind (Get_Base_Type (Atype))
                  = Iir_Kind_Access_Type_Definition
                then
+                  return Atype;
+               end if;
+            when Wildcard_Any_Integer_Type =>
+               if Get_Kind (Get_Base_Type (Atype))
+                 = Iir_Kind_Integer_Type_Definition
+               then
+                  return Atype;
+               end if;
+            when Wildcard_Psl_Bit_Type =>
+               if Sem_Psl.Is_Psl_Bit_Type (Atype) then
+                  return Atype;
+               end if;
+            when Wildcard_Psl_Bitvector_Type =>
+               if Sem_Psl.Is_Psl_Bitvector_Type (Atype) then
+                  return Atype;
+               end if;
+            when Wildcard_Psl_Boolean_Type =>
+               if Sem_Psl.Is_Psl_Boolean_Type (Atype) then
                   return Atype;
                end if;
          end case;
@@ -4922,7 +5148,7 @@ package body Vhdl.Sem_Expr is
    end Compatible_Types_Intersect;
 
    function Sem_Expression_Wildcard
-     (Expr : Iir; Atype : Iir; Force_Constrained : Boolean := False)
+     (Expr : Iir; Atype : Iir; Constrained : Boolean := False)
      return Iir
    is
       Expr_Type : constant Iir := Get_Type (Expr);
@@ -4944,7 +5170,7 @@ package body Vhdl.Sem_Expr is
       case Get_Kind (Expr) is
          when Iir_Kind_Aggregate =>
             if Atype_Defined then
-               return Sem_Aggregate (Expr, Atype, Force_Constrained);
+               return Sem_Aggregate (Expr, Atype, Constrained);
             else
                pragma Assert (Expr_Type = Null_Iir);
                Set_Type (Expr, Wildcard_Any_Aggregate_Type);
@@ -5002,7 +5228,7 @@ package body Vhdl.Sem_Expr is
                Ntype : Iir;
             begin
                Sub_Expr := Get_Expression (Expr);
-               if Atype_Defined then
+               if Atype_Defined and then not Flag_Relaxed_Rules then
                   --  Very important: loose the subtype due to
                   --  LRM93 7.3.2.2 Array aggregate.
                   Ntype := Get_Base_Type (Atype);
@@ -5079,16 +5305,21 @@ package body Vhdl.Sem_Expr is
          return;
       end if;
 
-      --  Use the base type; EXPR may define its own subtype (like in
-      --  qualified expression with forwarding) which must not be referenced
-      --  above it.  In any case, that also makes sense: we need to deal with
-      --  types, not with subtypes.
-      Expr_Type := Get_Base_Type (Get_Type (Expr));
+      Expr_Type := Get_Type (Expr);
       if Is_Error (Expr_Type) then
          return;
       end if;
 
-      pragma Assert (Expr_Type /= Null_Iir);
+      if not Is_Overload_List (Expr_Type) then
+         --  Use the base type; EXPR may define its own subtype (like in
+         --  qualified expression with forwarding) which must not be
+         --  referenced before it is defined (so by a parent).  In any case,
+         --  that also makes sense: we need to deal with types, not with
+         --  subtypes.
+         Expr_Type := Get_Base_Type (Expr_Type);
+         pragma Assert (Expr_Type /= Null_Iir);
+      end if;
+
       Result_Type := Compatible_Types_Intersect (Atype, Expr_Type);
       if Atype /= Null_Iir and then Is_Overload_List (Atype) then
          Free_Overload_List (Atype);
@@ -5157,6 +5388,28 @@ package body Vhdl.Sem_Expr is
                Set_Type (Expr, A_Type);
                Sem_String_Literal (Expr);
                return Expr;
+            end if;
+         when Iir_Kind_Parenthesis_Expression =>
+            if Flag_Relaxed_Rules then
+               --  With -frelaxed, consider parentheses as a no-op.
+               --  The difference is significant for aggregates with 'others'
+               --  choice.
+               declare
+                  Sub_Expr : Iir;
+               begin
+                  Sub_Expr := Get_Expression (Expr);
+                  Sub_Expr := Sem_Expression (Sub_Expr, A_Type);
+                  if Sub_Expr = Null_Iir then
+                     return Null_Iir;
+                  end if;
+                  Set_Expression (Expr, Sub_Expr);
+                  Set_Type (Expr, Get_Type (Sub_Expr));
+                  Set_Expr_Staticness (Expr, Get_Expr_Staticness (Sub_Expr));
+                  return Expr;
+               end;
+            else
+               --  Loose the subtype, use the type.
+               Res := Sem_Parenthesis_Expression (Expr, A_Type1);
             end if;
          when others =>
             Res := Sem_Expression_Ov (Expr, A_Type1);
@@ -5373,6 +5626,67 @@ package body Vhdl.Sem_Expr is
       return Res;
    end Insert_Condition_Operator;
 
+   function Sem_Condition_Pass2 (Cond : Iir) return Iir
+   is
+      Cond_Type : Iir;
+   begin
+      Cond_Type := Get_Type (Cond);
+      if Cond_Type = Null_Iir then
+         --  Error.
+         return Cond;
+      end if;
+
+      if not Is_Overload_List (Cond_Type) then
+         --  Only one result.  Operator "??" is not applied if the result
+         --  is of type boolean.
+         if Are_Types_Compatible (Cond_Type, Boolean_Type_Definition)
+           /= Not_Compatible
+         then
+            Check_Read (Cond);
+            return Cond;
+         end if;
+      else
+         --  Many interpretations.
+         declare
+            Res_List : constant Iir_List := Get_Overload_List (Cond_Type);
+            It : List_Iterator;
+            El : Iir;
+            Nbr_Booleans : Natural;
+            Res : Iir;
+         begin
+            Nbr_Booleans := 0;
+
+            --  Extract boolean interpretations.
+            It := List_Iterate (Res_List);
+            while Is_Valid (It) loop
+               El := Get_Element (It);
+               if Are_Types_Compatible (El, Boolean_Type_Definition)
+                 /= Not_Compatible
+               then
+                  Nbr_Booleans := Nbr_Booleans + 1;
+               end if;
+               Next (It);
+            end loop;
+
+            if Nbr_Booleans >= 1 then
+               --  There is one or more boolean interpretations: keep them.
+               --  In case of multiple boolean interpretations, an error
+               --  message will be generated.
+               Res := Sem_Expression_Ov (Cond, Boolean_Type_Definition);
+               Check_Read (Res);
+               return Res;
+            end if;
+         end;
+      end if;
+
+      --  LRM08 9.2.9
+      --  Otherwise, the condition operator is implicitely applied, and the
+      --  type of the expresion with the implicit application shall be
+      --  BOOLEAN defined in package STANDARD.
+
+      return Insert_Condition_Operator (Cond);
+   end Sem_Condition_Pass2;
+
    function Sem_Condition (Cond : Iir) return Iir
    is
       Res : Iir;
@@ -5400,58 +5714,10 @@ package body Vhdl.Sem_Expr is
 
          if Res = Null_Iir then
             --  Error occurred.
-            return Res;
+            return Null_Iir;
          end if;
 
-         if not Is_Overloaded (Res) then
-            --  Only one result.  Operator "??" is not applied if the result
-            --  is of type boolean.
-            if Are_Types_Compatible (Get_Type (Res), Boolean_Type_Definition)
-              /= Not_Compatible
-            then
-               Check_Read (Res);
-               return Res;
-            end if;
-         elsif Get_Type (Res) /= Null_Iir then
-            --  Many interpretations.
-            declare
-               Res_List : constant Iir_List :=
-                 Get_Overload_List (Get_Type (Res));
-               It : List_Iterator;
-               El : Iir;
-               Nbr_Booleans : Natural;
-            begin
-               Nbr_Booleans := 0;
-
-               --  Extract boolean interpretations.
-               It := List_Iterate (Res_List);
-               while Is_Valid (It) loop
-                  El := Get_Element (It);
-                  if Are_Types_Compatible (El, Boolean_Type_Definition)
-                    /= Not_Compatible
-                  then
-                     Nbr_Booleans := Nbr_Booleans + 1;
-                  end if;
-                  Next (It);
-               end loop;
-
-               if Nbr_Booleans >= 1 then
-                  --  There is one or more boolean interpretations: keep them.
-                  --  In case of multiple boolean interpretations, an error
-                  --  message will be generated.
-                  Res := Sem_Expression_Ov (Cond, Boolean_Type_Definition);
-                  Check_Read (Res);
-                  return Res;
-               end if;
-            end;
-         end if;
-
-         --  LRM08 9.2.9
-         --  Otherwise, the condition operator is implicitely applied, and the
-         --  type of the expresion with the implicit application shall be
-         --  BOOLEAN defined in package STANDARD.
-
-         return Insert_Condition_Operator (Res);
+         return Sem_Condition_Pass2 (Res);
       end if;
    end Sem_Condition;
 

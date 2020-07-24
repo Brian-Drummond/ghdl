@@ -23,6 +23,7 @@ with Vhdl.Nodes; use Vhdl.Nodes;
 
 with Netlists; use Netlists;
 
+with Synth.Objtypes; use Synth.Objtypes;
 with Synth.Values; use Synth.Values;
 with Synth.Context; use Synth.Context;
 with Synth.Environment; use Synth.Environment;
@@ -33,28 +34,55 @@ package Synth.Stmts is
                                            Inter_Chain : Node;
                                            Assoc_Chain : Node);
 
+   --  Dynamic index for Synth_Assignment_Prefix.
+   --  As dynamic is about dynamic (!) index, the index is a net.
+   type Dyn_Name is record
+      --  Start and type of the indexed part, which can be a part of the
+      --  base name.
+      Pfx_Off : Value_Offsets;
+      Pfx_Typ : Type_Acc;
+
+      --  Variable offset.
+      Voff : Net;
+   end record;
+
+   No_Dyn_Name : constant Dyn_Name := (Pfx_Off => No_Value_Offsets,
+                                       Pfx_Typ => null,
+                                       Voff => No_Net);
+
+   --  Transform PFX into DEST_*.
+   --  DEST_BASE is the base object (with its own typ).  Can be the result,
+   --   a net or an object larger than the result.
+   --  DEST_TYP is the type of the result.
+   --  DEST_OFF is the offset, within DEST_DYN.
+   --  DEST_DYN is set (Voff field set) when there is a non-static index.
    procedure Synth_Assignment_Prefix (Syn_Inst : Synth_Instance_Acc;
                                       Pfx : Node;
-                                      Dest_Obj : out Value_Acc;
-                                      Dest_Off : out Uns32;
-                                      Dest_Voff : out Net;
-                                      Dest_Rdwd : out Width;
-                                      Dest_Type : out Type_Acc);
+                                      Dest_Base : out Valtyp;
+                                      Dest_Typ : out Type_Acc;
+                                      Dest_Off : out Value_Offsets;
+                                      Dest_Dyn : out Dyn_Name);
 
    procedure Synth_Assignment (Syn_Inst : Synth_Instance_Acc;
                                Target : Node;
-                               Val : Value_Acc;
+                               Val : Valtyp;
                                Loc : Node);
 
    function Synth_Read_Memory (Syn_Inst : Synth_Instance_Acc;
-                               Obj : Value_Acc;
+                               Obj : Valtyp;
+                               Res_Typ : Type_Acc;
                                Off : Uns32;
-                               Voff : Net;
-                               Typ : Type_Acc;
-                               Loc : Node) return Value_Acc;
+                               Dyn : Dyn_Name;
+                               Loc : Node) return Valtyp;
 
    function Synth_User_Function_Call
-     (Syn_Inst : Synth_Instance_Acc; Expr : Node) return Value_Acc;
+     (Syn_Inst : Synth_Instance_Acc; Expr : Node) return Valtyp;
+
+   --  Operation implemented by a user function.
+   function Synth_User_Operator (Syn_Inst : Synth_Instance_Acc;
+                                 Left_Expr : Node;
+                                 Right_Expr : Node;
+                                 Expr : Node) return Valtyp;
 
    --  Generate netlists for concurrent statements STMTS.
    procedure Synth_Concurrent_Statements
@@ -65,7 +93,7 @@ package Synth.Stmts is
 
    --  For iterators.
    function In_Range (Rng : Discrete_Range_Type; V : Int64) return Boolean;
-   procedure Update_Index (Rng : Discrete_Range_Type; Idx : in out Int64);
+   procedure Update_Index (Rng : Discrete_Range_Type; V : in out Valtyp);
 
 private
    --  There are 2 execution mode:
@@ -85,6 +113,7 @@ private
 
       case Mode is
          when Mode_Dynamic =>
+            --  Set when this loop has next/exit statements for itself.
             --  Set to true so that inner loops have to declare W_Quit.
             Need_Quit : Boolean;
 
@@ -114,13 +143,13 @@ private
 
       Cur_Loop : Loop_Context_Acc;
 
-      Ret_Value : Value_Acc;
+      Ret_Value : Valtyp;
       Ret_Typ : Type_Acc;
       Nbr_Ret : Int32;
 
       case Mode is
          when Mode_Dynamic =>
-            --  Enable execution.
+            --  Enable execution.  For loop controls.
             W_En : Wire_Id;
 
             W_Ret : Wire_Id;

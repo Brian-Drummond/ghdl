@@ -20,7 +20,6 @@
 
 with Types_Utils; use Types_Utils;
 
-with Netlists.Gates; use Netlists.Gates;
 with Netlists.Utils; use Netlists.Utils;
 with Netlists.Locations; use Netlists.Locations;
 
@@ -39,7 +38,7 @@ package body Netlists.Folds is
             Inst := Build_Const_Bit (Ctxt, W);
             Set_Param_Uns32 (Inst, 0, Uns32 (Val and 16#ffff_ffff#));
             Set_Param_Uns32 (Inst, 1, Uns32 (Shift_Right (Val, 32)));
-            for I in 2 .. (W + 31) / 32 loop
+            for I in 2 .. (W + 31) / 32 - 1 loop
                Set_Param_Uns32 (Inst, Param_Idx (I), 0);
             end loop;
             return Get_Output (Inst, 0);
@@ -81,7 +80,7 @@ package body Netlists.Folds is
             Inst := Build_Const_Bit (Ctxt, W);
             Set_Param_Uns32 (Inst, 0, Uns32 (V and 16#ffff_ffff#));
             Set_Param_Uns32 (Inst, 1, Uns32 (Shift_Right (V, 32)));
-            for I in 2 .. (W + 31) / 32 loop
+            for I in 2 .. (W + 31) / 32 - 1 loop
                Set_Param_Uns32 (Inst, Param_Idx (I), S);
             end loop;
             return Get_Output (Inst, 0);
@@ -175,7 +174,7 @@ package body Netlists.Folds is
    function Build2_Uresize (Ctxt : Context_Acc;
                             I : Net;
                             W : Width;
-                            Loc : Location_Type := No_Location)
+                            Loc : Location_Type)
                            return Net
    is
       Wn : constant Width := Get_Width (I);
@@ -216,7 +215,7 @@ package body Netlists.Folds is
    function Build2_Sresize (Ctxt : Context_Acc;
                             I : Net;
                             W : Width;
-                            Loc : Location_Type := No_Location)
+                            Loc : Location_Type)
                            return Net
    is
       Wn : constant Width := Get_Width (I);
@@ -231,8 +230,7 @@ package body Netlists.Folds is
                Sh : constant Natural := Natural (Width'Min (Wn, W));
             begin
                V := Get_Net_Uns64 (I);
-               V := Shift_Left (V, 64 - Sh);
-               V := Shift_Right_Arithmetic (V, 64 - Sh);
+               V := Sext (V, Sh);
                Res := Build2_Const_Int (Ctxt, To_Int64 (V), W);
             end;
          else
@@ -248,6 +246,20 @@ package body Netlists.Folds is
       end if;
    end Build2_Sresize;
 
+   function Build2_Resize (Ctxt : Context_Acc;
+                           I : Net;
+                           W : Width;
+                           Is_Signed : Boolean;
+                           Loc : Location_Type)
+                          return Net is
+   begin
+      if Is_Signed then
+         return Build2_Sresize (Ctxt, I, W, Loc);
+      else
+         return Build2_Uresize (Ctxt, I, W, Loc);
+      end if;
+   end Build2_Resize;
+
    function Build2_Extract
      (Ctxt : Context_Acc; I : Net; Off, W : Width) return Net is
    begin
@@ -257,4 +269,58 @@ package body Netlists.Folds is
          return Build_Extract (Ctxt, I, Off, W);
       end if;
    end Build2_Extract;
+
+   function Build2_Imp (Ctxt : Context_Acc; A, B : Net; Loc : Location_Type)
+                       return Net
+   is
+      N : Net;
+   begin
+      N := Build_Monadic (Ctxt, Id_Not, A);
+      Set_Location (N, Loc);
+      N := Build_Dyadic (Ctxt, Id_Or, N, B);
+      Set_Location (N, Loc);
+      return N;
+   end Build2_Imp;
+
+   function Build2_And (Ctxt : Context_Acc; A, B : Net; Loc : Location_Type)
+                       return Net
+   is
+      pragma Assert (B /= No_Net);
+      N : Net;
+   begin
+      if A = No_Net then
+         return B;
+      end if;
+      N := Build_Dyadic (Ctxt, Id_And, A, B);
+      Set_Location (N, Loc);
+      return N;
+   end Build2_And;
+
+   function Build2_Compare (Ctxt : Context_Acc;
+                            Id   : Compare_Module_Id;
+                            L, R : Net) return Net
+   is
+      W : constant Width := Get_Width (L);
+   begin
+      if W > 0 then
+         --  A real gate.
+         return Build_Compare (Ctxt, Id, L, R);
+      end if;
+
+      pragma Assert (Get_Width (R) = 0);
+      case Id is
+         when Id_Eq
+            | Id_Sle
+            | Id_Ule
+            | Id_Sge
+            | Id_Uge =>
+            return Build_Const_UB32 (Ctxt, 1, 1);
+         when Id_Ne
+            | Id_Slt
+            | Id_Ult
+            | Id_Sgt
+            | Id_Ugt =>
+            return Build_Const_UB32 (Ctxt, 0, 1);
+      end case;
+   end Build2_Compare;
 end Netlists.Folds;

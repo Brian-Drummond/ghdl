@@ -328,6 +328,9 @@ package body Ghdlrun is
            Grt.Lib.Ghdl_Bound_Check_Failed'Address);
       Def (Trans_Decls.Ghdl_Direction_Check_Failed,
            Grt.Lib.Ghdl_Direction_Check_Failed'Address);
+      Def (Trans_Decls.Ghdl_Integer_Index_Check_Failed,
+           Grt.Lib.Ghdl_Integer_Index_Check_Failed'Address);
+
       Def (Trans_Decls.Ghdl_Malloc0,
            Grt.Lib.Ghdl_Malloc0'Address);
       Def (Trans_Decls.Ghdl_Std_Ulogic_To_Boolean_Array,
@@ -753,7 +756,7 @@ package body Ghdlrun is
    function Decode_Command (Cmd : Command_Run_Help; Name : String)
                            return Boolean;
    function Get_Short_Help (Cmd : Command_Run_Help) return String;
-   procedure Perform_Action (Cmd : Command_Run_Help;
+   procedure Perform_Action (Cmd : in out Command_Run_Help;
                              Args : Argument_List);
 
    function Decode_Command (Cmd : Command_Run_Help; Name : String)
@@ -771,7 +774,7 @@ package body Ghdlrun is
       return "--run-help         Disp help for RUNOPTS options";
    end Get_Short_Help;
 
-   procedure Perform_Action (Cmd : Command_Run_Help;
+   procedure Perform_Action (Cmd : in out Command_Run_Help;
                              Args : Argument_List)
    is
       pragma Unreferenced (Cmd);

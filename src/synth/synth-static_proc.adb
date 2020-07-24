@@ -30,10 +30,14 @@ package body Synth.Static_Proc is
    procedure Synth_Deallocate (Syn_Inst : Synth_Instance_Acc; Imp : Node)
    is
       Inter : constant Node := Get_Interface_Declaration_Chain (Imp);
-      Param : constant Value_Acc := Get_Value (Syn_Inst, Inter);
+      Param : constant Valtyp := Get_Value (Syn_Inst, Inter);
+      Val : Heap_Index;
    begin
-      Synth.Heap.Synth_Deallocate (Param.Acc);
-      Param.Acc := Null_Heap_Index;
+      Val := Read_Access (Param);
+      if Val /= Null_Heap_Index then
+         Synth.Heap.Synth_Deallocate (Val);
+         Write_Access (Param.Val.Mem, Null_Heap_Index);
+      end if;
    end Synth_Deallocate;
 
    procedure Synth_Static_Procedure (Syn_Inst : Synth_Instance_Acc;
@@ -41,10 +45,16 @@ package body Synth.Static_Proc is
                                      Loc : Node) is
    begin
       case Get_Implicit_Definition (Imp) is
+         when Iir_Predefined_File_Open =>
+            Synth_File_Open (Syn_Inst, Imp, Loc);
+         when Iir_Predefined_File_Close =>
+            Synth_File_Close (Syn_Inst, Imp, Loc);
          when Iir_Predefined_Foreign_Untruncated_Text_Read =>
             Synth_Untruncated_Text_Read (Syn_Inst, Imp, Loc);
          when Iir_Predefined_Deallocate =>
             Synth_Deallocate (Syn_Inst, Imp);
+         when Iir_Predefined_Read =>
+            Synth_File_Read (Syn_Inst, Imp, Loc);
          when others =>
             Error_Msg_Synth
               (+Loc, "call to implicit %n is not supported", +Imp);
