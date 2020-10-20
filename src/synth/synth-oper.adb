@@ -45,12 +45,6 @@ package body Synth.Oper is
      renames Synth.Source.Set_Location;
 
    function Synth_Uresize
-     (Ctxt : Context_Acc; N : Net; W : Width; Loc : Node) return Net is
-   begin
-      return Build2_Uresize (Ctxt, N, W, Get_Location (Loc));
-   end Synth_Uresize;
-
-   function Synth_Uresize
      (Ctxt : Context_Acc; Val : Valtyp; W : Width; Loc : Node) return Net
    is
       Res : Net;
@@ -66,7 +60,7 @@ package body Synth.Oper is
          Set_Location (Res, Loc);
          return Res;
       end if;
-      return Synth_Uresize (Ctxt, Get_Net (Ctxt, Val), W, Loc);
+      return Build2_Uresize (Ctxt, Get_Net (Ctxt, Val), W, Get_Location (Loc));
    end Synth_Uresize;
 
    function Synth_Sresize
@@ -84,9 +78,21 @@ package body Synth.Oper is
          Set_Location (Res, Loc);
          return Res;
       end if;
-      return Build2_Sresize (Ctxt, Get_Net (Ctxt, Val), W,
-                             Get_Location (Loc));
+      return Build2_Sresize (Ctxt, Get_Net (Ctxt, Val), W, Get_Location (Loc));
    end Synth_Sresize;
+
+   function Synth_Resize (Ctxt : Context_Acc;
+                          Val : Valtyp;
+                          W : Width;
+                          Sgn : Boolean;
+                          Loc : Node) return Net is
+   begin
+      if Sgn then
+         return Synth_Sresize (Ctxt, Val, W, Loc);
+      else
+         return Synth_Uresize (Ctxt, Val, W, Loc);
+      end if;
+   end Synth_Resize;
 
    function Synth_Bit_Eq_Const
      (Ctxt : Context_Acc; Cst : Valtyp; Expr : Valtyp; Loc : Node)
@@ -264,17 +270,19 @@ package body Synth.Oper is
    end Synth_Match;
 
    --  Note: LEFT or RIGHT can be a single bit.
-   function Synth_Dyadic_Uns_Uns (Ctxt : Context_Acc;
+   function Synth_Dyadic_Xxx_Xxx (Ctxt : Context_Acc;
                                   Id : Dyadic_Module_Id;
+                                  W : Width;
                                   Left, Right : Valtyp;
+                                  Lsgn, Rsgn : Boolean;
                                   Expr : Node) return Valtyp
    is
-      W : constant Width := Width'Max (Left.Typ.W, Right.Typ.W);
       El_Typ : Type_Acc;
       Rtype : Type_Acc;
       L1, R1 : Net;
       N : Net;
    begin
+      --  Note: LEFT or RIGHT can be a single bit.
       if Left.Typ.Kind = Type_Vector then
          El_Typ := Left.Typ.Vec_El;
       elsif Right.Typ.Kind = Type_Vector then
@@ -283,12 +291,55 @@ package body Synth.Oper is
          raise Internal_Error;
       end if;
       Rtype := Create_Vec_Type_By_Length (W, El_Typ);
-      L1 := Synth_Uresize (Ctxt, Left, W, Expr);
-      R1 := Synth_Uresize (Ctxt, Right, W, Expr);
+
+      L1 := Synth_Resize (Ctxt, Left, W, Lsgn, Expr);
+      R1 := Synth_Resize (Ctxt, Right, W, Rsgn, Expr);
       N := Build_Dyadic (Ctxt, Id, L1, R1);
       Set_Location (N, Expr);
       return Create_Value_Net (N, Rtype);
+   end Synth_Dyadic_Xxx_Xxx;
+
+   function Synth_Dyadic_Uns_Uns (Ctxt : Context_Acc;
+                                  Id : Dyadic_Module_Id;
+                                  Left, Right : Valtyp;
+                                  Expr : Node) return Valtyp is
+   begin
+      return Synth_Dyadic_Xxx_Xxx
+        (Ctxt, Id, Width'Max (Left.Typ.W, Right.Typ.W),
+         Left, Right, False, False, Expr);
    end Synth_Dyadic_Uns_Uns;
+
+   function Synth_Dyadic_Sgn_Sgn (Ctxt : Context_Acc;
+                                  Id : Dyadic_Module_Id;
+                                  Left, Right : Valtyp;
+                                  Expr : Node) return Valtyp is
+   begin
+      return Synth_Dyadic_Xxx_Xxx
+        (Ctxt, Id, Width'Max (Left.Typ.W, Right.Typ.W),
+         Left, Right, True, True, Expr);
+   end Synth_Dyadic_Sgn_Sgn;
+
+   --  For std_logic_arith
+   function Synth_Dyadic_Uns_Sgn_Sgn (Ctxt : Context_Acc;
+                                      Id : Dyadic_Module_Id;
+                                      Left, Right : Valtyp;
+                                      Expr : Node) return Valtyp is
+   begin
+      return Synth_Dyadic_Xxx_Xxx
+        (Ctxt, Id, Width'Max (Left.Typ.W + 1, Right.Typ.W),
+         Left, Right, False, True, Expr);
+   end Synth_Dyadic_Uns_Sgn_Sgn;
+
+   --  For std_logic_arith
+   function Synth_Dyadic_Sgn_Uns_Sgn (Ctxt : Context_Acc;
+                                      Id : Dyadic_Module_Id;
+                                      Left, Right : Valtyp;
+                                      Expr : Node) return Valtyp is
+   begin
+      return Synth_Dyadic_Xxx_Xxx
+        (Ctxt, Id, Width'Max (Left.Typ.W, Right.Typ.W + 1),
+         Left, Right, True, False, Expr);
+   end Synth_Dyadic_Sgn_Uns_Sgn;
 
    function Synth_Dyadic_Uns_Nat (Ctxt : Context_Acc;
                                   Id : Dyadic_Module_Id;
@@ -320,33 +371,6 @@ package body Synth.Oper is
       return Create_Value_Net (N, Create_Res_Bound (Right));
    end Synth_Dyadic_Nat_Uns;
 
-   --  Note: LEFT or RIGHT can be a single bit.
-   function Synth_Dyadic_Sgn_Sgn (Ctxt : Context_Acc;
-                                  Id : Dyadic_Module_Id;
-                                  Left, Right : Valtyp;
-                                  Expr : Node) return Valtyp
-   is
-      W : constant Width := Width'Max (Left.Typ.W, Right.Typ.W);
-      El_Typ : Type_Acc;
-      Rtype : Type_Acc;
-      L1, R1 : Net;
-      N : Net;
-   begin
-      if Left.Typ.Kind = Type_Vector then
-         El_Typ := Left.Typ.Vec_El;
-      elsif Right.Typ.Kind = Type_Vector then
-         El_Typ := Right.Typ.Vec_El;
-      else
-         raise Internal_Error;
-      end if;
-      Rtype := Create_Vec_Type_By_Length (W, El_Typ);
-      L1 := Synth_Sresize (Ctxt, Left, W, Expr);
-      R1 := Synth_Sresize (Ctxt, Right, W, Expr);
-      N := Build_Dyadic (Ctxt, Id, L1, R1);
-      Set_Location (N, Expr);
-      return Create_Value_Net (N, Rtype);
-   end Synth_Dyadic_Sgn_Sgn;
-
    function Synth_Dyadic_Sgn_Int (Ctxt : Context_Acc;
                                   Id : Dyadic_Module_Id;
                                   Left, Right : Valtyp;
@@ -376,6 +400,24 @@ package body Synth.Oper is
       Set_Location (N, Expr);
       return Create_Value_Net (N, Create_Res_Bound (Right));
    end Synth_Dyadic_Int_Sgn;
+
+   function Synth_Compare_Xxx_Xxx (Ctxt : Context_Acc;
+                                   Id : Compare_Module_Id;
+                                   W : Width;
+                                   Left, Right : Valtyp;
+                                   Lsgn, Rsgn : Boolean;
+                                   Res_Typ : Type_Acc;
+                                   Expr : Node) return Valtyp
+   is
+      L1, R1 : Net;
+      N : Net;
+   begin
+      L1 := Synth_Resize (Ctxt, Left, W, Lsgn, Expr);
+      R1 := Synth_Resize (Ctxt, Right, W, Rsgn, Expr);
+      N := Build2_Compare (Ctxt, Id, L1, R1);
+      Set_Location (N, Expr);
+      return Create_Value_Net (N, Res_Typ);
+   end Synth_Compare_Xxx_Xxx;
 
    function Synth_Dyadic_Operation (Syn_Inst : Synth_Instance_Acc;
                                     Imp : Node;
@@ -462,49 +504,89 @@ package body Synth.Oper is
          end if;
       end Synth_Compare_Array;
 
-      function Synth_Compare_Uns_Nat
-        (Id : Compare_Module_Id; Res_Type : Type_Acc) return Valtyp
-      is
-         N : Net;
+      function Synth_Compare_Uns_Uns
+        (Id : Compare_Module_Id; Res_Type : Type_Acc) return Valtyp is
       begin
-         N := Synth_Uresize (Ctxt, Right, Left.Typ.W, Expr);
-         N := Build2_Compare (Ctxt, Id, Get_Net (Ctxt, Left), N);
-         Set_Location (N, Expr);
-         return Create_Value_Net (N, Res_Type);
+         return Synth_Compare_Xxx_Xxx
+           (Ctxt, Id, Width'Max (Left.Typ.W, Right.Typ.W),
+            Left, Right, False, False, Res_Type, Expr);
+      end Synth_Compare_Uns_Uns;
+
+      function Synth_Compare_Sgn_Sgn
+        (Id : Compare_Module_Id; Res_Type : Type_Acc) return Valtyp is
+      begin
+         return Synth_Compare_Xxx_Xxx
+           (Ctxt, Id, Width'Max (Left.Typ.W, Right.Typ.W),
+            Left, Right, True, True, Res_Type, Expr);
+      end Synth_Compare_Sgn_Sgn;
+
+      --  For std_logic_arith
+      function Synth_Compare_Uns_Sgn
+        (Id : Compare_Module_Id; Res_Typ : Type_Acc) return Valtyp is
+      begin
+         return Synth_Compare_Xxx_Xxx
+           (Ctxt, Id, Width'Max (Left.Typ.W + 1, Right.Typ.W),
+            Left, Right, False, True, Res_Typ, Expr);
+      end Synth_Compare_Uns_Sgn;
+
+      --  For std_logic_arith
+      function Synth_Compare_Sgn_Uns
+        (Id : Compare_Module_Id; Res_Typ : Type_Acc) return Valtyp is
+      begin
+         return Synth_Compare_Xxx_Xxx
+           (Ctxt, Id, Width'Max (Left.Typ.W, Right.Typ.W + 1),
+            Left, Right, True, False, Res_Typ, Expr);
+      end Synth_Compare_Sgn_Uns;
+
+      function Synth_Compare_Uns_Nat
+        (Id : Compare_Module_Id; Res_Typ : Type_Acc) return Valtyp is
+      begin
+         return Synth_Compare_Xxx_Xxx
+           (Ctxt, Id, Left.Typ.W,
+            Left, Right, False, False, Res_Typ, Expr);
       end Synth_Compare_Uns_Nat;
 
       function Synth_Compare_Nat_Uns
-        (Id : Compare_Module_Id; Res_Type : Type_Acc) return Valtyp
-      is
-         N : Net;
+        (Id : Compare_Module_Id; Res_Typ : Type_Acc) return Valtyp is
       begin
-         N := Synth_Uresize (Ctxt, Left, Right.Typ.W, Expr);
-         N := Build2_Compare (Ctxt, Id, Get_Net (Ctxt, Right), N);
-         Set_Location (N, Expr);
-         return Create_Value_Net (N, Res_Type);
+         return Synth_Compare_Xxx_Xxx
+           (Ctxt, Id, Right.Typ.W,
+            Left, Right, False, False, Res_Typ, Expr);
       end Synth_Compare_Nat_Uns;
 
       function Synth_Compare_Sgn_Int
-        (Id : Compare_Module_Id; Res_Typ : Type_Acc) return Valtyp
-      is
-         N : Net;
+        (Id : Compare_Module_Id; Res_Typ : Type_Acc) return Valtyp is
       begin
-         N := Synth_Sresize (Ctxt, Right, Left.Typ.W, Expr);
-         N := Build2_Compare (Ctxt, Id, Get_Net (Ctxt, Left), N);
-         Set_Location (N, Expr);
-         return Create_Value_Net (N, Res_Typ);
+         return Synth_Compare_Xxx_Xxx
+           (Ctxt, Id, Left.Typ.W,
+            Left, Right, True, True, Res_Typ, Expr);
       end Synth_Compare_Sgn_Int;
 
       function Synth_Compare_Int_Sgn
-        (Id : Compare_Module_Id; Res_Typ : Type_Acc) return Valtyp
-      is
-         N : Net;
+        (Id : Compare_Module_Id; Res_Typ : Type_Acc) return Valtyp is
       begin
-         N := Synth_Sresize (Ctxt, Left, Right.Typ.W, Expr);
-         N := Build2_Compare (Ctxt, Id, N, Get_Net (Ctxt, Right));
-         Set_Location (N, Expr);
-         return Create_Value_Net (N, Res_Typ);
+         return Synth_Compare_Xxx_Xxx
+           (Ctxt, Id, Right.Typ.W,
+            Left, Right, True, True, Res_Typ, Expr);
       end Synth_Compare_Int_Sgn;
+
+      --  For std_logic_arith
+      function Synth_Compare_Uns_Int
+        (Id : Compare_Module_Id; Res_Typ : Type_Acc) return Valtyp is
+      begin
+         return Synth_Compare_Xxx_Xxx
+           (Ctxt, Id, Left.Typ.W + 1,
+            Left, Right, False, True, Res_Typ, Expr);
+      end Synth_Compare_Uns_Int;
+
+      --  For std_logic_arith
+      function Synth_Compare_Int_Uns
+        (Id : Compare_Module_Id; Res_Typ : Type_Acc) return Valtyp is
+      begin
+         return Synth_Compare_Xxx_Xxx
+           (Ctxt, Id, Right.Typ.W + 1,
+            Left, Right, True, False, Res_Typ, Expr);
+      end Synth_Compare_Int_Uns;
 
       function Synth_Vec_Dyadic (Id : Dyadic_Module_Id) return Valtyp
       is
@@ -530,34 +612,6 @@ package body Synth.Oper is
          Set_Location (N, Expr);
          return Create_Value_Net (N, Etype);
       end Synth_Int_Dyadic;
-
-      function Synth_Compare_Uns_Uns
-        (Id : Compare_Module_Id; Res_Type : Type_Acc) return Valtyp
-      is
-         W : constant Width := Width'Max (Left.Typ.W, Right.Typ.W);
-         L1, R1 : Net;
-         N : Net;
-      begin
-         L1 := Synth_Uresize (Ctxt, Left, W, Expr);
-         R1 := Synth_Uresize (Ctxt, Right, W, Expr);
-         N := Build2_Compare (Ctxt, Id, L1, R1);
-         Set_Location (N, Expr);
-         return Create_Value_Net (N, Res_Type);
-      end Synth_Compare_Uns_Uns;
-
-      function Synth_Compare_Sgn_Sgn
-        (Id : Compare_Module_Id; Res_Typ : Type_Acc) return Valtyp
-      is
-         W : constant Width := Width'Max (Left.Typ.W, Right.Typ.W);
-         L1, R1 : Net;
-         N : Net;
-      begin
-         L1 := Synth_Sresize (Ctxt, Left, W, Expr);
-         R1 := Synth_Sresize (Ctxt, Right, W, Expr);
-         N := Build2_Compare (Ctxt, Id, L1, R1);
-         Set_Location (N, Expr);
-         return Create_Value_Net (N, Res_Typ);
-      end Synth_Compare_Sgn_Sgn;
 
       type Oper_Kind is (Oper_Left, Oper_Right);
 
@@ -770,6 +824,8 @@ package body Synth.Oper is
             --  TODO: Optimize ?
             return Synth_Compare (Id_Ne, Boolean_Type);
          when Iir_Predefined_Enum_Less_Equal =>
+            return Synth_Compare (Id_Ule, Boolean_Type);
+         when Iir_Predefined_Enum_Less =>
             return Synth_Compare (Id_Ult, Boolean_Type);
 
          when Iir_Predefined_Std_Ulogic_Match_Equality =>
@@ -867,392 +923,6 @@ package body Synth.Oper is
             return Synth_Compare_Array (Id_Uge, Boolean_Type);
          when Iir_Predefined_Array_Less =>
             return Synth_Compare_Array (Id_Ult, Boolean_Type);
-
-         when Iir_Predefined_Ieee_Numeric_Std_Add_Uns_Nat
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Uns_Int_Slv
-            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Add_Slv_Int =>
-            --  "+" (Unsigned, Natural)
-            return Synth_Dyadic_Uns_Nat (Ctxt, Id_Add, Left, Right, Expr);
-         when Iir_Predefined_Ieee_Numeric_Std_Add_Nat_Uns =>
-            --  "+" (Natural, Unsigned)
-            return Synth_Dyadic_Nat_Uns (Ctxt, Id_Add, Left, Right, Expr);
-         when Iir_Predefined_Ieee_Numeric_Std_Add_Uns_Uns
-            | Iir_Predefined_Ieee_Numeric_Std_Add_Uns_Log
-            | Iir_Predefined_Ieee_Numeric_Std_Add_Sgn_Log
-            | Iir_Predefined_Ieee_Numeric_Std_Add_Log_Sgn
-            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Add_Slv_Log
-            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Add_Slv_Slv
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Uns_Uns_Uns
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Uns_Uns_Slv
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Uns_Log_Slv
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Uns_Log_Uns
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Sgn_Log_Sgn
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Log_Sgn_Sgn =>
-            --  "+" (Unsigned, Unsigned)
-            return Synth_Dyadic_Uns_Uns (Ctxt, Id_Add, Left, Right, Expr);
-         when Iir_Predefined_Ieee_Numeric_Std_Add_Sgn_Int
-            | Iir_Predefined_Ieee_Std_Logic_Signed_Add_Slv_Int =>
-            --  "+" (Signed, Integer)
-            return Synth_Dyadic_Sgn_Int (Ctxt, Id_Add, Left, Right, Expr);
-         when Iir_Predefined_Ieee_Numeric_Std_Add_Int_Sgn
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Int_Sgn_Sgn
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Int_Sgn_Slv =>
-            --  "+" (Integer, Signed)
-            return Synth_Dyadic_Int_Sgn (Ctxt, Id_Add, Left, Right, Expr);
-         when Iir_Predefined_Ieee_Numeric_Std_Add_Sgn_Sgn
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Sgn_Sgn_Sgn
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Sgn_Sgn_Slv
-            | Iir_Predefined_Ieee_Std_Logic_Signed_Add_Slv_Slv =>
-            --  "+" (Signed, Signed)
-            return Synth_Dyadic_Sgn_Sgn (Ctxt, Id_Add, Left, Right, Expr);
-
-         when Iir_Predefined_Ieee_Numeric_Std_Sub_Uns_Nat
-            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Sub_Slv_Int =>
-            --  "-" (Unsigned, Natural)
-            return Synth_Dyadic_Uns_Nat (Ctxt, Id_Sub, Left, Right, Expr);
-         when Iir_Predefined_Ieee_Numeric_Std_Sub_Uns_Uns
-            | Iir_Predefined_Ieee_Numeric_Std_Sub_Uns_Log
-            | Iir_Predefined_Ieee_Numeric_Std_Sub_Sgn_Log
-            | Iir_Predefined_Ieee_Numeric_Std_Sub_Log_Sgn
-            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Sub_Slv_Slv
-            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Sub_Log_Slv
-            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Sub_Slv_Log
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Uns_Uns_Uns
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Uns_Uns_Slv
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Uns_Log_Uns
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Sgn_Log_Sgn =>
-            --  "-" (Unsigned, Unsigned)
-            return Synth_Dyadic_Uns_Uns (Ctxt, Id_Sub, Left, Right, Expr);
-         when Iir_Predefined_Ieee_Numeric_Std_Sub_Nat_Uns =>
-            --  "-" (Natural, Unsigned)
-            return Synth_Dyadic_Nat_Uns (Ctxt, Id_Sub, Left, Right, Expr);
-         when Iir_Predefined_Ieee_Numeric_Std_Sub_Sgn_Int
-            | Iir_Predefined_Ieee_Std_Logic_Signed_Sub_Slv_Int =>
-            --  "-" (Signed, Integer)
-            return Synth_Dyadic_Sgn_Int (Ctxt, Id_Sub, Left, Right, Expr);
-         when Iir_Predefined_Ieee_Numeric_Std_Sub_Int_Sgn =>
-            --  "-" (Integer, Signed)
-            return Synth_Dyadic_Int_Sgn (Ctxt, Id_Sub, Left, Right, Expr);
-         when Iir_Predefined_Ieee_Numeric_Std_Sub_Sgn_Sgn
-            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Sgn_Sgn_Sgn
-            | Iir_Predefined_Ieee_Std_Logic_Signed_Sub_Slv_Slv =>
-            --  "-" (Signed, Signed)
-            return Synth_Dyadic_Sgn_Sgn (Ctxt, Id_Sub, Left, Right, Expr);
-
-         when Iir_Predefined_Ieee_Numeric_Std_Mul_Sgn_Sgn
-           | Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Sgn_Sgn_Sgn
-           | Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Sgn_Sgn_Slv
-           | Iir_Predefined_Ieee_Std_Logic_Signed_Mul_Slv_Slv =>
-            --  "*" (Signed, Signed)
-            declare
-               W : constant Width := Left.Typ.W + Right.Typ.W;
-               L, R : Net;
-               N : Net;
-            begin
-               L := Synth_Sresize (Ctxt, Left, W, Left_Expr);
-               R := Synth_Sresize (Ctxt, Right, W, Right_Expr);
-               N := Build_Dyadic (Ctxt, Id_Smul, L, R);
-               Set_Location (N, Expr);
-               return Create_Value_Net
-                 (N, Create_Vec_Type_By_Length (W, Left.Typ.Vec_El));
-            end;
-         when Iir_Predefined_Ieee_Numeric_Std_Mul_Sgn_Int =>
-            declare
-               Lw : constant Width := Left.Typ.W;
-               W : constant Width := 2 * Lw;
-               Rtype : Type_Acc;
-               L, R : Net;
-               N : Net;
-            begin
-               L := Synth_Sresize (Ctxt, Left, W, Left_Expr);
-               R := Synth_Sresize (Ctxt, Right, W, Right_Expr);
-               Rtype := Create_Vec_Type_By_Length (W, Left.Typ.Vec_El);
-               N := Build_Dyadic (Ctxt, Id_Smul, L, R);
-               Set_Location (N, Expr);
-               return Create_Value_Net (N, Rtype);
-            end;
-         when Iir_Predefined_Ieee_Numeric_Std_Mul_Int_Sgn =>
-            declare
-               Rw : constant Width := Right.Typ.W;
-               W : constant Width := 2 * Rw;
-               Rtype : Type_Acc;
-               L, R : Net;
-               N : Net;
-            begin
-               L := Synth_Sresize (Ctxt, Left, W, Left_Expr);
-               R := Synth_Sresize (Ctxt, Right, W, Right_Expr);
-               Rtype := Create_Vec_Type_By_Length (W, Right.Typ.Vec_El);
-               N := Build_Dyadic (Ctxt, Id_Smul, L, R);
-               Set_Location (N, Expr);
-               return Create_Value_Net (N, Rtype);
-            end;
-         when Iir_Predefined_Ieee_Numeric_Std_Mul_Uns_Uns
-           | Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Uns_Uns_Uns
-           | Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Uns_Uns_Slv
-           | Iir_Predefined_Ieee_Std_Logic_Unsigned_Mul_Slv_Slv =>
-            --  "*" (unsigned, unsigned)
-            declare
-               W : constant Width := Left.Typ.W + Right.Typ.W;
-               Rtype : Type_Acc;
-               L, R : Net;
-               N : Net;
-            begin
-               L := Synth_Uresize (Ctxt, Left, W, Left_Expr);
-               R := Synth_Uresize (Ctxt, Right, W, Right_Expr);
-               Rtype := Create_Vec_Type_By_Length (W, Left.Typ.Vec_El);
-               N := Build_Dyadic (Ctxt, Id_Umul, L, R);
-               Set_Location (N, Expr);
-               return Create_Value_Net (N, Rtype);
-            end;
-         when Iir_Predefined_Ieee_Numeric_Std_Mul_Uns_Nat =>
-            declare
-               Lw : constant Width := Left.Typ.W;
-               W : constant Width := 2 * Lw;
-               L1, R1 : Net;
-               Rtype : Type_Acc;
-               N : Net;
-            begin
-               L1 := Synth_Uresize (Ctxt, Left, W, Expr);
-               R1 := Synth_Uresize (Ctxt, Right, W, Expr);
-               Rtype := Create_Vec_Type_By_Length (W, Left.Typ.Vec_El);
-               N := Build_Dyadic (Ctxt, Id_Umul, L1, R1);
-               Set_Location (N, Expr);
-               return Create_Value_Net (N, Rtype);
-            end;
-         when Iir_Predefined_Ieee_Numeric_Std_Mul_Nat_Uns =>
-            declare
-               Rw : constant Width := Right.Typ.W;
-               W : constant Width := 2 * Rw;
-               L1, R1 : Net;
-               Rtype : Type_Acc;
-               N : Net;
-            begin
-               L1 := Synth_Uresize (Ctxt, Left, W, Expr);
-               R1 := Synth_Uresize (Ctxt, Right, W, Expr);
-               Rtype := Create_Vec_Type_By_Length (W, Right.Typ.Vec_El);
-               N := Build_Dyadic (Ctxt, Id_Umul, L1, R1);
-               Set_Location (N, Expr);
-               return Create_Value_Net (N, Rtype);
-            end;
-         when Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Uns_Sgn_Sgn =>
-            --  "*" (unsigned, signed)
-            declare
-               W : constant Width := Left.Typ.W + 1 + Right.Typ.W;
-               Rtype : Type_Acc;
-               L, R : Net;
-               N : Net;
-            begin
-               L := Synth_Uresize (Ctxt, Left, W, Left_Expr);
-               R := Synth_Sresize (Ctxt, Right, W, Right_Expr);
-               Rtype := Create_Vec_Type_By_Length (W, Left.Typ.Vec_El);
-               N := Build_Dyadic (Ctxt, Id_Smul, L, R);
-               Set_Location (N, Expr);
-               return Create_Value_Net (N, Rtype);
-            end;
-
-         when Iir_Predefined_Ieee_Numeric_Std_Div_Uns_Uns
-           | Iir_Predefined_Ieee_Numeric_Std_Div_Uns_Nat =>
-            return Synth_Udivmod (Id_Udiv, Oper_Left);
-         when Iir_Predefined_Ieee_Numeric_Std_Div_Nat_Uns =>
-            return Synth_Udivmod (Id_Udiv, Oper_Right);
-
-         when Iir_Predefined_Ieee_Numeric_Std_Div_Sgn_Int
-           | Iir_Predefined_Ieee_Numeric_Std_Div_Sgn_Sgn =>
-            return Synth_Sdivmod (Id_Sdiv, Oper_Left);
-         when Iir_Predefined_Ieee_Numeric_Std_Div_Int_Sgn =>
-            return Synth_Sdivmod (Id_Sdiv, Oper_Right);
-
-         when Iir_Predefined_Ieee_Numeric_Std_Rem_Uns_Nat =>
-            return Synth_Udivmod (Id_Umod, Oper_Left);
-         when Iir_Predefined_Ieee_Numeric_Std_Rem_Uns_Uns
-           | Iir_Predefined_Ieee_Numeric_Std_Rem_Nat_Uns =>
-            return Synth_Udivmod (Id_Umod, Oper_Right);
-
-         when Iir_Predefined_Ieee_Numeric_Std_Rem_Sgn_Int =>
-            return Synth_Sdivmod (Id_Srem, Oper_Left);
-         when Iir_Predefined_Ieee_Numeric_Std_Rem_Sgn_Sgn
-           | Iir_Predefined_Ieee_Numeric_Std_Rem_Int_Sgn =>
-            return Synth_Sdivmod (Id_Srem, Oper_Right);
-
-         when Iir_Predefined_Ieee_Numeric_Std_Mod_Uns_Nat =>
-            return Synth_Udivmod (Id_Umod, Oper_Left);
-         when Iir_Predefined_Ieee_Numeric_Std_Mod_Uns_Uns
-           | Iir_Predefined_Ieee_Numeric_Std_Mod_Nat_Uns =>
-            return Synth_Udivmod (Id_Umod, Oper_Right);
-
-         when Iir_Predefined_Ieee_Numeric_Std_Mod_Sgn_Int =>
-            return Synth_Sdivmod (Id_Smod, Oper_Left);
-         when Iir_Predefined_Ieee_Numeric_Std_Mod_Sgn_Sgn
-           | Iir_Predefined_Ieee_Numeric_Std_Mod_Int_Sgn =>
-            return Synth_Sdivmod (Id_Smod, Oper_Right);
-
-         when Iir_Predefined_Ieee_Numeric_Std_Eq_Uns_Uns
-           |  Iir_Predefined_Ieee_Std_Logic_Unsigned_Eq_Slv_Slv
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Eq_Uns_Uns =>
-            --  "=" (Unsigned, Unsigned) [resize]
-            return Synth_Compare_Uns_Uns (Id_Eq, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Eq_Uns_Nat
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Eq_Uns_Nat
-           |  Iir_Predefined_Ieee_Std_Logic_Unsigned_Eq_Slv_Int =>
-            --  "=" (Unsigned, Natural)
-            return Synth_Compare_Uns_Nat (Id_Eq, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Eq_Nat_Uns
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Eq_Nat_Uns =>
-            --  "=" (Natural, Unsigned) [resize]
-            return Synth_Compare_Nat_Uns (Id_Eq, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Eq_Sgn_Int
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Eq_Sgn_Int =>
-            --  "=" (Signed, Integer)
-            return Synth_Compare_Sgn_Int (Id_Eq, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Eq_Sgn_Sgn
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Eq_Sgn_Sgn =>
-            --  "=" (Signed, Signed) [resize]
-            return Synth_Compare_Sgn_Sgn (Id_Eq, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Eq_Int_Sgn
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Eq_Int_Sgn =>
-            --  "=" (Integer, Signed)
-            return Synth_Compare_Int_Sgn (Id_Eq, Expr_Typ);
-
-         when Iir_Predefined_Ieee_Numeric_Std_Ne_Uns_Uns
-           | Iir_Predefined_Ieee_Std_Logic_Unsigned_Ne_Slv_Slv
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Ne_Uns_Uns =>
-            --  "/=" (Unsigned, Unsigned) [resize]
-            return Synth_Compare_Uns_Uns (Id_Ne, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Ne_Uns_Nat
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Ne_Uns_Nat =>
-            --  "/=" (Unsigned, Natural)
-            return Synth_Compare_Uns_Nat (Id_Ne, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Ne_Nat_Uns
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Ne_Nat_Uns =>
-            --  "/=" (Natural, Unsigned) [resize]
-            return Synth_Compare_Nat_Uns (Id_Ne, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Ne_Sgn_Sgn
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Ne_Sgn_Sgn =>
-            --  "/=" (Signed, Signed) [resize]
-            return Synth_Compare_Sgn_Sgn (Id_Ne, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Ne_Sgn_Int
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Ne_Sgn_Int =>
-            --  "/=" (Signed, Integer)
-            return Synth_Compare_Sgn_Int (Id_Ne, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Ne_Int_Sgn
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Ne_Int_Sgn =>
-            --  "/=" (Integer, Signed)
-            return Synth_Compare_Int_Sgn (Id_Ne, Expr_Typ);
-
-         when Iir_Predefined_Ieee_Numeric_Std_Lt_Uns_Nat
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Lt_Uns_Nat =>
-            --  "<" (Unsigned, Natural)
-            if Is_Static (Right.Val) and then Read_Discrete (Right) = 0 then
-               --  Always false.
-               return Create_Value_Discrete (0, Expr_Typ);
-            end if;
-            return Synth_Compare_Uns_Nat (Id_Ult, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Lt_Uns_Uns
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Lt_Uns_Uns
-           | Iir_Predefined_Ieee_Std_Logic_Unsigned_Lt_Slv_Slv
-           | Iir_Predefined_Ieee_Std_Logic_Arith_Lt_Uns_Uns =>
-            --  "<" (Unsigned, Unsigned) [resize]
-            return Synth_Compare_Uns_Uns (Id_Ult, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Lt_Nat_Uns
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Lt_Nat_Uns =>
-            --  "<" (Natural, Unsigned) [resize]
-            return Synth_Compare_Nat_Uns (Id_Ult, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Lt_Sgn_Sgn
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Lt_Sgn_Sgn =>
-            --  "<" (Signed, Signed) [resize]
-            return Synth_Compare_Sgn_Sgn (Id_Slt, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Lt_Sgn_Int
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Lt_Sgn_Int =>
-            --  "<" (Signed, Integer)
-            return Synth_Compare_Sgn_Int (Id_Slt, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Lt_Int_Sgn
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Lt_Int_Sgn =>
-            --  "<" (Integer, Signed)
-            return Synth_Compare_Int_Sgn (Id_Slt, Expr_Typ);
-
-         when Iir_Predefined_Ieee_Numeric_Std_Le_Uns_Uns
-           |  Iir_Predefined_Ieee_Std_Logic_Unsigned_Le_Slv_Slv
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Le_Uns_Uns =>
-            --  "<=" (Unsigned, Unsigned) [resize]
-            return Synth_Compare_Uns_Uns (Id_Ule, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Le_Uns_Nat
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Le_Uns_Nat
-           |  Iir_Predefined_Ieee_Std_Logic_Unsigned_Le_Slv_Int =>
-            --  "<=" (Unsigned, Natural)
-            return Synth_Compare_Uns_Nat (Id_Ule, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Le_Nat_Uns
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Le_Nat_Uns =>
-            --  "<=" (Natural, Unsigned) [resize]
-            return Synth_Compare_Nat_Uns (Id_Ule, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Le_Sgn_Sgn
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Le_Sgn_Sgn =>
-            --  "<=" (Signed, Signed)
-            return Synth_Compare_Sgn_Sgn (Id_Sle, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Le_Sgn_Int
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Le_Sgn_Int =>
-            --  "<=" (Signed, Integer)
-            return Synth_Compare_Sgn_Int (Id_Sle, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Le_Int_Sgn
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Le_Int_Sgn =>
-            --  "<=" (Integer, Signed)
-            return Synth_Compare_Int_Sgn (Id_Sle, Expr_Typ);
-
-         when Iir_Predefined_Ieee_Numeric_Std_Gt_Uns_Uns
-           |  Iir_Predefined_Ieee_Std_Logic_Unsigned_Gt_Slv_Slv
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Gt_Uns_Uns =>
-            --  ">" (Unsigned, Unsigned) [resize]
-            return Synth_Compare_Uns_Uns (Id_Ugt, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Gt_Uns_Nat
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Gt_Uns_Nat
-           |  Iir_Predefined_Ieee_Std_Logic_Unsigned_Gt_Slv_Int =>
-            --  ">" (Unsigned, Natural)
-            return Synth_Compare_Uns_Nat (Id_Ugt, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Gt_Nat_Uns
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Gt_Nat_Uns =>
-            --  ">" (Natural, Unsigned) [resize]
-            return Synth_Compare_Nat_Uns (Id_Ugt, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Gt_Sgn_Sgn
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Gt_Sgn_Sgn
-           |  Iir_Predefined_Ieee_Std_Logic_Arith_Gt_Sgn_Sgn =>
-            --  ">" (Signed, Signed) [resize]
-            return Synth_Compare_Sgn_Sgn (Id_Sgt, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Gt_Sgn_Int
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Gt_Sgn_Int
-           |  Iir_Predefined_Ieee_Std_Logic_Arith_Gt_Sgn_Int =>
-            --  ">" (Signed, Integer)
-            return Synth_Compare_Sgn_Int (Id_Sgt, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Gt_Int_Sgn
-           |  Iir_Predefined_Ieee_Numeric_Std_Match_Gt_Int_Sgn =>
-            --  ">" (Integer, Signed)
-            return Synth_Compare_Int_Sgn (Id_Sgt, Expr_Typ);
-
-         when Iir_Predefined_Ieee_Numeric_Std_Ge_Uns_Uns
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Ge_Uns_Uns
-           | Iir_Predefined_Ieee_Std_Logic_Unsigned_Ge_Slv_Slv
-           | Iir_Predefined_Ieee_Std_Logic_Arith_Ge_Uns_Uns =>
-            --  ">=" (Unsigned, Unsigned) [resize]
-            return Synth_Compare_Uns_Uns (Id_Uge, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Ge_Nat_Uns
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Ge_Nat_Uns =>
-            --  ">=" (Natural, Unsigned) [resize]
-            return Synth_Compare_Nat_Uns (Id_Uge, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Ge_Uns_Nat
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Ge_Uns_Nat
-           | Iir_Predefined_Ieee_Std_Logic_Unsigned_Ge_Slv_Int =>
-            --  ">=" (Unsigned, Natural)
-            return Synth_Compare_Uns_Nat (Id_Uge, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Ge_Sgn_Sgn
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Ge_Sgn_Sgn =>
-            --  ">=" (Signed, Signed) [resize]
-            return Synth_Compare_Sgn_Sgn (Id_Sge, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Ge_Sgn_Int
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Ge_Sgn_Int =>
-            --  ">=" (Signed, Integer)
-            return Synth_Compare_Sgn_Int (Id_Sge, Expr_Typ);
-         when Iir_Predefined_Ieee_Numeric_Std_Ge_Int_Sgn
-           | Iir_Predefined_Ieee_Numeric_Std_Match_Ge_Int_Sgn =>
-            --  ">=" (Integer, Signed)
-            return Synth_Compare_Int_Sgn (Id_Sge, Expr_Typ);
 
          when Iir_Predefined_Array_Element_Concat =>
             declare
@@ -1378,6 +1048,496 @@ package body Synth.Oper is
             Error_Msg_Synth (+Expr, "non-constant division not supported");
             return No_Valtyp;
 
+         when Iir_Predefined_Ieee_Numeric_Std_Add_Uns_Uns
+            | Iir_Predefined_Ieee_Numeric_Std_Add_Uns_Log
+            | Iir_Predefined_Ieee_Numeric_Std_Add_Sgn_Log
+            | Iir_Predefined_Ieee_Numeric_Std_Add_Log_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Add_Slv_Log
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Add_Log_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Add_Slv_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Add_Slv_Log
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Add_Log_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Uns_Uns_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Uns_Uns_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Uns_Log_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Log_Uns_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Log_Uns_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Uns_Log_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Sgn_Log_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Sgn_Log_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Log_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Log_Sgn_Slv =>
+            --  "+" (Unsigned, Unsigned)
+            return Synth_Dyadic_Uns_Uns (Ctxt, Id_Add, Left, Right, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Add_Uns_Nat
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Uns_Int_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Uns_Int_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Add_Slv_Int =>
+            --  "+" (Unsigned, Natural)
+            return Synth_Dyadic_Uns_Nat (Ctxt, Id_Add, Left, Right, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Add_Nat_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Int_Uns_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Int_Uns_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Add_Int_Slv =>
+            --  "+" (Natural, Unsigned)
+            return Synth_Dyadic_Nat_Uns (Ctxt, Id_Add, Left, Right, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Add_Sgn_Int
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Add_Slv_Int
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Sgn_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Sgn_Int_Slv =>
+            --  "+" (Signed, Integer)
+            return Synth_Dyadic_Sgn_Int (Ctxt, Id_Add, Left, Right, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Add_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Int_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Int_Sgn_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Add_Int_Slv =>
+            --  "+" (Integer, Signed)
+            return Synth_Dyadic_Int_Sgn (Ctxt, Id_Add, Left, Right, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Add_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Sgn_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Sgn_Sgn_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Add_Slv_Slv =>
+            --  "+" (Signed, Signed)
+            return Synth_Dyadic_Sgn_Sgn (Ctxt, Id_Add, Left, Right, Expr);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Add_Uns_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Uns_Sgn_Slv =>
+            --  "+" (Unsigned, Signed)
+            return Synth_Dyadic_Uns_Sgn_Sgn (Ctxt, Id_Add, Left, Right, Expr);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Add_Sgn_Uns_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Add_Sgn_Uns_Slv =>
+            --  "+" (Signed, Unsigned)
+            return Synth_Dyadic_Sgn_Uns_Sgn (Ctxt, Id_Add, Left, Right, Expr);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Sub_Uns_Uns
+            | Iir_Predefined_Ieee_Numeric_Std_Sub_Uns_Log
+            | Iir_Predefined_Ieee_Numeric_Std_Sub_Sgn_Log
+            | Iir_Predefined_Ieee_Numeric_Std_Sub_Log_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Sub_Slv_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Sub_Log_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Sub_Slv_Log
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Sub_Log_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Sub_Slv_Log
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Uns_Uns_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Uns_Uns_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Log_Uns_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Log_Uns_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Uns_Log_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Uns_Log_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Sgn_Log_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Sgn_Log_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Log_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Log_Sgn_Slv =>
+            --  "-" (Unsigned, Unsigned)
+            return Synth_Dyadic_Uns_Uns (Ctxt, Id_Sub, Left, Right, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Sub_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Sgn_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Sgn_Sgn_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Sub_Slv_Slv =>
+            --  "-" (Signed, Signed)
+            return Synth_Dyadic_Sgn_Sgn (Ctxt, Id_Sub, Left, Right, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Sub_Uns_Nat
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Uns_Int_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Uns_Int_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Sub_Slv_Int =>
+            --  "-" (Unsigned, Natural)
+            return Synth_Dyadic_Uns_Nat (Ctxt, Id_Sub, Left, Right, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Sub_Nat_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Int_Uns_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Int_Uns_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Sub_Int_Slv =>
+            --  "-" (Natural, Unsigned)
+            return Synth_Dyadic_Nat_Uns (Ctxt, Id_Sub, Left, Right, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Sub_Sgn_Int
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Sgn_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Sgn_Int_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Sub_Slv_Int =>
+            --  "-" (Signed, Integer)
+            return Synth_Dyadic_Sgn_Int (Ctxt, Id_Sub, Left, Right, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Sub_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Int_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Int_Sgn_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Sub_Int_Slv =>
+            --  "-" (Integer, Signed)
+            return Synth_Dyadic_Int_Sgn (Ctxt, Id_Sub, Left, Right, Expr);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Uns_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Uns_Sgn_Slv =>
+            --  "-" (Unsigned, Signed)
+            return Synth_Dyadic_Uns_Sgn_Sgn (Ctxt, Id_Sub, Left, Right, Expr);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Sgn_Uns_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Sub_Sgn_Uns_Slv =>
+            --  "-" (Signed, Unsigned)
+            return Synth_Dyadic_Sgn_Uns_Sgn (Ctxt, Id_Sub, Left, Right, Expr);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Mul_Sgn_Sgn
+           | Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Sgn_Sgn_Sgn
+           | Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Sgn_Sgn_Slv
+           | Iir_Predefined_Ieee_Std_Logic_Signed_Mul_Slv_Slv =>
+            --  "*" (Signed, Signed)
+            return Synth_Dyadic_Xxx_Xxx
+              (Ctxt, Id_Smul, Left.Typ.W + Right.Typ.W,
+               Left, Right, True, True, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Mul_Sgn_Int =>
+            --  "*" (Signed, Integer)
+            return Synth_Dyadic_Xxx_Xxx
+              (Ctxt, Id_Smul, 2 * Left.Typ.W,
+               Left, Right, True, True, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Mul_Int_Sgn =>
+            --  "*" (Integer, Signed)
+            return Synth_Dyadic_Xxx_Xxx
+              (Ctxt, Id_Smul, 2 * Right.Typ.W,
+               Left, Right, True, True, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Mul_Uns_Uns
+           | Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Uns_Uns_Uns
+           | Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Uns_Uns_Slv
+           | Iir_Predefined_Ieee_Std_Logic_Unsigned_Mul_Slv_Slv =>
+            --  "*" (unsigned, unsigned)
+            return Synth_Dyadic_Xxx_Xxx
+              (Ctxt, Id_Smul, Left.Typ.W + Right.Typ.W,
+               Left, Right, False, False, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Mul_Uns_Nat =>
+            --  "*" (unsigned, natural)
+            return Synth_Dyadic_Xxx_Xxx
+              (Ctxt, Id_Smul, 2 * Left.Typ.W,
+               Left, Right, False, False, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Mul_Nat_Uns =>
+            --  "*" (natural, unsigned)
+            return Synth_Dyadic_Xxx_Xxx
+              (Ctxt, Id_Smul, 2 * Right.Typ.W,
+               Left, Right, False, False, Expr);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Uns_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Uns_Sgn_Slv =>
+            --  "*" (unsigned, signed)
+            return Synth_Dyadic_Xxx_Xxx
+              (Ctxt, Id_Smul, Left.Typ.W + 1 + Right.Typ.W,
+               Left, Right, False, True, Expr);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Sgn_Uns_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Sgn_Uns_Slv =>
+            --  "*" (signed, unsigned)
+            return Synth_Dyadic_Xxx_Xxx
+              (Ctxt, Id_Smul, Left.Typ.W + Right.Typ.W + 1,
+               Left, Right, True, False, Expr);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Div_Uns_Uns
+           | Iir_Predefined_Ieee_Numeric_Std_Div_Uns_Nat =>
+            return Synth_Udivmod (Id_Udiv, Oper_Left);
+         when Iir_Predefined_Ieee_Numeric_Std_Div_Nat_Uns =>
+            return Synth_Udivmod (Id_Udiv, Oper_Right);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Div_Sgn_Int
+           | Iir_Predefined_Ieee_Numeric_Std_Div_Sgn_Sgn =>
+            return Synth_Sdivmod (Id_Sdiv, Oper_Left);
+         when Iir_Predefined_Ieee_Numeric_Std_Div_Int_Sgn =>
+            return Synth_Sdivmod (Id_Sdiv, Oper_Right);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Rem_Uns_Nat =>
+            return Synth_Udivmod (Id_Umod, Oper_Left);
+         when Iir_Predefined_Ieee_Numeric_Std_Rem_Uns_Uns
+           | Iir_Predefined_Ieee_Numeric_Std_Rem_Nat_Uns =>
+            return Synth_Udivmod (Id_Umod, Oper_Right);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Rem_Sgn_Int =>
+            return Synth_Sdivmod (Id_Srem, Oper_Left);
+         when Iir_Predefined_Ieee_Numeric_Std_Rem_Sgn_Sgn
+           | Iir_Predefined_Ieee_Numeric_Std_Rem_Int_Sgn =>
+            return Synth_Sdivmod (Id_Srem, Oper_Right);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Mod_Uns_Nat =>
+            return Synth_Udivmod (Id_Umod, Oper_Left);
+         when Iir_Predefined_Ieee_Numeric_Std_Mod_Uns_Uns
+           | Iir_Predefined_Ieee_Numeric_Std_Mod_Nat_Uns =>
+            return Synth_Udivmod (Id_Umod, Oper_Right);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Mod_Sgn_Int =>
+            return Synth_Sdivmod (Id_Smod, Oper_Left);
+         when Iir_Predefined_Ieee_Numeric_Std_Mod_Sgn_Sgn
+           | Iir_Predefined_Ieee_Numeric_Std_Mod_Int_Sgn =>
+            return Synth_Sdivmod (Id_Smod, Oper_Right);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Eq_Uns_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Eq_Slv_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Eq_Uns_Uns
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Eq_Uns_Uns =>
+            --  "=" (Unsigned, Unsigned) [resize]
+            return Synth_Compare_Uns_Uns (Id_Eq, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Eq_Uns_Nat
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Eq_Uns_Nat
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Eq_Slv_Int =>
+            --  "=" (Unsigned, Natural)
+            return Synth_Compare_Uns_Nat (Id_Eq, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Eq_Nat_Uns
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Eq_Nat_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Eq_Int_Slv =>
+            --  "=" (Natural, Unsigned) [resize]
+            return Synth_Compare_Nat_Uns (Id_Eq, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Eq_Sgn_Int
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Eq_Sgn_Int
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Eq_Sgn_Int
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Eq_Slv_Int =>
+            --  "=" (Signed, Integer)
+            return Synth_Compare_Sgn_Int (Id_Eq, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Eq_Sgn_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Eq_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Eq_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Eq_Slv_Slv =>
+            --  "=" (Signed, Signed) [resize]
+            return Synth_Compare_Sgn_Sgn (Id_Eq, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Eq_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Eq_Int_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Eq_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Eq_Int_Slv =>
+            --  "=" (Integer, Signed)
+            return Synth_Compare_Int_Sgn (Id_Eq, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Eq_Int_Uns =>
+            --  "=" (Integer, Unsigned)
+            return Synth_Compare_Int_Uns (Id_Eq, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Eq_Uns_Int =>
+            --  "=" (Unsigned, Integer)
+            return Synth_Compare_Uns_Int (Id_Eq, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Eq_Uns_Sgn =>
+            --  "=" (Unsigned, Signed)
+            return Synth_Compare_Uns_Sgn (Id_Eq, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Eq_Sgn_Uns =>
+            --  "=" (Signed, Unsigned)
+            return Synth_Compare_Sgn_Uns (Id_Eq, Expr_Typ);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Ne_Uns_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Ne_Slv_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Ne_Uns_Uns
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Ne_Uns_Uns =>
+            --  "/=" (Unsigned, Unsigned) [resize]
+            return Synth_Compare_Uns_Uns (Id_Ne, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Ne_Uns_Nat
+           | Iir_Predefined_Ieee_Numeric_Std_Match_Ne_Uns_Nat =>
+            --  "/=" (Unsigned, Natural)
+            return Synth_Compare_Uns_Nat (Id_Ne, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Ne_Nat_Uns
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Ne_Nat_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Ne_Int_Slv =>
+            --  "/=" (Natural, Unsigned) [resize]
+            return Synth_Compare_Nat_Uns (Id_Ne, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Ne_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Ne_Sgn_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Ne_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Ne_Slv_Slv =>
+            --  "/=" (Signed, Signed) [resize]
+            return Synth_Compare_Sgn_Sgn (Id_Ne, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Ne_Sgn_Int
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Ne_Sgn_Int
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Ne_Sgn_Int
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Ne_Slv_Int =>
+            --  "/=" (Signed, Integer)
+            return Synth_Compare_Sgn_Int (Id_Ne, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Ne_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Ne_Int_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Ne_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Ne_Int_Slv =>
+            --  "/=" (Integer, Signed)
+            return Synth_Compare_Int_Sgn (Id_Ne, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Ne_Int_Uns =>
+            --  "/=" (Integer, Unsigned)
+            return Synth_Compare_Int_Uns (Id_Ne, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Ne_Uns_Int
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Ne_Slv_Int =>
+            --  "/=" (Unsigned, Integer)
+            return Synth_Compare_Uns_Int (Id_Ne, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Ne_Uns_Sgn =>
+            --  "/=" (Unsigned, Signed)
+            return Synth_Compare_Uns_Sgn (Id_Ne, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Ne_Sgn_Uns =>
+            --  "/=" (Signed, Unsigned)
+            return Synth_Compare_Sgn_Uns (Id_Ne, Expr_Typ);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Lt_Uns_Uns
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Lt_Uns_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Lt_Slv_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Lt_Uns_Uns =>
+            --  "<" (Unsigned, Unsigned) [resize]
+            return Synth_Compare_Uns_Uns (Id_Ult, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Lt_Uns_Nat
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Lt_Uns_Nat
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Lt_Slv_Int =>
+            --  "<" (Unsigned, Natural)
+            if Is_Static (Right.Val) and then Read_Discrete (Right) = 0 then
+               --  Always false.
+               return Create_Value_Discrete (0, Expr_Typ);
+            end if;
+            return Synth_Compare_Uns_Nat (Id_Ult, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Lt_Nat_Uns
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Lt_Nat_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Lt_Int_Slv =>
+            --  "<" (Natural, Unsigned) [resize]
+            return Synth_Compare_Nat_Uns (Id_Ult, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Lt_Sgn_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Lt_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Lt_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Lt_Slv_Slv =>
+            --  "<" (Signed, Signed) [resize]
+            return Synth_Compare_Sgn_Sgn (Id_Slt, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Lt_Sgn_Int
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Lt_Sgn_Int
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Lt_Sgn_Int
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Lt_Slv_Int =>
+            --  "<" (Signed, Integer)
+            return Synth_Compare_Sgn_Int (Id_Slt, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Lt_Int_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Lt_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Lt_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Lt_Int_Slv =>
+            --  "<" (Integer, Signed)
+            return Synth_Compare_Int_Sgn (Id_Slt, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Lt_Int_Uns =>
+            --  "<" (Integer, Unsigned)
+            return Synth_Compare_Int_Uns (Id_Slt, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Lt_Uns_Int =>
+            --  "<" (Unsigned, Integer)
+            return Synth_Compare_Uns_Int (Id_Slt, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Lt_Uns_Sgn =>
+            --  "<" (Unsigned, Signed)
+            return Synth_Compare_Uns_Sgn (Id_Slt, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Lt_Sgn_Uns =>
+            --  "<" (Signed, Unsigned)
+            return Synth_Compare_Sgn_Uns (Id_Slt, Expr_Typ);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Le_Uns_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Le_Slv_Slv
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Le_Uns_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Le_Uns_Uns =>
+            --  "<=" (Unsigned, Unsigned) [resize]
+            return Synth_Compare_Uns_Uns (Id_Ule, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Le_Sgn_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Le_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Le_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Le_Slv_Slv =>
+            --  "<=" (Signed, Signed)
+            return Synth_Compare_Sgn_Sgn (Id_Sle, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Le_Uns_Nat
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Le_Uns_Nat
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Le_Slv_Int =>
+            --  "<=" (Unsigned, Natural)
+            return Synth_Compare_Uns_Nat (Id_Ule, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Le_Nat_Uns
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Le_Nat_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Le_Int_Slv =>
+            --  "<=" (Natural, Unsigned) [resize]
+            return Synth_Compare_Nat_Uns (Id_Ule, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Le_Sgn_Int
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Le_Sgn_Int
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Le_Sgn_Int
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Le_Slv_Int =>
+            --  "<=" (Signed, Integer)
+            return Synth_Compare_Sgn_Int (Id_Sle, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Le_Int_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Le_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Le_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Le_Int_Slv =>
+            --  "<=" (Integer, Signed)
+            return Synth_Compare_Int_Sgn (Id_Sle, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Le_Int_Uns =>
+            --  "<=" (Integer, Unsigned)
+            return Synth_Compare_Int_Uns (Id_Sle, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Le_Uns_Int =>
+            --  "<=" (Unsigned, Integer)
+            return Synth_Compare_Uns_Int (Id_Sle, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Le_Uns_Sgn =>
+            --  "<=" (Unsigned, Signed)
+            return Synth_Compare_Uns_Sgn (Id_Sle, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Le_Sgn_Uns =>
+            --  "<=" (Signed, Unsigned)
+            return Synth_Compare_Sgn_Uns (Id_Sle, Expr_Typ);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Gt_Uns_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Gt_Slv_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Gt_Uns_Uns
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Gt_Uns_Uns =>
+            --  ">" (Unsigned, Unsigned) [resize]
+            return Synth_Compare_Uns_Uns (Id_Ugt, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Gt_Uns_Nat
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Gt_Uns_Nat
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Gt_Slv_Int =>
+            --  ">" (Unsigned, Natural)
+            return Synth_Compare_Uns_Nat (Id_Ugt, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Gt_Nat_Uns
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Gt_Nat_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Gt_Int_Slv =>
+            --  ">" (Natural, Unsigned) [resize]
+            return Synth_Compare_Nat_Uns (Id_Ugt, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Gt_Sgn_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Gt_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Gt_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Gt_Slv_Slv =>
+            --  ">" (Signed, Signed) [resize]
+            return Synth_Compare_Sgn_Sgn (Id_Sgt, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Gt_Sgn_Int
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Gt_Sgn_Int
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Gt_Sgn_Int
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Gt_Slv_Int =>
+            --  ">" (Signed, Integer)
+            return Synth_Compare_Sgn_Int (Id_Sgt, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Gt_Int_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Gt_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Gt_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Gt_Int_Slv =>
+            --  ">" (Integer, Signed)
+            return Synth_Compare_Int_Sgn (Id_Sgt, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Gt_Int_Uns =>
+            --  ">" (Integer, Unsigned)
+            return Synth_Compare_Int_Uns (Id_Sgt, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Gt_Uns_Int =>
+            --  ">" (Unsigned, Integer)
+            return Synth_Compare_Uns_Int (Id_Sgt, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Gt_Uns_Sgn =>
+            --  ">" (Unsigned, Signed)
+            return Synth_Compare_Uns_Sgn (Id_Sgt, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Gt_Sgn_Uns =>
+            --  ">" (Signed, Unsigned)
+            return Synth_Compare_Sgn_Uns (Id_Sgt, Expr_Typ);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Ge_Uns_Uns
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Ge_Uns_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Ge_Slv_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Ge_Uns_Uns =>
+            --  ">=" (Unsigned, Unsigned) [resize]
+            return Synth_Compare_Uns_Uns (Id_Uge, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Ge_Nat_Uns
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Ge_Nat_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Ge_Int_Slv =>
+            --  ">=" (Natural, Unsigned) [resize]
+            return Synth_Compare_Nat_Uns (Id_Uge, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Ge_Uns_Nat
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Ge_Uns_Nat
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Ge_Slv_Int =>
+            --  ">=" (Unsigned, Natural)
+            return Synth_Compare_Uns_Nat (Id_Uge, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Ge_Sgn_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Ge_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Ge_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Ge_Slv_Slv =>
+            --  ">=" (Signed, Signed) [resize]
+            return Synth_Compare_Sgn_Sgn (Id_Sge, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Ge_Sgn_Int
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Ge_Sgn_Int
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Ge_Sgn_Int
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Ge_Slv_Int =>
+            --  ">=" (Signed, Integer)
+            return Synth_Compare_Sgn_Int (Id_Sge, Expr_Typ);
+         when Iir_Predefined_Ieee_Numeric_Std_Ge_Int_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Match_Ge_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Ge_Int_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Ge_Int_Slv =>
+            --  ">=" (Integer, Signed)
+            return Synth_Compare_Int_Sgn (Id_Sge, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Ge_Int_Uns =>
+            --  ">=" (Integer, Unsigned)
+            return Synth_Compare_Int_Uns (Id_Sge, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Ge_Uns_Int =>
+            --  ">=" (Unsigned, Integer)
+            return Synth_Compare_Uns_Int (Id_Sge, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Ge_Uns_Sgn =>
+            --  ">=" (Unsigned, Signed)
+            return Synth_Compare_Uns_Sgn (Id_Sge, Expr_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Ge_Sgn_Uns =>
+            --  ">=" (Signed, Unsigned)
+            return Synth_Compare_Sgn_Uns (Id_Sge, Expr_Typ);
          when Iir_Predefined_Ieee_Numeric_Std_Sra_Sgn_Int =>
             return Synth_Shift (Id_Asr, Id_Lsl);
 
@@ -1474,23 +1634,51 @@ package body Synth.Oper is
             | Iir_Predefined_Ieee_Numeric_Std_Not_Sgn =>
             return Synth_Vec_Monadic (Id_Not);
          when Iir_Predefined_Ieee_Numeric_Std_Neg_Uns
-           | Iir_Predefined_Ieee_Numeric_Std_Neg_Sgn =>
+            | Iir_Predefined_Ieee_Numeric_Std_Neg_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Neg_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Neg_Sgn_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Neg_Slv =>
             return Synth_Vec_Monadic (Id_Neg);
-         when Iir_Predefined_Ieee_Numeric_Std_Abs_Sgn =>
+         when Iir_Predefined_Ieee_Numeric_Std_Abs_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Abs_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Abs_Sgn_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Abs_Slv =>
             return Synth_Vec_Monadic (Id_Abs);
 
-         when Iir_Predefined_Ieee_1164_And_Suv =>
+         when Iir_Predefined_Ieee_1164_And_Suv
+            | Iir_Predefined_Ieee_Numeric_Std_And_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_And_Uns =>
             return Synth_Vec_Reduce_Monadic (Id_Red_And);
-         when Iir_Predefined_Ieee_1164_Nand_Suv =>
+         when Iir_Predefined_Ieee_1164_Nand_Suv
+            | Iir_Predefined_Ieee_Numeric_Std_Nand_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Nand_Uns =>
             return Synth_Vec_Reduce_Monadic (Id_Red_And, True);
-         when Iir_Predefined_Ieee_1164_Or_Suv =>
+         when Iir_Predefined_Ieee_1164_Or_Suv
+            | Iir_Predefined_Ieee_Numeric_Std_Or_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Or_Uns =>
             return Synth_Vec_Reduce_Monadic (Id_Red_Or);
-         when Iir_Predefined_Ieee_1164_Nor_Suv =>
+         when Iir_Predefined_Ieee_1164_Nor_Suv
+            | Iir_Predefined_Ieee_Numeric_Std_Nor_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Nor_Uns =>
             return Synth_Vec_Reduce_Monadic (Id_Red_Or, True);
-         when Iir_Predefined_Ieee_1164_Xor_Suv =>
+         when Iir_Predefined_Ieee_1164_Xor_Suv
+            | Iir_Predefined_Ieee_Numeric_Std_Xor_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Xor_Uns =>
             return Synth_Vec_Reduce_Monadic (Id_Red_Xor);
-         when Iir_Predefined_Ieee_1164_Xnor_Suv =>
+         when Iir_Predefined_Ieee_1164_Xnor_Suv
+            | Iir_Predefined_Ieee_Numeric_Std_Xnor_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Xnor_Uns =>
             return Synth_Vec_Reduce_Monadic (Id_Red_Xor, True);
+
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Id_Uns_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Id_Uns_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Id_Sgn_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Id_Sgn_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Id_Slv
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Id_Slv =>
+            --  Unary "+": nop
+            return Create_Value_Net (Get_Net (Ctxt, Operand),
+                                     Create_Res_Bound (Operand));
 
          when Iir_Predefined_Ieee_1164_Condition_Operator =>
             return Create_Value_Net
@@ -1504,11 +1692,12 @@ package body Synth.Oper is
                Set_Location (N, Loc);
                return Create_Value_Net (N, Operand.Typ);
             end;
+
          when others =>
             Error_Msg_Synth
               (+Loc,
                "unhandled monadic: " & Iir_Predefined_Functions'Image (Def));
-            raise Internal_Error;
+            return No_Valtyp;
       end case;
    end Synth_Monadic_Operation;
 
@@ -1524,6 +1713,75 @@ package body Synth.Oper is
       Set_Location (N, Expr);
       return Create_Value_Net (N, Create_Res_Bound (Left));
    end Synth_Shift_Rotate;
+
+   function Synth_Find_Bit (Ctxt : Context_Acc;
+                            Left, Right : Valtyp;
+                            Res_Typ     : Type_Acc;
+                            Leftmost    : Boolean;
+                            Expr        : Node) return Valtyp
+   is
+      pragma Assert (Left.Typ.Kind = Type_Vector);
+      Len : constant Uns32 := Left.Typ.Vbound.Len;
+      Max : Int32;
+      Rng : Discrete_Range_Type;
+      W   : Uns32;
+      Typ : Type_Acc;
+      R_Net : Net;
+      L_Net : Net;
+      Res : Net;
+   begin
+      if Len = 0 then
+         return Create_Value_Int (-1, Res_Typ);
+      end if;
+
+      --  The intermediate result is computed using the least number of bits,
+      --  which must represent all positive values in the bounds using a
+      --  signed word (so that -1 is also represented).
+      Max := Int32'Max (Left.Typ.Vbound.Left, Left.Typ.Vbound.Right);
+      W := Utils.Clog2 (Uns32 (Max)) + 1;
+      Rng := (Dir => Dir_To,
+              Is_Signed => True,
+              Left => -1,
+              Right => Int64 (Max));
+      Typ := Create_Discrete_Type (Rng, Res_Typ.Sz, W);
+
+      R_Net := Get_Net (Ctxt, Right);
+      L_Net := Get_Net (Ctxt, Left);
+      Res := Build2_Const_Int (Ctxt, -1, W);
+      for I in 0 .. Len - 1 loop
+         declare
+            Pos : Uns32;
+            V   : Int64;
+            Sel : Net;
+         begin
+            if Leftmost then
+               --  Iterate from the right to the left.
+               Pos := I;
+               if Left.Typ.Vbound.Dir = Dir_To then
+                  V := Int64 (Left.Typ.Vbound.Right) - Int64 (I);
+               else
+                  V := Int64 (Left.Typ.Vbound.Right) + Int64 (I);
+               end if;
+            else
+               Pos := Len - I - 1;
+               if Left.Typ.Vbound.Dir = Dir_To then
+                  V := Int64 (Left.Typ.Vbound.Left) + Int64 (I);
+               else
+                  V := Int64 (Left.Typ.Vbound.Left) - Int64 (I);
+               end if;
+            end if;
+            Sel := Build2_Compare (Ctxt, Id_Eq,
+                                   Build2_Extract (Ctxt, L_Net, Pos, 1),
+                                   R_Net);
+            Set_Location (Sel, Expr);
+            Res := Build_Mux2 (Ctxt, Sel, Res, Build2_Const_Int (Ctxt, V, W));
+            Set_Location (Res, Expr);
+         end;
+      end loop;
+
+      return Synth_Subtype_Conversion (Ctxt, Create_Value_Net (Res, Typ),
+                                       Res_Typ, False, Expr);
+   end Synth_Find_Bit;
 
    function Synth_Dynamic_Predefined_Function_Call
      (Subprg_Inst : Synth_Instance_Acc; Expr : Node) return Valtyp
@@ -1627,8 +1885,7 @@ package body Synth.Oper is
             | Iir_Predefined_Ieee_Std_Logic_Unsigned_Conv_Integer =>
             --  UNSIGNED to Natural.
             return Create_Value_Net
-              (Synth_Uresize (Ctxt, Get_Net (Ctxt, L), Res_Typ.W, Expr),
-               Res_Typ);
+              (Synth_Uresize (Ctxt, L, Res_Typ.W, Expr), Res_Typ);
          when Iir_Predefined_Ieee_Numeric_Std_Toint_Sgn_Int
             | Iir_Predefined_Ieee_Std_Logic_Arith_Conv_Integer_Sgn
             | Iir_Predefined_Ieee_Std_Logic_Signed_Conv_Integer =>
@@ -1638,6 +1895,8 @@ package body Synth.Oper is
 
          when Iir_Predefined_Ieee_Numeric_Std_Resize_Uns_Nat
             | Iir_Predefined_Ieee_Std_Logic_Arith_Conv_Vector_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Conv_Unsigned_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Conv_Unsigned_Log
             | Iir_Predefined_Ieee_Std_Logic_Arith_Ext =>
             declare
                W : Width;
@@ -1648,11 +1907,12 @@ package body Synth.Oper is
                end if;
                W := Uns32 (Read_Discrete (R));
                return Create_Value_Net
-                 (Synth_Uresize (Ctxt, Get_Net (Ctxt, L), W, Expr),
+                 (Synth_Uresize (Ctxt, L, W, Expr),
                   Create_Vec_Type_By_Length (W, Logic_Type));
             end;
          when Iir_Predefined_Ieee_Numeric_Std_Resize_Sgn_Nat
             | Iir_Predefined_Ieee_Std_Logic_Arith_Conv_Vector_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Conv_Unsigned_Sgn
             | Iir_Predefined_Ieee_Std_Logic_Arith_Sxt =>
             declare
                W : Width;
@@ -1668,11 +1928,19 @@ package body Synth.Oper is
                   Create_Vec_Type_By_Length (W, Logic_Type));
             end;
          when Iir_Predefined_Ieee_Numeric_Std_Shf_Left_Uns_Nat
-            | Iir_Predefined_Ieee_Numeric_Std_Shf_Left_Sgn_Nat =>
+            | Iir_Predefined_Ieee_Numeric_Std_Shf_Left_Sgn_Nat
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Shl_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Shl_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Shl
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Shl =>
             return Synth_Shift_Rotate (Ctxt, Id_Lsl, L, R, Expr);
-         when Iir_Predefined_Ieee_Numeric_Std_Shf_Right_Uns_Nat =>
+         when Iir_Predefined_Ieee_Numeric_Std_Shf_Right_Uns_Nat
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Shr_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Shr =>
             return Synth_Shift_Rotate (Ctxt, Id_Lsr, L, R, Expr);
-         when Iir_Predefined_Ieee_Numeric_Std_Shf_Right_Sgn_Nat =>
+         when Iir_Predefined_Ieee_Numeric_Std_Shf_Right_Sgn_Nat
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Shr_Sgn
+            | Iir_Predefined_Ieee_Std_Logic_Signed_Shr =>
             return Synth_Shift_Rotate (Ctxt, Id_Asr, L, R, Expr);
          when Iir_Predefined_Ieee_Numeric_Std_Rot_Left_Uns_Nat =>
             return Synth_Shift_Rotate (Ctxt, Id_Rol, L, R, Expr);
@@ -1744,6 +2012,14 @@ package body Synth.Oper is
                   return Create_Value_Net (Res, Boolean_Type);
                end if;
             end;
+
+         when Iir_Predefined_Ieee_Numeric_Std_Find_Leftmost_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Find_Leftmost_Uns =>
+            return Synth_Find_Bit (Ctxt, L, R, Res_Typ, True, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Find_Rightmost_Sgn
+            | Iir_Predefined_Ieee_Numeric_Std_Find_Rightmost_Uns =>
+            return Synth_Find_Bit (Ctxt, L, R, Res_Typ, False, Expr);
+
          when others =>
             Error_Msg_Synth
               (+Expr,
@@ -1763,6 +2039,7 @@ package body Synth.Oper is
       M : Areapools.Mark_Type;
       Static : Boolean;
       Res : Valtyp;
+      Mt : Memtyp;
    begin
       Areapools.Mark (M, Instance_Pool.all);
       Subprg_Inst := Make_Instance (Syn_Inst, Imp);
@@ -1785,8 +2062,12 @@ package body Synth.Oper is
          end loop;
 
          if Static then
-            Res := Create_Value_Memtyp
-              (Synth_Static_Predefined_Function_Call (Subprg_Inst, Expr));
+            Mt := Synth_Static_Predefined_Function_Call (Subprg_Inst, Expr);
+            if Mt /= Null_Memtyp then
+               Res := Create_Value_Memtyp (Mt);
+            else
+               Res := No_Valtyp;
+            end if;
          else
             Res := Synth_Dynamic_Predefined_Function_Call (Subprg_Inst, Expr);
          end if;

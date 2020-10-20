@@ -288,7 +288,7 @@ package body Synth.Static_Oper is
                                        Res_Typ);
          when Iir_Predefined_Floating_Exp =>
             return Create_Memory_Fp64
-              (Read_Fp64 (Left) ** Natural (Read_Discrete (Right)), Res_Typ);
+              (Read_Fp64 (Left) ** Integer (Read_Discrete (Right)), Res_Typ);
 
          when Iir_Predefined_Array_Array_Concat =>
             declare
@@ -561,6 +561,11 @@ package body Synth.Static_Oper is
             return Mul_Sgn_Int (Left, Read_Discrete (Right), Expr);
          when Iir_Predefined_Ieee_Numeric_Std_Mul_Int_Sgn =>
             return Mul_Int_Sgn (Read_Discrete (Left), Right, Expr);
+
+         when Iir_Predefined_Ieee_Numeric_Std_Div_Uns_Uns =>
+            return Div_Uns_Uns (Left, Right, Expr);
+         when Iir_Predefined_Ieee_Numeric_Std_Div_Sgn_Sgn =>
+            return Div_Sgn_Sgn (Left, Right, Expr);
 
          when Iir_Predefined_Ieee_Numeric_Std_Srl_Uns_Int
            |  Iir_Predefined_Ieee_Numeric_Std_Srl_Sgn_Int =>
@@ -837,6 +842,8 @@ package body Synth.Static_Oper is
             --  SIGNED to Integer
             return Create_Memory_Discrete
               (Eval_Signed_To_Integer (Get_Memtyp (Param1), Expr), Res_Typ);
+         when Iir_Predefined_Ieee_Std_Logic_Arith_Conv_Integer_Int =>
+            return Get_Memtyp (Param1);
 
          when Iir_Predefined_Ieee_Numeric_Std_Shf_Left_Uns_Nat
             | Iir_Predefined_Ieee_Numeric_Std_Shf_Left_Sgn_Nat =>
@@ -851,6 +858,9 @@ package body Synth.Static_Oper is
             return Shift_Vec
               (Get_Memtyp (Param1), Uns32 (Read_Discrete (Param2)),
                True, True);
+         when Iir_Predefined_Ieee_Numeric_Std_Resize_Sgn_Nat =>
+            return Resize_Vec
+              (Get_Memtyp (Param1), Uns32 (Read_Discrete (Param2)), True);
 
          when Iir_Predefined_Ieee_1164_To_Stdlogicvector_Bv =>
             declare

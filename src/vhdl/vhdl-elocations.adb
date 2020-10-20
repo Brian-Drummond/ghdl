@@ -284,6 +284,8 @@ package body Vhdl.Elocations is
            | Iir_Kind_Psl_Declaration
            | Iir_Kind_Psl_Endpoint_Declaration
            | Iir_Kind_Enumeration_Literal
+           | Iir_Kind_Function_Instantiation_Declaration
+           | Iir_Kind_Procedure_Instantiation_Declaration
            | Iir_Kind_Terminal_Declaration
            | Iir_Kind_Free_Quantity_Declaration
            | Iir_Kind_Spectrum_Quantity_Declaration
@@ -369,6 +371,8 @@ package body Vhdl.Elocations is
            | Iir_Kind_Simple_Signal_Assignment_Statement
            | Iir_Kind_Conditional_Signal_Assignment_Statement
            | Iir_Kind_Selected_Waveform_Assignment_Statement
+           | Iir_Kind_Signal_Force_Assignment_Statement
+           | Iir_Kind_Signal_Release_Assignment_Statement
            | Iir_Kind_Null_Statement
            | Iir_Kind_Assertion_Statement
            | Iir_Kind_Report_Statement

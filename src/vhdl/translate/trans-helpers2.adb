@@ -38,10 +38,10 @@ package body Trans.Helpers2 is
    --  Append a NUL terminator (to make interfaces with C easier).
    function Create_String_Type (Str : String) return O_Tnode is
    begin
-      return New_Constrained_Array_Type
+      return New_Array_Subtype
         (Chararray_Type,
-         New_Unsigned_Literal (Ghdl_Index_Type,
-           Unsigned_64 (Str'Length + 1)));
+         Char_Type_Node,
+         New_Index_Lit (Str'Length + 1));
    end Create_String_Type;
 
    procedure Create_String_Value
@@ -65,9 +65,11 @@ package body Trans.Helpers2 is
    function Create_String (Str : String; Id : O_Ident) return O_Dnode
    is
       Const : O_Dnode;
+      Stype : O_Tnode;
    begin
-      New_Const_Decl (Const, Id, O_Storage_Private, Chararray_Type);
-      Create_String_Value (Const, Chararray_Type, Str);
+      Stype := Create_String_Type (Str);
+      New_Const_Decl (Const, Id, O_Storage_Private, Stype);
+      Create_String_Value (Const, Stype, Str);
       return Const;
    end Create_String;
 
@@ -232,8 +234,9 @@ package body Trans.Helpers2 is
       Res := E2M (Val, Type_Info, Mode_Value);
       case Type_Info.Type_Mode is
          when Type_Mode_Arrays =>
-            Res := Chap3.Get_Composite_Base (Res);
-            Res := Chap3.Convert_Array_Base (Res);
+            null;
+            --  Res := Chap3.Get_Composite_Base (Res);
+            -- Res := Chap3.Convert_Array_Base (Res);
          when Type_Mode_Records =>
             Res := Stabilize (Res);
          when others =>
@@ -248,7 +251,8 @@ package body Trans.Helpers2 is
                                           Index     : O_Dnode)
                                          return O_Enode is
    begin
-      return M2E (Chap3.Index_Base (Val, Targ_Type, New_Obj_Value (Index)));
+      return M2E (Chap6.Translate_Indexed_Name_By_Offset
+                    (Val, Targ_Type, Index));
    end Gen_Oenode_Update_Data_Array;
 
    function Gen_Oenode_Update_Data_Record

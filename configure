@@ -192,7 +192,7 @@ fi
 if [ "$enable_libghdl" = true ]; then
     libghdl_version="$srcdir/python/libghdl/version.py"
     # Extract content between single quotes in version.py, to avoid false positives due to LF/CRLF mismatch.
-    if [ "$ghdl_version" != "`sed "s/.*'\(.*\)'.*/\1/g" $libghdl_version`" ]; then
+    if [ "$ghdl_version" != "`sed 's/.*"\(.*\)".*/\1/g' $libghdl_version`" ]; then
       echo "Sorry, the version of $libghdl_version is not correct"
       echo "update the version to: $ghdl_version"
       echo "or use --disable-libghdl"
@@ -270,14 +270,15 @@ if test $backend = llvm; then
        check_version  4.0 $llvm_version ||
        check_version  5.0 $llvm_version ||
        false; then
-    echo "Debugging is not enabled with llvm $llvm_version"
+    echo "Debugging not enabled with llvm $llvm_version"
   elif check_version  6.0 $llvm_version ||
        check_version  7.0 $llvm_version ||
        check_version  8.0 $llvm_version ||
        check_version  9.0 $llvm_version ||
        check_version 10.0 $llvm_version ||
+       check_version 11.0 $llvm_version ||
        false; then
-    echo "Debugging is not enabled with llvm $llvm_version"
+    echo "Debugging is enabled with llvm $llvm_version"
   else
     echo "Unhandled version llvm $llvm_version"
     exit 1

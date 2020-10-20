@@ -559,15 +559,19 @@ package body Trans.Chap6 is
       --  Type of the first (and only) index of the prefix array type.
       Index_Type : constant Iir := Get_Index_Type (Prefix_Type, 0);
 
+      --  Element type.
+      El_Type    : constant Iir := Get_Element_Subtype (Prefix_Type);
+      El_Tinfo   : constant Type_Info_Acc := Get_Info (El_Type);
+
       --  Type of the slice.
       Slice_Type : constant Iir := Get_Type (Expr);
       Slice_Info : Type_Info_Acc;
 
-      --  True iff the direction of the slice is known at compile time.
-      Static_Range : Boolean;
-
       --  Suffix of the slice (discrete range).
       Expr_Range : constant Iir := Get_Suffix (Expr);
+
+      --  True iff the direction of the slice is known at compile time.
+      Static_Range : Boolean;
 
       --  Variable pointing to the prefix.
       Prefix_Var : Mnode;
@@ -584,11 +588,32 @@ package body Trans.Chap6 is
       Unsigned_Diff   : O_Dnode;
       If_Blk, If_Blk1 : O_If_Block;
    begin
-      --  Evaluate slice bounds.
-      Chap3.Create_Composite_Subtype (Slice_Type);
+      pragma Assert (Get_Info (Prefix_Type) /= null);
 
+      --  Evaluate slice bounds.
+      Chap3.Create_Composite_Subtype (Slice_Type, False);
       --  The info may have just been created.
       Prefix_Info := Get_Info (Prefix_Type);
+
+      Prefix_Var := Prefix;
+
+      if Is_Unbounded_Type (El_Tinfo) then
+         --  Copy layout of element before building the bounds
+         pragma Assert (Is_Unbounded_Type (Prefix_Info));
+         Stabilize (Prefix_Var);
+         Gen_Memcpy
+           (M2Addr (Chap3.Array_Bounds_To_Element_Layout
+                      (Chap3.Get_Composite_Type_Bounds (Slice_Type),
+                       Slice_Type)),
+            M2Addr (Chap3.Array_Bounds_To_Element_Layout
+                      (Chap3.Get_Composite_Bounds (Prefix_Var),
+                       Prefix_Type)),
+            New_Lit (New_Sizeof (El_Tinfo.B.Layout_Type,
+                                 Ghdl_Index_Type)));
+      end if;
+      Chap3.Elab_Array_Subtype (Slice_Type);
+
+      --  The info may have just been created.
       Slice_Info := Get_Info (Slice_Type);
 
       if Slice_Info.Type_Mode = Type_Mode_Static_Array
@@ -652,7 +677,7 @@ package body Trans.Chap6 is
       Data.Is_Off := False;
 
       --  Save prefix.
-      Prefix_Var := Stabilize (Prefix);
+      Stabilize (Prefix_Var);
 
       Index_Info := Get_Info (Get_Base_Type (Index_Type));
 
@@ -775,10 +800,11 @@ package body Trans.Chap6 is
       end;
       Finish_If_Stmt (If_Blk);
 
-      Data.Slice_Range := Slice_Range;
-      Data.Prefix_Var := Prefix_Var;
-      Data.Unsigned_Diff := Unsigned_Diff;
-      Data.Is_Off := False;
+      Data := (Slice_Range => Slice_Range,
+               Prefix_Var => Prefix_Var,
+               Unsigned_Diff => Unsigned_Diff,
+               Is_Off => False,
+               Off => 0);
    end Translate_Slice_Name_Init;
 
    function Translate_Slice_Name_Finish
@@ -786,43 +812,61 @@ package body Trans.Chap6 is
          return Mnode
    is
       --  Type of the slice.
-      Slice_Type : constant Iir := Get_Type (Expr);
-      Slice_Info : constant Type_Info_Acc := Get_Info (Slice_Type);
+      Slice_Type  : constant Iir := Get_Type (Expr);
+      Slice_Tinfo : constant Type_Info_Acc := Get_Info (Slice_Type);
+
+      El_Type  : constant Iir := Get_Element_Subtype (Slice_Type);
+      El_Tinfo : constant Type_Info_Acc := Get_Info (El_Type);
 
       --  Object kind of the prefix.
       Kind : constant Object_Kind_Type := Get_Object_Kind (Prefix);
 
+      Off : O_Enode;
+      El_Size : O_Enode;
+
+      Res_Base : Mnode;
       Res_D : O_Dnode;
    begin
-      if Data.Is_Off then
-         return Chap3.Slice_Base
-           (Prefix, Slice_Type, New_Lit (New_Index_Lit (Data.Off)));
+      if Is_Unbounded_Type (El_Tinfo) then
+         --  pragma Assert (Is_Unbounded_Type (Slice_Tinfo));
+         El_Size := New_Value
+           (Chap3.Layout_To_Size
+              (Chap3.Array_Bounds_To_Element_Layout
+                 (Chap3.Get_Composite_Bounds (Data.Prefix_Var), Slice_Type),
+               Kind));
+      elsif Is_Complex_Type (El_Tinfo) then
+         El_Size := Chap3.Get_Subtype_Size (El_Type, Mnode_Null, Kind);
       else
-         --  Create the result (fat array) and assign the bounds field.
-         case Slice_Info.Type_Mode is
-            when Type_Mode_Unbounded_Array =>
-               Res_D := Create_Temp (Slice_Info.Ortho_Type (Kind));
-               New_Assign_Stmt
-                 (New_Selected_Element (New_Obj (Res_D),
-                  Slice_Info.B.Bounds_Field (Kind)),
-                  New_Value (M2Lp (Data.Slice_Range)));
-               New_Assign_Stmt
-                 (New_Selected_Element (New_Obj (Res_D),
-                                        Slice_Info.B.Base_Field (Kind)),
-                  M2E (Chap3.Slice_Base
-                         (Chap3.Get_Composite_Base (Prefix),
-                          Slice_Type,
-                          New_Obj_Value (Data.Unsigned_Diff))));
-               return Dv2M (Res_D, Slice_Info, Kind);
-            when Type_Mode_Bounded_Arrays =>
-               return Chap3.Slice_Base
-                 (Chap3.Get_Composite_Base (Prefix),
-                  Slice_Type,
-                  New_Obj_Value (Data.Unsigned_Diff));
-            when others =>
-               raise Internal_Error;
-         end case;
+         pragma Assert (Is_Static_Type (El_Tinfo));
+         El_Size := O_Enode_Null;
       end if;
+
+      if Data.Is_Off then
+         Off := New_Lit (New_Index_Lit (Data.Off));
+      else
+         Off := New_Obj_Value (Data.Unsigned_Diff);
+      end if;
+
+      Res_Base := Chap3.Slice_Base
+        (Chap3.Get_Composite_Base (Prefix), Slice_Type, Off, El_Size);
+
+      case Type_Mode_Arrays (Slice_Tinfo.Type_Mode) is
+         when Type_Mode_Unbounded_Array =>
+            --  Create the result (fat array) and assign the bounds field.
+            Res_D := Create_Temp (Slice_Tinfo.Ortho_Type (Kind));
+            New_Assign_Stmt
+              (New_Selected_Element (New_Obj (Res_D),
+                                     Slice_Tinfo.B.Base_Field (Kind)),
+               M2E (Res_Base));
+            New_Assign_Stmt
+              (New_Selected_Element (New_Obj (Res_D),
+                                     Slice_Tinfo.B.Bounds_Field (Kind)),
+               New_Value (M2Lp (Data.Slice_Range)));
+            raise Internal_Error;
+            --return Dv2M (Res_D, Slice_Tinfo, Kind);
+         when Type_Mode_Bounded_Arrays =>
+            return Res_Base;
+      end case;
    end Translate_Slice_Name_Finish;
 
    function Translate_Slice_Name (Prefix : Mnode; Expr : Iir_Slice_Name)
@@ -913,43 +957,53 @@ package body Trans.Chap6 is
    function Translate_Selected_Element
      (Prefix : Mnode; El : Iir_Element_Declaration) return Mnode
    is
-      El_Type       : constant Iir := Get_Type (El);
-      El_Btype      : constant Iir := Get_Base_Type (El_Type);
-      El_Tinfo      : constant Type_Info_Acc := Get_Info (El_Type);
+      --  Note: EL can be an element_declaration or a record_element_constraint
+      --  It can be an element_declaration even if the prefix is of a record
+      --   subtype with a constraint on EL.
+      Prefix_Tinfo  : constant Type_Info_Acc := Get_Type_Info (Prefix);
       Kind          : constant Object_Kind_Type := Get_Object_Kind (Prefix);
-      Base_El       : constant Iir := Get_Base_Element_Declaration (El);
-      El_Info       : Field_Info_Acc;
-      Base_Tinfo    : Type_Info_Acc;
+      Pos           : constant Iir_Index32 := Get_Element_Position (El);
+      Res_Type      : constant Iir := Get_Type (El);
+      Res_Tinfo     : constant Type_Info_Acc := Get_Info (Res_Type);
+      Unbounded     : constant Boolean := Is_Unbounded_Type (Res_Tinfo);
+      El_Tinfo      : Type_Info_Acc;
       Stable_Prefix : Mnode;
-      Base, Res, Fat_Res : Mnode;
-      Rec_Layout : Mnode;
-      El_Descr : Mnode;
-      Box_Field : O_Fnode;
-      B : O_Lnode;
+      Base          : Mnode;
+      Res, Fat_Res  : Mnode;
+      Res_Lnode     : O_Lnode;
+      Res_Addr      : O_Enode;
+      Rec_Layout    : Mnode;
+      El_Descr      : Mnode;
+      F             : O_Fnode;
    begin
-      --  There are 3 cases:
-      --  a) the record is bounded (and so is the element).
-      --  b) the record is unbounded and the element is bounded
-      --  c) the record is unbounded and the element is unbounded.
-      --  If the record is unbounded, PREFIX is a fat pointer.
-      --  On top of that, the element may be complex.
-
-      --  For record subtypes, there is no info for elements that have not
-      --  changed.
-      El_Info := Get_Info (El);
-      if El_Info = null then
-         El_Info := Get_Info (Base_El);
+      --  RES_TINFO is the type info of the result.
+      --  EL_TINFO is the type info of the field.
+      --  They can be different when the record subtype is partially
+      --  constrained or is complex.
+      if Prefix_Tinfo.S.Rec_Fields /= null then
+         F := Prefix_Tinfo.S.Rec_Fields (Pos).Fields (Kind);
+         El_Tinfo := Prefix_Tinfo.S.Rec_Fields (Pos).Tinfo;
+         pragma Assert (El_Tinfo = Res_Tinfo);
+      else
+         --  Use the base element.
+         declare
+            Bel : constant Iir := Get_Base_Element_Declaration (El);
+            Bel_Info : constant Field_Info_Acc := Get_Info (Bel);
+         begin
+            F := Bel_Info.Field_Node (Kind);
+            El_Tinfo := Get_Info (Get_Type (Bel));
+         end;
       end if;
 
-      if Is_Unbounded_Type (El_Tinfo) then
+      if Unbounded then
          Stable_Prefix := Stabilize (Prefix);
 
          --  Result is a fat pointer, create it and set bounds.
          --  FIXME: layout for record, bounds for array!
-         Fat_Res := Create_Temp (El_Tinfo, Kind);
+         Fat_Res := Create_Temp (Res_Tinfo, Kind);
          El_Descr := Chap3.Record_Layout_To_Element_Layout
            (Chap3.Get_Composite_Bounds (Stable_Prefix), El);
-         case El_Tinfo.Type_Mode is
+         case Res_Tinfo.Type_Mode is
             when Type_Mode_Unbounded_Record =>
                null;
             when Type_Mode_Unbounded_Array =>
@@ -965,62 +1019,46 @@ package body Trans.Chap6 is
 
       --  Get the base.
       Base := Chap3.Get_Composite_Base (Stable_Prefix);
-      Base_Tinfo := Get_Type_Info (Base);
-      Box_Field := Base_Tinfo.S.Box_Field (Kind);
 
-      if (Box_Field = O_Fnode_Null
-            or else Get_Type_Staticness (El_Type) /= Locally)
-        and then (Is_Complex_Type (El_Tinfo) or Is_Unbounded_Type (El_Tinfo))
+      if Prefix_Tinfo.Type_Mode = Type_Mode_Static_Record
+        or else Is_Static_Type (El_Tinfo)
       then
-         Stabilize (Base);
-
-         if Box_Field /= O_Fnode_Null
-           and then Get_Type_Staticness (El_Type) /= Locally
-         then
-            --  Unbox.
-            B := New_Selected_Element (M2Lv (Base), Box_Field);
-         else
-            B := M2Lv (Base);
+         --  If the base element type is static or if the prefix is static,
+         --  then the element can directly be accessed.
+         Res := Lv2M (New_Selected_Element (M2Lv (Base), F), El_Tinfo, Kind);
+         if not Unbounded then
+            return Res;
          end if;
+         Res_Addr := New_Convert_Ov
+           (M2Addr (Res), Res_Tinfo.B.Base_Ptr_Type (Kind));
+      else
+         --  Unbounded or complex element.
+         Stabilize (Base);
 
          --  The element is complex: it's an offset.
          Rec_Layout := Chap3.Get_Composite_Bounds (Stable_Prefix);
-         Res := E2M
-           (New_Unchecked_Address
-              (New_Slice
-                   (New_Access_Element
-                        (New_Unchecked_Address (M2Lv (Base), Char_Ptr_Type)),
-                    Chararray_Type,
-                    New_Value
-                      (Chap3.Record_Layout_To_Element_Offset
-                         (Rec_Layout, El, Kind))),
-               El_Tinfo.B.Base_Ptr_Type (Kind)),
-            El_Tinfo, Kind);
-      else
-         --  Normal element.
-         B := M2Lv (Base);
+         Res_Lnode := New_Slice
+           (New_Access_Element
+              (New_Unchecked_Address (M2Lv (Base), Char_Ptr_Type)),
+            Chararray_Type,
+            New_Value (Chap3.Record_Layout_To_Element_Offset
+                         (Rec_Layout, El, Kind)));
 
-         if Box_Field /= O_Fnode_Null
-           and then El_Type = Get_Type (Base_El)
-         then
-            --  Unbox.
-            B := New_Selected_Element (B, Box_Field);
+         if not Unbounded then
+            Res_Addr := New_Unchecked_Address
+              (Res_Lnode, Res_Tinfo.Ortho_Ptr_Type (Kind));
+            return Lv2M (New_Access_Element (Res_Addr), Res_Tinfo, Kind);
          end if;
 
-         Res := Lv2M (New_Selected_Element (B, El_Info.Field_Node (Kind)),
-                      El_Tinfo, Kind);
+         Res_Addr := New_Unchecked_Address
+           (Res_Lnode, Res_Tinfo.B.Base_Ptr_Type (Kind));
       end if;
 
-      if Is_Unbounded_Type (El_Tinfo) then
-         --  Ok, we know that Get_Composite_Base doesn't return a copy.
-         New_Assign_Stmt
-           (M2Lp (Chap3.Get_Composite_Base (Fat_Res)),
-            New_Convert_Ov (M2Addr (Res),
-                            Get_Info (El_Btype).B.Base_Ptr_Type (Kind)));
-         return Fat_Res;
-      else
-         return Res;
-      end if;
+      pragma Assert (Unbounded);
+      --  Ok, we know that Get_Composite_Base doesn't return a copy.
+      New_Assign_Stmt
+        (M2Lp (Chap3.Get_Composite_Base (Fat_Res)), Res_Addr);
+      return Fat_Res;
    end Translate_Selected_Element;
 
    function Translate_Object_Alias_Name (Name : Iir; Mode : Object_Kind_Type)
@@ -1262,6 +1300,7 @@ package body Trans.Chap6 is
                Offset := Translate_Indexed_Name_Offset (Pfx_Sig, Name);
                Sig := Translate_Indexed_Name_By_Offset
                  (Pfx_Sig, Prefix_Type, Offset);
+               Pfx_Drv := Stabilize_If_Unbounded (Pfx_Drv);
                Drv := Translate_Indexed_Name_By_Offset
                  (Pfx_Drv, Prefix_Type, Offset);
             end;

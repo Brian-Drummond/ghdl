@@ -809,17 +809,18 @@ package body Translation is
       Finish_Subprogram_Decl (Interfaces, Ghdl_Finalize_Register);
    end Initialize;
 
-   procedure Create_Signal_Subprograms
-     (Suffix : String;
-      Val_Type : O_Tnode;
-      Create_Signal : out O_Dnode;
-      Init_Signal : out O_Dnode;
-      Simple_Assign : out O_Dnode;
-      Start_Assign : out O_Dnode;
-      Next_Assign : out O_Dnode;
-      Associate_Value : out O_Dnode;
-      Add_Port_Driver : out O_Dnode;
-      Driving_Value : out O_Dnode)
+   procedure Create_Signal_Subprograms (Suffix          : String;
+                                        Val_Type        : O_Tnode;
+                                        Create_Signal   : out O_Dnode;
+                                        Init_Signal     : out O_Dnode;
+                                        Simple_Assign   : out O_Dnode;
+                                        Start_Assign    : out O_Dnode;
+                                        Next_Assign     : out O_Dnode;
+                                        Associate_Value : out O_Dnode;
+                                        Add_Port_Driver : out O_Dnode;
+                                        Driving_Value   : out O_Dnode;
+                                        Force_Drv       : out O_Dnode;
+                                        Force_Eff       : out O_Dnode)
    is
       Interfaces : O_Inter_List;
       Param : O_Dnode;
@@ -910,6 +911,24 @@ package body Translation is
          O_Storage_External, Val_Type);
       New_Interface_Decl (Interfaces, Param, Wki_Sig, Ghdl_Signal_Ptr);
       Finish_Subprogram_Decl (Interfaces, Driving_Value);
+
+      --  procedure __ghdl_signal_force_drv_XXX (sign : __ghdl_signal_ptr;
+      --                                         val : VAL_TYPE);
+      Start_Procedure_Decl
+        (Interfaces, Get_Identifier ("__ghdl_signal_force_drv_" & Suffix),
+         O_Storage_External);
+      New_Interface_Decl (Interfaces, Param, Wki_Sig, Ghdl_Signal_Ptr);
+      New_Interface_Decl (Interfaces, Param, Wki_Val, Val_Type);
+      Finish_Subprogram_Decl (Interfaces, Force_Drv);
+
+      --  procedure __ghdl_signal_force_eff_XXX (sign : __ghdl_signal_ptr;
+      --                                         val : VAL_TYPE);
+      Start_Procedure_Decl
+        (Interfaces, Get_Identifier ("__ghdl_signal_force_eff_" & Suffix),
+         O_Storage_External);
+      New_Interface_Decl (Interfaces, Param, Wki_Sig, Ghdl_Signal_Ptr);
+      New_Interface_Decl (Interfaces, Param, Wki_Val, Val_Type);
+      Finish_Subprogram_Decl (Interfaces, Force_Eff);
    end Create_Signal_Subprograms;
 
    --  procedure __ghdl_image_NAME (res : std_string_ptr_node;
@@ -1364,8 +1383,10 @@ package body Translation is
       --  Max length of a scalar type.
       --  Note: this type is not correctly aligned.  Restricted use only.
       --  type __ghdl_scalar_bytes is __ghdl_chararray (0 .. 8);
-      Ghdl_Scalar_Bytes := New_Constrained_Array_Type
-        (Chararray_Type, New_Unsigned_Literal (Ghdl_Index_Type, 8));
+      Ghdl_Scalar_Bytes := New_Array_Subtype
+        (Chararray_Type,
+         Char_Type_Node,
+         New_Unsigned_Literal (Ghdl_Index_Type, 8));
       New_Type_Decl (Get_Identifier ("__ghdl_scalar_bytes"),
                      Ghdl_Scalar_Bytes);
 
@@ -1572,7 +1593,9 @@ package body Translation is
                                  Ghdl_Signal_Next_Assign_E8,
                                  Ghdl_Signal_Associate_E8,
                                  Ghdl_Signal_Add_Port_Driver_E8,
-                                 Ghdl_Signal_Driving_Value_E8);
+                                 Ghdl_Signal_Driving_Value_E8,
+                                 Ghdl_Signal_Force_Drv_E8,
+                                 Ghdl_Signal_Force_Eff_E8);
 
       --  function __ghdl_create_signal_e32 (init_val : ghdl_i32_type)
       --                                     return __ghdl_signal_ptr;
@@ -1586,7 +1609,9 @@ package body Translation is
                                  Ghdl_Signal_Next_Assign_E32,
                                  Ghdl_Signal_Associate_E32,
                                  Ghdl_Signal_Add_Port_Driver_E32,
-                                 Ghdl_Signal_Driving_Value_E32);
+                                 Ghdl_Signal_Driving_Value_E32,
+                                 Ghdl_Signal_Force_Drv_E32,
+                                 Ghdl_Signal_Force_Eff_E32);
 
       --  function __ghdl_create_signal_b1 (init_val : ghdl_bool_type)
       --                                    return __ghdl_signal_ptr;
@@ -1600,7 +1625,9 @@ package body Translation is
                                  Ghdl_Signal_Next_Assign_B1,
                                  Ghdl_Signal_Associate_B1,
                                  Ghdl_Signal_Add_Port_Driver_B1,
-                                 Ghdl_Signal_Driving_Value_B1);
+                                 Ghdl_Signal_Driving_Value_B1,
+                                 Ghdl_Signal_Force_Drv_B1,
+                                 Ghdl_Signal_Force_Eff_B1);
 
       Create_Signal_Subprograms ("i32", Ghdl_I32_Type,
                                  Ghdl_Create_Signal_I32,
@@ -1610,7 +1637,9 @@ package body Translation is
                                  Ghdl_Signal_Next_Assign_I32,
                                  Ghdl_Signal_Associate_I32,
                                  Ghdl_Signal_Add_Port_Driver_I32,
-                                 Ghdl_Signal_Driving_Value_I32);
+                                 Ghdl_Signal_Driving_Value_I32,
+                                 Ghdl_Signal_Force_Drv_I32,
+                                 Ghdl_Signal_Force_Eff_I32);
 
       Create_Signal_Subprograms ("f64", Ghdl_Real_Type,
                                  Ghdl_Create_Signal_F64,
@@ -1620,7 +1649,9 @@ package body Translation is
                                  Ghdl_Signal_Next_Assign_F64,
                                  Ghdl_Signal_Associate_F64,
                                  Ghdl_Signal_Add_Port_Driver_F64,
-                                 Ghdl_Signal_Driving_Value_F64);
+                                 Ghdl_Signal_Driving_Value_F64,
+                                 Ghdl_Signal_Force_Drv_F64,
+                                 Ghdl_Signal_Force_Eff_F64);
 
       Create_Signal_Subprograms ("i64", Ghdl_I64_Type,
                                  Ghdl_Create_Signal_I64,
@@ -1630,7 +1661,23 @@ package body Translation is
                                  Ghdl_Signal_Next_Assign_I64,
                                  Ghdl_Signal_Associate_I64,
                                  Ghdl_Signal_Add_Port_Driver_I64,
-                                 Ghdl_Signal_Driving_Value_I64);
+                                 Ghdl_Signal_Driving_Value_I64,
+                                 Ghdl_Signal_Force_Drv_I64,
+                                 Ghdl_Signal_Force_Eff_I64);
+
+      --  procedure __ghdl_signal_release_drv (sig : __ghdl_signal_ptr);
+      Start_Procedure_Decl
+        (Interfaces, Get_Identifier ("__ghdl_signal_release_drv"),
+         O_Storage_External);
+      New_Interface_Decl (Interfaces, Param, Wki_Sig, Ghdl_Signal_Ptr);
+      Finish_Subprogram_Decl (Interfaces, Ghdl_Signal_Release_Drv);
+
+      --  procedure __ghdl_signal_release_eff (sig : __ghdl_signal_ptr);
+      Start_Procedure_Decl
+        (Interfaces, Get_Identifier ("__ghdl_signal_release_eff"),
+         O_Storage_External);
+      New_Interface_Decl (Interfaces, Param, Wki_Sig, Ghdl_Signal_Ptr);
+      Finish_Subprogram_Decl (Interfaces, Ghdl_Signal_Release_Eff);
 
       --  procedure __ghdl_process_add_sensitivity (sig : __ghdl_signal_ptr);
       Start_Procedure_Decl
@@ -2130,8 +2177,8 @@ package body Translation is
 
       --  Std_Ulogic indexed array of STD.Boolean.
       --  Used by PSL to convert Std_Ulogic to boolean.
-      Std_Ulogic_Boolean_Array_Type :=
-        New_Constrained_Array_Type (Std_Boolean_Array_Type, New_Index_Lit (9));
+      Std_Ulogic_Boolean_Array_Type := New_Array_Subtype
+        (Std_Boolean_Array_Type, Std_Boolean_Type_Node, New_Index_Lit (9));
       New_Type_Decl (Get_Identifier ("__ghdl_std_ulogic_boolean_array_type"),
                      Std_Ulogic_Boolean_Array_Type);
       New_Const_Decl (Ghdl_Std_Ulogic_To_Boolean_Array,

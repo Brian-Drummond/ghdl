@@ -66,7 +66,9 @@ package body Synth.Stmts is
 
    function Synth_Waveform (Syn_Inst : Synth_Instance_Acc;
                             Wf : Node;
-                            Targ_Type : Type_Acc) return Valtyp is
+                            Targ_Type : Type_Acc) return Valtyp
+   is
+      Res : Valtyp;
    begin
       if Get_Kind (Wf) = Iir_Kind_Unaffected_Waveform then
          --  TODO
@@ -83,8 +85,11 @@ package body Synth.Stmts is
       if Targ_Type = null then
          return Synth_Expression (Syn_Inst, Get_We_Value (Wf));
       else
-         return Synth_Expression_With_Type
+         Res := Synth_Expression_With_Type
            (Syn_Inst, Get_We_Value (Wf), Targ_Type);
+         Res := Synth_Subtype_Conversion
+           (Get_Build (Syn_Inst), Res, Targ_Type, False, Wf);
+         return Res;
       end if;
    end Synth_Waveform;
 
@@ -741,14 +746,14 @@ package body Synth.Stmts is
          Set_Error (C.Inst);
          return;
       end if;
-      if Is_Static (Cond_Val.Val) then
+      if Is_Static_Val (Cond_Val.Val) then
          Strip_Const (Cond_Val);
-         if Read_Discrete (Cond_Val) = 1 then
+         if Read_Discrete (Get_Value_Memtyp (Cond_Val)) = 1 then
             --  True.
             Synth_Sequential_Statements
               (C, Get_Sequential_Statement_Chain (Stmt));
          else
-            pragma Assert (Read_Discrete (Cond_Val) = 0);
+            pragma Assert (Read_Discrete (Get_Value_Memtyp (Cond_Val)) = 0);
             if Is_Valid (Els) then
                --  Else part
                if Is_Null (Get_Condition (Els)) then
@@ -1428,7 +1433,8 @@ package body Synth.Stmts is
 
       --  Synth statements, extract choice value.
       declare
-         Choice : Node;
+         Choice, Wf : Node;
+         Val : Valtyp;
          Choice_Idx, Other_Choice : Nat32;
       begin
          Alt_Idx := 0;
@@ -1439,11 +1445,11 @@ package body Synth.Stmts is
          while Is_Valid (Choice) loop
             pragma Assert (not Get_Same_Alternative_Flag (Choice));
 
-            Alt_Idx := Alt_Idx + 1;
+            Wf := Get_Associated_Chain (Choice);
+            Val := Synth_Waveform (Syn_Inst, Wf, Targ_Type);
 
-            Alts (Alt_Idx).Val := Get_Net
-              (Ctxt, Synth_Waveform
-                 (Syn_Inst, Get_Associated_Chain (Choice), Targ_Type));
+            Alt_Idx := Alt_Idx + 1;
+            Alts (Alt_Idx).Val := Get_Net (Ctxt, Val);
 
             Synth_Choice (Syn_Inst, Sel_Net, Sel.Typ,
                           Nets.all, Other_Choice, Choice_Idx, Choice);
@@ -1833,7 +1839,7 @@ package body Synth.Stmts is
          then
             Val := Get_Value (Subprg_Inst, Inter);
             --  Arguments are passed by copy.
-            Wire := Alloc_Wire (Wire_Variable, Inter);
+            Wire := Alloc_Wire (Wire_Variable, Val.Typ, Inter);
             Set_Wire_Gate (Wire, Get_Net (Ctxt, Val));
 
             Val := Create_Value_Wire (Wire, Val.Typ);
@@ -1923,11 +1929,11 @@ package body Synth.Stmts is
             Ret_Typ => null,
             Nbr_Ret => 0);
 
-      C.W_En := Alloc_Wire (Wire_Variable, Imp);
-      C.W_Ret := Alloc_Wire (Wire_Variable, Imp);
+      C.W_En := Alloc_Wire (Wire_Variable, Bit_Type, Imp);
+      C.W_Ret := Alloc_Wire (Wire_Variable, Bit_Type, Imp);
 
       if Is_Func then
-         C.W_Val := Alloc_Wire (Wire_Variable, Imp);
+         C.W_Val := Alloc_Wire (Wire_Variable, null, Imp);
       end if;
 
       --  Create a phi so that all assignments are gathered.
@@ -2004,14 +2010,14 @@ package body Synth.Stmts is
 
    function Synth_Static_Subprogram_Call (Syn_Inst : Synth_Instance_Acc;
                                           Sub_Inst : Synth_Instance_Acc;
-                                          Call : Node;
+                                          Call     : Node;
+                                          Bod      : Node;
                                           Init : Association_Iterator_Init;
                                           Infos : Target_Info_Array)
                                          return Valtyp
    is
       Imp  : constant Node := Get_Implementation (Call);
       Is_Func : constant Boolean := Is_Function_Declaration (Imp);
-      Bod : constant Node := Get_Subprogram_Body (Imp);
       Res : Valtyp;
       C : Seq_Context (Mode_Static);
    begin
@@ -2094,7 +2100,7 @@ package body Synth.Stmts is
 
          if Get_Instance_Const (Sub_Inst) then
             Res := Synth_Static_Subprogram_Call
-              (Syn_Inst, Sub_Inst, Call, Init, Infos);
+              (Syn_Inst, Sub_Inst, Call, Bod, Init, Infos);
          else
             Res := Synth_Dynamic_Subprogram_Call
               (Syn_Inst, Sub_Inst, Call, Init, Infos);
@@ -2189,16 +2195,6 @@ package body Synth.Stmts is
       end case;
    end Synth_Procedure_Call;
 
-   function In_Range (Rng : Discrete_Range_Type; V : Int64) return Boolean is
-   begin
-      case Rng.Dir is
-         when Dir_To =>
-            return V >= Rng.Left and then V <= Rng.Right;
-         when Dir_Downto =>
-            return V <= Rng.Left and then V >= Rng.Right;
-      end case;
-   end In_Range;
-
    procedure Update_Index (Rng : Discrete_Range_Type; V : in out Valtyp)
    is
       T : Int64;
@@ -2213,7 +2209,7 @@ package body Synth.Stmts is
       Write_Discrete (V, T);
    end Update_Index;
 
-   --  Return True iff WID is a static wire and its value is 0.
+   --  Return True iff WID is a static wire and its value is V.
    function Is_Static_Bit (Wid : Wire_Id; V : Ghdl_U8) return Boolean
    is
       M : Memtyp;
@@ -2249,7 +2245,7 @@ package body Synth.Stmts is
       if Lc.Prev_Loop /= null and then Lc.Prev_Loop.Need_Quit then
          --  An exit or next statement that targets an outer loop may suspend
          --  the execution of this loop.
-         Lc.W_Quit := Alloc_Wire (Wire_Variable, Lc.Loop_Stmt);
+         Lc.W_Quit := Alloc_Wire (Wire_Variable, Bit_Type, Lc.Loop_Stmt);
          Set_Wire_Gate (Lc.W_Quit, Build_Control_Signal (C.Inst, 1, Stmt));
          Phi_Assign_Static (Lc.W_Quit, Bit1);
       end if;
@@ -2271,7 +2267,7 @@ package body Synth.Stmts is
 
       if Get_Exit_Flag (Stmt) then
          --  There is an exit statement for this loop.  Create the wire.
-         Lc.W_Exit := Alloc_Wire (Wire_Variable, Lc.Loop_Stmt);
+         Lc.W_Exit := Alloc_Wire (Wire_Variable, Bit_Type, Lc.Loop_Stmt);
          Set_Wire_Gate (Lc.W_Exit, Build_Control_Signal (C.Inst, 1, Stmt));
          Phi_Assign_Static (Lc.W_Exit, Bit1);
       end if;
@@ -2997,7 +2993,7 @@ package body Synth.Stmts is
       C := (Mode => Mode_Dynamic,
             Inst => Make_Instance (Syn_Inst, Proc, C_Sname),
             Cur_Loop => null,
-            W_En => Alloc_Wire (Wire_Variable, Proc),
+            W_En => Alloc_Wire (Wire_Variable, Bit_Type, Proc),
             W_Ret => No_Wire_Id,
             W_Val => No_Wire_Id,
             Ret_Init => No_Net,
@@ -3339,14 +3335,17 @@ package body Synth.Stmts is
       --  Note: for synthesis, we assume the next state will be correct.
       --  (If we assert on States, then the first cycle is ignored).
       Synth_Psl_Dff (Syn_Inst, Stmt, Next_States);
-      if Next_States /= No_Net then
-         Lab := Synth_Label (Syn_Inst, Stmt);
+      if Next_States = No_Net then
+         return;
+      end if;
+      Lab := Synth_Label (Syn_Inst, Stmt);
 
-         Inst := Build_Assert
-           (Ctxt, Lab,
-            Synth_Psl_Not_Final (Syn_Inst, Stmt, Next_States));
-         Set_Location (Inst, Get_Location (Stmt));
+      Inst := Build_Assert
+        (Ctxt, Lab, Synth_Psl_Not_Final (Syn_Inst, Stmt, Next_States));
+      Set_Location (Inst, Get_Location (Stmt));
 
+      --  Also add a cover gate to cover assertion activation.
+      if Flags.Flag_Assert_Cover then
          Active := Get_Active_State (NFA);
          if Active /= No_State then
             if Lab /= No_Sname then

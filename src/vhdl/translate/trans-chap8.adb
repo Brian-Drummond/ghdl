@@ -945,53 +945,56 @@ package body Trans.Chap8 is
    procedure Translate_Variable_Aggregate_Assignment
      (Targ : Iir; Targ_Type : Iir; Val : Mnode);
 
-   procedure Translate_Variable_Array_Aggr
-     (Targ      : Iir_Aggregate;
-      Targ_Type : Iir;
-      Val       : Mnode;
-      Index     : O_Dnode;
-      Dim       : Natural)
+   procedure Translate_Variable_Array_Aggr_Final
+     (Choice : Iir; Targ_Type : Iir; Val : Mnode; Index : O_Dnode)
+   is
+      Targ : constant Iir := Get_Associated_Expr (Choice);
+      Sub_Aggr  : Mnode;
+      Sub_Type  : Iir;
+      Dest : Mnode;
+   begin
+      if Get_Element_Type_Flag (Choice) then
+         Sub_Aggr := Chap3.Index_Base (Chap3.Get_Composite_Base (Val),
+                                       Targ_Type, New_Obj_Value (Index));
+         Sub_Type := Get_Element_Subtype (Targ_Type);
+         Translate_Variable_Aggregate_Assignment (Targ, Sub_Type, Sub_Aggr);
+         Inc_Var (Index);
+      else
+         Sub_Type := Get_Type (Targ);
+         Sub_Aggr := Chap3.Slice_Base (Chap3.Get_Composite_Base (Val),
+                                       Sub_Type, New_Obj_Value (Index),
+                                       O_Enode_Null);
+         Stabilize (Sub_Aggr);
+         Dest := Chap6.Translate_Name (Targ, Mode_Value);
+         Stabilize (Dest);
+         Gen_Memcpy (M2Addr (Chap3.Get_Composite_Base (Dest)),
+                     M2Addr (Sub_Aggr),
+                     Chap3.Get_Object_Size (Dest, Sub_Type));
+         New_Assign_Stmt
+           (New_Obj (Index),
+            New_Dyadic_Op (ON_Add_Ov,
+                           New_Obj_Value (Index),
+                           Chap3.Get_Array_Length (Dest, Sub_Type)));
+      end if;
+   end Translate_Variable_Array_Aggr_Final;
+
+   procedure Translate_Variable_Array_Aggr (Targ      : Iir_Aggregate;
+                                            Targ_Type : Iir;
+                                            Val       : Mnode;
+                                            Index     : O_Dnode;
+                                            Dim       : Natural)
    is
       Choice  : Iir;
       Final   : Boolean;
-      Expr    : Iir;
    begin
       Final := Dim = Get_Nbr_Elements (Get_Index_Subtype_List (Targ_Type));
       Choice := Get_Association_Choices_Chain (Targ);
       while Choice /= Null_Iir loop
-         Expr := Get_Associated_Expr (Choice);
          case Get_Kind (Choice) is
             when Iir_Kind_Choice_By_None =>
                if Final then
-                  declare
-                     Sub_Aggr   : Mnode;
-                     Sub_Type   : Iir;
-                  begin
-                     if Get_Element_Type_Flag (Choice) then
-                        Sub_Aggr := Chap3.Index_Base
-                          (Chap3.Get_Composite_Base (Val), Targ_Type,
-                           New_Obj_Value (Index));
-                        Sub_Type := Get_Element_Subtype (Targ_Type);
-                     else
-                        Sub_Type := Get_Type (Expr);
-                        Sub_Aggr := Chap3.Slice_Base
-                          (Chap3.Get_Composite_Base (Val),
-                           Sub_Type, New_Obj_Value (Index));
-                        Stabilize (Sub_Aggr);
-                     end if;
-                     Translate_Variable_Aggregate_Assignment
-                       (Expr, Sub_Type, Sub_Aggr);
-                     if Get_Element_Type_Flag (Choice) then
-                        Inc_Var (Index);
-                     else
-                        New_Assign_Stmt
-                          (New_Obj (Index),
-                           New_Dyadic_Op
-                             (ON_Add_Ov,
-                              New_Obj_Value (Index),
-                              Chap3.Get_Array_Length (Sub_Aggr, Sub_Type)));
-                     end if;
-                  end;
+                  Translate_Variable_Array_Aggr_Final
+                    (Choice, Targ_Type, Val, Index);
                else
                   Translate_Variable_Array_Aggr
                     (Get_Associated_Expr (Choice),
@@ -1145,6 +1148,8 @@ package body Trans.Chap8 is
 
       case Get_Kind (Base) is
          when Iir_Kinds_Dereference =>
+            --  FIXME: cannot overlap as aggregate is composed of locally
+            --  static names that denote variables.
             return Aggregate_Overlap_Dereference
               (Targ, Get_Base_Type (Get_Type (Base)));
          when Iir_Kind_Interface_Variable_Declaration
@@ -1188,6 +1193,13 @@ package body Trans.Chap8 is
             E    : Mnode;
             Temp : Mnode;
          begin
+            --  According to LRM08 9.3.3.3 Array aggregates, the expression
+            --  cannot depend on the target aggregate, so it can be evaluated
+            --  directly.  In other words, it shouldn't be an aggregate with
+            --  'others'.
+            --  TODO: Because the aggregate is composed only of locally static
+            --  variable names, it is possible to compute the bounds and check
+            --  matching constraints.
             Chap3.Translate_Anonymous_Subtype_Definition (Targ_Type, False);
             E := Chap7.Translate_Expression (Expr, Targ_Type);
 
@@ -1350,7 +1362,7 @@ package body Trans.Chap8 is
    begin
       New_Assign_Stmt (New_Selected_Element (New_Obj (Val_Node),
                                              Tinfo.B.Base_Field (Mode_Value)),
-                       Val);
+                       New_Convert (Val, Tinfo.B.Base_Ptr_Type (Mode_Value)));
       Func_Info := Get_Info (Func);
       Start_Association (Assoc, Func_Info.Operator_Node);
       Subprgs.Add_Subprg_Instance_Assoc (Assoc, Func_Info.Operator_Instance);
@@ -1368,13 +1380,13 @@ package body Trans.Chap8 is
      (Stmt       : Iir_Case_Statement;
       Choices    : Iir;
       Len_Type   : out Iir;
-      Tinfo      : out Type_Info_Acc;
+      Base_Type  : out Iir;
       Expr_Node  : out O_Dnode;
       C_Node     : out O_Dnode)
    is
       Expr       : constant Iir := Get_Expression (Stmt);
       Expr_Type  : Iir;
-      Base_Type  : Iir;
+      Tinfo      : Type_Info_Acc;
       Sel_Length : Int64;
       Cond       : O_Enode;
    begin
@@ -1446,7 +1458,8 @@ package body Trans.Chap8 is
       Handler : in out Case_Handler'Class)
    is
       First, Last : Choice_Id;
-      El : Choice_Id;
+      El          : Choice_Id;
+      Base_Type   : Iir;
 
       --  Selector.
       Tinfo     : Type_Info_Acc;
@@ -1468,6 +1481,7 @@ package body Trans.Chap8 is
       --  Dichotomy table (table of choices).
       String_Type     : O_Tnode;
       Table_Base_Type : O_Tnode;
+      Table_Type      : O_Tnode;
       Table           : O_Dnode;
       List            : O_Array_Aggr_List;
       Table_Cst       : O_Cnode;
@@ -1477,6 +1491,7 @@ package body Trans.Chap8 is
       --   statement list.
       --  Could be replaced by jump table.
       Assoc_Table_Base_Type : O_Tnode;
+      Assoc_Table_Type      : O_Tnode;
       Assoc_Table           : O_Dnode;
    begin
       --  Fill Choices_Info array, and count number of associations.
@@ -1573,21 +1588,27 @@ package body Trans.Chap8 is
 
       Open_Temp;
       Translate_String_Case_Statement_Common
-        (Stmt, Choices_Chain, Len_Type, Tinfo, Expr_Node, C_Node);
+        (Stmt, Choices_Chain, Len_Type, Base_Type, Expr_Node, C_Node);
+
+      Tinfo := Get_Info (Base_Type);
 
       --  Generate the sorted array of choices.
       Sel_Length := Eval_Discrete_Type_Length
         (Get_String_Type_Bound_Type (Len_Type));
 
-      String_Type := New_Constrained_Array_Type
+      String_Type := New_Array_Subtype
         (Tinfo.B.Base_Type (Mode_Value),
-         New_Unsigned_Literal (Ghdl_Index_Type, Unsigned_64 (Sel_Length)));
+         Get_Ortho_Type (Get_Element_Subtype (Base_Type), Mode_Value),
+         New_Index_Lit (Unsigned_64 (Sel_Length)));
       Table_Base_Type := New_Array_Type (String_Type, Ghdl_Index_Type);
       New_Type_Decl (Create_Uniq_Identifier, Table_Base_Type);
+      Table_Type := New_Array_Subtype
+        (Table_Base_Type,
+         String_Type, New_Index_Lit (Unsigned_64 (Nbr_Choices)));
       New_Const_Decl (Table, Create_Uniq_Identifier, O_Storage_Private,
-                      Table_Base_Type);
+                      Table_Type);
       Start_Init_Value (Table);
-      Start_Array_Aggr (List, Table_Base_Type, Unsigned_32 (Nbr_Choices));
+      Start_Array_Aggr (List, Table_Type, Unsigned_32 (Nbr_Choices));
 
       El := First;
       while El /= No_Choice_Id loop
@@ -1602,11 +1623,14 @@ package body Trans.Chap8 is
       Assoc_Table_Base_Type :=
         New_Array_Type (Ghdl_Index_Type, Ghdl_Index_Type);
       New_Type_Decl (Create_Uniq_Identifier, Assoc_Table_Base_Type);
+      Assoc_Table_Type := New_Array_Subtype
+        (Assoc_Table_Base_Type,
+         Ghdl_Index_Type, New_Index_Lit (Unsigned_64 (Nbr_Choices)));
       New_Const_Decl (Assoc_Table, Create_Uniq_Identifier,
-                      O_Storage_Private, Assoc_Table_Base_Type);
+                      O_Storage_Private, Assoc_Table_Type);
       Start_Init_Value (Assoc_Table);
       Start_Array_Aggr
-        (List, Assoc_Table_Base_Type, Unsigned_32 (Nbr_Choices));
+        (List, Assoc_Table_Type, Unsigned_32 (Nbr_Choices));
       El := First;
       while El /= No_Choice_Id loop
          New_Array_Aggr_El
@@ -1824,6 +1848,7 @@ package body Trans.Chap8 is
       Expr_Node : O_Dnode;
       --  Node containing the current choice.
       Val_Node  : O_Dnode;
+      Base_Type : Iir;
       Tinfo     : Type_Info_Acc;
 
       Cond_Var : O_Dnode;
@@ -1887,7 +1912,8 @@ package body Trans.Chap8 is
    begin
       Open_Temp;
       Translate_String_Case_Statement_Common
-        (Stmt, Choices, Len_Type, Tinfo, Expr_Node, Val_Node);
+        (Stmt, Choices, Len_Type, Base_Type, Expr_Node, Val_Node);
+      Tinfo := Get_Info (Base_Type);
 
       Func := Chap7.Find_Predefined_Function
         (Get_Base_Type (Len_Type), Iir_Predefined_Array_Equality);
@@ -2567,6 +2593,16 @@ package body Trans.Chap8 is
                   Actual := Get_Default_Value (Inter);
                   Act_Type := Get_Type (Actual);
             end case;
+
+            --  If the actual is a slice, create the type early so that they
+            --  could be used in different states.  If they are created too
+            --  late, they could be created in a state but referenced in
+            --  a different one.
+            if Actual /= Null_Iir
+              and then Get_Kind (Actual) = Iir_Kind_Slice_Name
+            then
+               Chap3.Create_Composite_Subtype (Act_Type, False);
+            end if;
 
             --  For out or inout scalar variable, create a field for the
             --  actual value.
@@ -3717,7 +3753,7 @@ package body Trans.Chap8 is
       if Sensitivity = Null_Iir_List and Cond /= Null_Iir then
          --  Extract sensitivity from condition.
          Sensitivity := Create_Iir_List;
-         Vhdl.Canon.Canon_Extract_Sensitivity (Cond, Sensitivity);
+         Vhdl.Canon.Canon_Extract_Sensitivity_Expression (Cond, Sensitivity);
          Set_Sensitivity_List (Stmt, Sensitivity);
       end if;
 
@@ -4206,7 +4242,7 @@ package body Trans.Chap8 is
                else
                   Sub_Type := Get_Type (Expr);
                   Sub_Aggr := Chap3.Slice_Base
-                    (Aggr, Sub_Type, New_Obj_Value (Idx));
+                    (Aggr, Sub_Type, New_Obj_Value (Idx), O_Enode_Null);
                end if;
             when others =>
                Error_Kind ("translate_signal_target_array_aggr", El);
@@ -4341,11 +4377,11 @@ package body Trans.Chap8 is
       --   with weird resolution functions.
       New_Assign_Stmt
         (New_Obj (Cond),
-         New_Compare_Op (ON_Neq,
-           Chap7.Translate_Signal_Driving_Value
-             (M2E (Targ_Sig), Targ_Type),
-           M2E (Drv),
-           Ghdl_Bool_Type));
+         New_Compare_Op
+           (ON_Neq,
+            M2E (Chap7.Translate_Signal_Driving_Value (Targ_Sig, Targ_Type)),
+            M2E (Drv),
+            Ghdl_Bool_Type));
       Finish_If_Stmt (If_Blk);
 
       --  Put signal into active list (if not already in the list).
@@ -4807,8 +4843,131 @@ package body Trans.Chap8 is
       Close_Temp;
    end Translate_Selected_Waveform_Assignment_Statement;
 
-   procedure Translate_Statement (Stmt : Iir)
+   procedure Translate_Signal_Release_Assignment_Statement (Stmt : Iir)
    is
+      Target : constant Iir := Get_Target (Stmt);
+      Targ : Mnode;
+      Proc : O_Dnode;
+   begin
+      Targ := Chap6.Translate_Name (Target, Mode_Signal);
+      case Get_Force_Mode (Stmt) is
+         when Iir_Force_In =>
+            Proc := Ghdl_Signal_Release_Eff;
+         when Iir_Force_Out =>
+            Proc := Ghdl_Signal_Release_Drv;
+      end case;
+      Register_Signal (Targ, Get_Type (Target), Proc);
+   end Translate_Signal_Release_Assignment_Statement;
+
+   Signal_Force_Stmt : Iir;
+   procedure Gen_Signal_Force_Non_Composite (Targ      : Mnode;
+                                             Targ_Type : Iir;
+                                             Val       : O_Enode)
+   is
+      Type_Info : constant Type_Info_Acc := Get_Info (Targ_Type);
+      Subprg    : O_Dnode;
+      Conv      : O_Tnode;
+      Assoc     : O_Assoc_List;
+      Val2      : O_Enode;
+   begin
+      case Type_Mode_Scalar (Type_Info.Type_Mode) is
+         when Type_Mode_B1 =>
+            case Get_Force_Mode (Signal_Force_Stmt) is
+               when Iir_Force_In =>
+                  Subprg := Ghdl_Signal_Force_Eff_B1;
+               when Iir_Force_Out =>
+                  Subprg := Ghdl_Signal_Force_Drv_B1;
+            end case;
+            Conv := Ghdl_Bool_Type;
+         when Type_Mode_E8 =>
+            case Get_Force_Mode (Signal_Force_Stmt) is
+               when Iir_Force_In =>
+                  Subprg := Ghdl_Signal_Force_Eff_E8;
+               when Iir_Force_Out =>
+                  Subprg := Ghdl_Signal_Force_Drv_E8;
+            end case;
+            Conv := Ghdl_I32_Type;
+         when Type_Mode_E32 =>
+            case Get_Force_Mode (Signal_Force_Stmt) is
+               when Iir_Force_In =>
+                  Subprg := Ghdl_Signal_Force_Eff_E32;
+               when Iir_Force_Out =>
+                  Subprg := Ghdl_Signal_Force_Drv_E32;
+            end case;
+            Conv := Ghdl_I32_Type;
+         when Type_Mode_I32
+            | Type_Mode_P32 =>
+            case Get_Force_Mode (Signal_Force_Stmt) is
+               when Iir_Force_In =>
+                  Subprg := Ghdl_Signal_Force_Eff_I32;
+               when Iir_Force_Out =>
+                  Subprg := Ghdl_Signal_Force_Drv_I32;
+            end case;
+            Conv := Ghdl_I32_Type;
+         when Type_Mode_P64
+            | Type_Mode_I64 =>
+            case Get_Force_Mode (Signal_Force_Stmt) is
+               when Iir_Force_In =>
+                  Subprg := Ghdl_Signal_Force_Eff_I64;
+               when Iir_Force_Out =>
+                  Subprg := Ghdl_Signal_Force_Drv_I64;
+            end case;
+            Conv := Ghdl_I64_Type;
+         when Type_Mode_F64 =>
+            case Get_Force_Mode (Signal_Force_Stmt) is
+               when Iir_Force_In =>
+                  Subprg := Ghdl_Signal_Force_Eff_F64;
+               when Iir_Force_Out =>
+                  Subprg := Ghdl_Signal_Force_Drv_F64;
+            end case;
+            Conv := Ghdl_Real_Type;
+      end case;
+      Val2 := Chap3.Insert_Scalar_Check
+        (Val, Null_Iir, Targ_Type, Signal_Force_Stmt);
+      Start_Association (Assoc, Subprg);
+      New_Association (Assoc, New_Convert_Ov (New_Value (M2Lv (Targ)),
+                                              Ghdl_Signal_Ptr));
+      New_Association (Assoc, New_Convert_Ov (Val2, Conv));
+      New_Procedure_Call (Assoc);
+   end Gen_Signal_Force_Non_Composite;
+
+   procedure Gen_Signal_Force is new Foreach_Non_Composite
+     (Data_Type => O_Enode,
+      Composite_Data_Type => Mnode,
+      Do_Non_Composite => Gen_Signal_Force_Non_Composite,
+      Prepare_Data_Array => Gen_Oenode_Prepare_Data_Composite,
+      Update_Data_Array => Gen_Oenode_Update_Data_Array,
+      Finish_Data_Array => Gen_Oenode_Finish_Data_Composite,
+      Prepare_Data_Record => Gen_Oenode_Prepare_Data_Composite,
+      Update_Data_Record => Gen_Oenode_Update_Data_Record,
+      Finish_Data_Record => Gen_Oenode_Finish_Data_Composite);
+
+   procedure Translate_Signal_Force_Assignment_Statement (Stmt : Iir)
+   is
+      Target : constant Iir := Get_Target (Stmt);
+      Target_Type : constant Iir := Get_Type (Target);
+      Targ_Tinfo : constant Type_Info_Acc := Get_Info (Target_Type);
+      Expr : constant Iir := Get_Expression (Stmt);
+      Value : Mnode;
+      Targ  : Mnode;
+   begin
+      Targ := Chap6.Translate_Name (Target, Mode_Signal);
+      Value := Chap7.Translate_Expression (Expr, Target_Type);
+
+      if Is_Composite (Targ_Tinfo)
+        and then Get_Constraint_State (Target_Type) /= Fully_Constrained
+      then
+         Stabilize (Targ);
+         Stabilize (Value);
+         Chap3.Check_Composite_Match
+           (Target_Type, Targ, Get_Type (Expr), Value, Stmt);
+      end if;
+
+      Signal_Force_Stmt := Stmt;
+      Gen_Signal_Force (Targ, Target_Type, M2E (Value));
+   end Translate_Signal_Force_Assignment_Statement;
+
+   procedure Translate_Statement (Stmt : Iir) is
    begin
       New_Debug_Line_Stmt (Get_Line_Number (Stmt));
       Open_Temp;
@@ -4859,6 +5018,10 @@ package body Trans.Chap8 is
                Trans.Update_Node_Infos;
                Translate_If_Statement (C_Stmt);
             end;
+         when Iir_Kind_Signal_Release_Assignment_Statement =>
+            Translate_Signal_Release_Assignment_Statement (Stmt);
+         when Iir_Kind_Signal_Force_Assignment_Statement =>
+            Translate_Signal_Force_Assignment_Statement (Stmt);
 
          when Iir_Kind_Null_Statement =>
             --  A null statement is translated to a NOP, so that the

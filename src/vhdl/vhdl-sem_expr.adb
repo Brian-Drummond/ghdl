@@ -1727,44 +1727,54 @@ package body Vhdl.Sem_Expr is
       Is_Dyadic : constant Boolean :=
         Get_Kind (Expr) in Iir_Kinds_Dyadic_Operator;
       Interface_Chain : Iir;
-      Err : Boolean;
-      Left : Iir;
-      Right : Iir;
+      Err             : Boolean;
+      Left            : Iir;
+      Left_Type       : Iir;
+      Right           : Iir;
+      Right_Type      : Iir;
    begin
       Set_Type (Expr, Get_Return_Type (Decl));
       Interface_Chain := Get_Interface_Declaration_Chain (Decl);
       Err := False;
       Left := Get_Left (Expr);
+      Left_Type := Get_Type (Interface_Chain);
       if Is_Overloaded (Left) then
-         Left := Sem_Expression_Ov
-           (Left, Get_Base_Type (Get_Type (Interface_Chain)));
+         Left := Sem_Expression_Ov (Left, Get_Base_Type (Left_Type));
          if Left = Null_Iir then
             Err := True;
-         else
-            Set_Left (Expr, Left);
          end if;
       end if;
       Check_Read (Left);
+      Set_Left (Expr, Left);
       if Is_Dyadic then
          Right := Get_Right (Expr);
+         Right_Type := Get_Type (Get_Chain (Interface_Chain));
          if Is_Overloaded (Right) then
-            Right := Sem_Expression_Ov
-              (Right, Get_Base_Type (Get_Type (Get_Chain (Interface_Chain))));
+            Right := Sem_Expression_Ov (Right, Get_Base_Type (Right_Type));
             if Right = Null_Iir then
                Err := True;
-            else
-               Set_Right (Expr, Right);
             end if;
          end if;
          Check_Read (Right);
+         Set_Right (Expr, Right);
       end if;
       if not Err then
          Set_Implementation (Expr, Decl);
          Sem_Subprogram_Call_Finish (Expr, Decl);
-         return Eval_Expr_If_Static (Expr);
-      else
-         return Expr;
+         if Get_Expr_Staticness (Expr) = Locally then
+            return Eval_Expr_If_Static (Expr);
+         else
+            --  The result is not static, but an operand may be static.
+            --  Evaluate it.
+            Left := Eval_Expr_Check_If_Static (Left, Left_Type);
+            Set_Left (Expr, Left);
+            if Is_Dyadic then
+               Right := Eval_Expr_Check_If_Static (Right, Right_Type);
+               Set_Right (Expr, Right);
+            end if;
+         end if;
       end if;
+      return Expr;
    end Set_Operator_Unique_Interpretation;
 
    --  Display an error message for sem_operator.
@@ -3240,6 +3250,7 @@ package body Vhdl.Sem_Expr is
             Rec_El : Iir;
             Rec_El_Type : Iir;
             New_Rec_El : Iir;
+            Assoc_Expr : Iir;
             Constraint : Iir_Constraint;
             Composite_Found : Boolean;
             Staticness : Iir_Staticness;
@@ -3251,7 +3262,8 @@ package body Vhdl.Sem_Expr is
             Staticness := Locally;
             for I in Flist_First .. Flist_Last (El_List) loop
                El := Matches (I);
-               El_Type := Get_Type (Get_Associated_Expr (El));
+               Assoc_Expr := Get_Associated_Expr (El);
+               El_Type := Get_Type (Assoc_Expr);
                Rec_El := Get_Nth_Element (Rec_El_List, I);
                Rec_El_Type := Get_Type (Rec_El);
                if Is_Fully_Constrained_Type (El_Type)
@@ -4028,7 +4040,7 @@ package body Vhdl.Sem_Expr is
 
    --  Analyze aggregate EXPR whose type is expected to be A_TYPE.
    --  A_TYPE cannot be null_iir (this case is handled in sem_expression_ov)
-   --  If FORCE_CONSTRAINED is true, the aggregate type is constrained by the
+   --  If CONSTRAINED is true, the aggregate type is constrained by the
    --  context, even if its type isn't.  This is to deal with cases like:
    --    procedure set (v : out string) is
    --    begin

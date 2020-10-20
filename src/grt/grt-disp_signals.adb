@@ -167,30 +167,28 @@ package body Grt.Disp_Signals is
       end loop;
    end Disp_Transaction;
 
+   procedure Disp_Flag (Name : Character; Cond : Boolean)
+   is
+      C : Character;
+   begin
+      if Cond then
+         C := Name;
+      else
+         C := '-';
+      end if;
+      Put (C);
+   end Disp_Flag;
+
    procedure Disp_Single_Signal_Attributes (Sig : Ghdl_Signal_Ptr) is
    begin
       Disp_Mode (Sig.Mode);
       Put (' ');
-      if Sig.Active then
-         Put ('A');
-      else
-         Put ('-');
-      end if;
-      if Sig.Event then
-         Put ('E');
-      else
-         Put ('-');
-      end if;
-      if Sig.Has_Active then
-         Put ('a');
-      else
-         Put ('-');
-      end if;
-      if Sig.S.Effective /= null then
-         Put ('e');
-      else
-         Put ('-');
-      end if;
+      Disp_Flag ('A', Sig.Active);
+      Disp_Flag ('E', Sig.Event);
+      Disp_Flag ('a', Sig.Has_Active);
+      Disp_Flag ('e', Sig.S.Effective /= null);
+      Disp_Flag ('F', Sig.Flags.Is_Drv_Forced);
+      Disp_Flag ('f', Sig.Flags.Is_Eff_Forced);
       if Boolean'(True) then
          Put (" last_event=");
          Put_Time (stdout, Sig.Last_Event);
@@ -224,6 +222,14 @@ package body Grt.Disp_Signals is
          Disp_Value (stdout, Sig.Driving_Value, Sig_Type);
       else
          Disp_Value (Sig.Driving_Value, Sig.Mode);
+      end if;
+      if Boolean'(False) then
+         Put ("; lst=");
+         if Sig_Type /= null then
+            Disp_Value (stdout, Sig.Last_Value, Sig_Type);
+         else
+            Disp_Value (Sig.Last_Value, Sig.Mode);
+         end if;
       end if;
       if Sources then
          if Sig.Nbr_Ports > 0 then
@@ -299,8 +305,7 @@ package body Grt.Disp_Signals is
    procedure Disp_Scalar_Signal (Val_Addr : Address;
                                  Val_Name : Vstring;
                                  Val_Type : Ghdl_Rti_Access;
-                                 Parent : Rti_Object)
-   is
+                                 Parent : Rti_Object) is
    begin
       Disp_Signal_Name (stdout, Parent.Ctxt,
                         To_Ghdl_Rtin_Object_Acc (Parent.Obj));
@@ -484,8 +489,7 @@ package body Grt.Disp_Signals is
       Grt.Stdio.fflush (stdout);
    end Disp_Signals_Table;
 
-   procedure Disp_A_Signal (Sig : Ghdl_Signal_Ptr)
-   is
+   procedure Disp_A_Signal (Sig : Ghdl_Signal_Ptr) is
    begin
       Put_Signal_Name (stdout, Sig);
       Disp_Simple_Signal (Sig, null, True);
@@ -518,10 +522,8 @@ package body Grt.Disp_Signals is
       procedure Foreach_Scalar is new Grt.Rtis_Utils.Foreach_Scalar
         (Param_Type => Boolean, Process => Process_Scalar);
 
-      function Process_Block (Ctxt : Rti_Context;
-                              Obj : Ghdl_Rti_Access)
-                             return Traverse_Result
-      is
+      function Process_Block (Ctxt : Rti_Context; Obj : Ghdl_Rti_Access)
+                             return Traverse_Result is
       begin
          case Obj.Kind is
             when Ghdl_Rtik_Signal

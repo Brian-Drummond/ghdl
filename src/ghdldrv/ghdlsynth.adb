@@ -95,14 +95,17 @@ package body Ghdlsynth is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "--synth";
+      return Name = "synth"
+        or else Name = "--synth";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Synth) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "--synth [FILES... -e] UNIT [ARCH]   Synthesis from UNIT";
+      return "synth [FILES... -e] UNIT [ARCH]"
+        & ASCII.LF & "  Synthesis from UNIT"
+        & ASCII.LF & "  alias: --synth";
    end Get_Short_Help;
 
    procedure Disp_Long_Help (Cmd : Command_Synth)
@@ -117,9 +120,14 @@ package body Ghdlsynth is
       P ("Or use already analysed files:");
       P ("   --synth [OPTIONS] -e UNIT");
       P ("In addition to analyze options, you can use:");
-      P ("  -gNAME=VALUE          Override the generic NAME of the top unit");
-      P ("  --vendor-library=NAME Any unit from library NAME is a black boxe");
-      P ("  --no-formal           Neither synthesize assert nor PSL");
+      P ("  -gNAME=VALUE");
+      P ("    Override the generic NAME of the top unit");
+      P ("  --vendor-library=NAME");
+      P ("    Any unit from library NAME is a black boxe");
+      P ("  --no-formal");
+      P ("    Neither synthesize assert nor PSL");
+      P ("  --no-assert-cover");
+      P ("    Cover PSL assertion activation");
    end Disp_Long_Help;
 
    procedure Decode_Option (Cmd : in out Command_Synth;
@@ -140,6 +148,10 @@ package body Ghdlsynth is
          Synth.Flags.Flag_Formal := False;
       elsif Option = "--formal" then
          Synth.Flags.Flag_Formal := True;
+      elsif Option = "--no-assert-cover" then
+         Synth.Flags.Flag_Assert_Cover := False;
+      elsif Option = "--assert-cover" then
+         Synth.Flags.Flag_Assert_Cover := True;
       elsif Option = "--top-name=hash" then
          Cmd.Top_Encoding := Name_Hash;
       elsif Option = "--top-name=asis" then
@@ -198,6 +210,8 @@ package body Ghdlsynth is
          Flag_Trace_Statements := True;
       elsif Option = "-i" then
          Flag_Debug_Init := True;
+      elsif Option = "-g" then
+         Flag_Debug_Enable := True;
       elsif Option = "-v" then
          if not Synth.Flags.Flag_Verbose then
             Synth.Flags.Flag_Verbose := True;
@@ -529,7 +543,8 @@ package body Ghdlsynth is
             Cmd_Str => new String'
               ("--libghdl-name"),
             Help_Str => new String'
-              ("--libghdl-name  Display libghdl name"),
+              ("--libghdl-name"
+              & ASCII.LF & "  Display libghdl name"),
             Disp => Get_Libghdl_Name'Access));
       Register_Command
         (new Command_Str_Disp'
@@ -537,7 +552,8 @@ package body Ghdlsynth is
             Cmd_Str => new String'
               ("--libghdl-library-path"),
             Help_Str => new String'
-              ("--libghdl-library-path  Display libghdl library path"),
+              ("--libghdl-library-path"
+              & ASCII.LF & "  Display libghdl library path"),
             Disp => Get_Libghdl_Path'Access));
       Register_Command
         (new Command_Str_Disp'
@@ -545,7 +561,8 @@ package body Ghdlsynth is
             Cmd_Str => new String'
               ("--libghdl-include-dir"),
             Help_Str => new String'
-              ("--libghdl-include-dir  Display libghdl include directory"),
+              ("--libghdl-include-dir"
+              & ASCII.LF & "  Display libghdl include directory"),
             Disp => Get_Libghdl_Include_Dir'Access));
    end Register_Commands;
 

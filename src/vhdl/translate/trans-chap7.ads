@@ -17,19 +17,22 @@
 --  02111-1307, USA.
 
 package Trans.Chap7 is
+   --  Allocate a value (with the same bounds) on the stack for SIG.
+   --  Note: SIG must be stable.
+   function Allocate_Value_From_Signal (Sig : Mnode; Sig_Type : Iir)
+                                       return Mnode;
+
    --  Generic function to extract a value from a signal.
    generic
       with function Read_Value (Sig : O_Enode; Sig_Type : Iir)
                                    return O_Enode;
-   function Translate_Signal_Value (Sig : O_Enode; Sig_Type : Iir)
-                                       return O_Enode;
+   function Translate_Signal_Value (Sig : Mnode; Sig_Type : Iir) return Mnode;
 
-   function Translate_Signal_Driving_Value (Sig : O_Enode; Sig_Type : Iir)
-                                               return O_Enode;
+   function Translate_Signal_Driving_Value (Sig : Mnode; Sig_Type : Iir)
+                                           return Mnode;
 
    --  For conversions.
-   procedure Set_Driving_Value
-     (Sig : Mnode; Sig_Type : Iir; Val : Mnode);
+   procedure Set_Driving_Value (Sig : Mnode; Sig_Type : Iir; Val : Mnode);
 
    --  Translate expression EXPR into ortho tree.
    function Translate_Expression (Expr : Iir; Rtype : Iir := Null_Iir)
@@ -80,6 +83,10 @@ package Trans.Chap7 is
    function Translate_Type_Conversion
      (Expr : O_Enode; Expr_Type : Iir; Res_Type : Iir; Loc : Iir)
      return O_Enode;
+
+   --  Subtype conversions.
+   procedure Convert_Constrained_To_Unconstrained
+     (Res : in out Mnode; Expr : Mnode);
 
    --  Convert bounds SRC (of type SRC_TYPE) to RES (of type RES_TYPE).
    procedure Translate_Type_Conversion_Bounds

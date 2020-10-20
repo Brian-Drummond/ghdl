@@ -362,6 +362,9 @@ package body Ghdlxml is
                     (F, Image_Iir_Constraint (Get_Iir_Constraint (N, F)));
                when Type_Iir_Mode =>
                   Put_Field (F, Image_Iir_Mode (Get_Iir_Mode (N, F)));
+               when Type_Iir_Force_Mode =>
+                  Put_Field (F, Image_Iir_Force_Mode
+                               (Get_Iir_Force_Mode (N, F)));
                when Type_Iir_Index32 =>
                   Put_Field (F, Iir_Index32'Image (Get_Iir_Index32 (N, F)));
                when Type_Int64 =>
@@ -520,14 +523,17 @@ package body Ghdlxml is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "--file-to-xml";
+      return Name = "file-to-xml"
+        or else Name = "--file-to-xml";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_File_To_Xml) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "--file-to-xml FILEs  Dump AST in XML";
+      return "file-to-xml FILEs"
+        & ASCII.LF & "  Dump AST in XML"
+        & ASCII.LF & "  alias: --file-to-xml";
    end Get_Short_Help;
 
    procedure Perform_Action

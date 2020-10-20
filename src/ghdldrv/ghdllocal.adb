@@ -27,6 +27,8 @@ with Default_Paths;
 with Errorout;
 with Files_Map;
 with Libraries;
+with Version;
+
 with Vhdl.Sem_Lib;
 with Vhdl.Std_Package;
 with Vhdl.Scanner;
@@ -171,13 +173,20 @@ package body Ghdllocal is
       procedure P (Str : String) renames Put_Line;
    begin
       P ("Main options (try --options-help for details):");
-      P (" --std=XX       Use XX as VHDL standard (87,93c,93,00,02 or 08)");
-      P (" --work=NAME    Set the name of the WORK library");
-      P (" -PDIR          Add DIR in the library search path");
-      P (" --workdir=DIR  Specify the directory of the WORK library");
-      P (" -fsynopsys     Allow to use synopsys packages in ieee library");
-      P (" -frelaxed      Relax semantic rules");
-      P (" -fexplicit     Gives priority to explicit operator redefinitions");
+      P (" --std=XX");
+      P ("   Use XX as VHDL standard (87,93c,93,00,02 or 08)");
+      P (" --work=NAME");
+      P ("   Set the name of the WORK library");
+      P (" -PDIR");
+      P ("   Add DIR in the library search path");
+      P (" --workdir=DIR");
+      P ("   Specify the directory of the WORK library");
+      P (" -fsynopsys");
+      P ("   Allow to use synopsys packages in ieee library");
+      P (" -frelaxed");
+      P ("   Relax semantic rules");
+      P (" -fexplicit");
+      P ("   Gives priority to explicit operator redefinitions");
    end Disp_Long_Help;
 
    function Is_Directory_Separator (C : Character) return Boolean is
@@ -610,15 +619,18 @@ package body Ghdllocal is
    is
       pragma Unreferenced (Cmd);
    begin
-      --  '-d' is for compatibility.
-      return Name = "-d" or else Name = "--dir";
+      return Name = "dir"
+        or else Name = "--dir"
+        or else Name = "-d";  --  '-d' is for compatibility.
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Dir) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "--dir [LIBs]       Disp contents of the libraries";
+      return "dir [LIBs]"
+        & ASCII.LF & "  Display contents of the libraries"
+        & ASCII.LF & "  alias: --dir";
    end Get_Short_Help;
 
    procedure Perform_Action (Cmd : in out Command_Dir; Args : Argument_List)
@@ -646,14 +658,18 @@ package body Ghdllocal is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "-f";
+      return Name = "files"
+        or else Name = "-f";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Find) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "-f FILEs           Disp units in FILES";
+      return "files FILEs"
+        & ASCII.LF & "  Display units in FILES"
+        & ASCII.LF & "  alias: -f";
+
    end Get_Short_Help;
 
    --  Return TRUE is UNIT can be at the apex of a design hierarchy.
@@ -725,14 +741,17 @@ package body Ghdllocal is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "-i";
+      return Name = "import"
+        or else Name = "-i";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Import) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "-i [OPTS] FILEs    Import units of FILEs";
+      return "import [OPTS] FILEs"
+        & ASCII.LF & "  Import units of FILEs"
+        & ASCII.LF & "  alias: -i";
    end Get_Short_Help;
 
    procedure Perform_Action (Cmd : in out Command_Import; Args : Argument_List)
@@ -821,14 +840,17 @@ package body Ghdllocal is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "-s";
+      return Name = "syntax"
+        or else Name = "-s";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Check_Syntax) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "-s [OPTS] FILEs    Check syntax of FILEs";
+      return "syntax [OPTS] FILEs"
+        & ASCII.LF & "  Check syntax of FILEs"
+        & ASCII.LF & "  alias: -s";
    end Get_Short_Help;
 
    procedure Decode_Option (Cmd : in out Command_Check_Syntax;
@@ -929,14 +951,17 @@ package body Ghdllocal is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "--clean";
+      return Name = "clean"
+        or else Name = "--clean";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Clean) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "--clean            Remove generated files";
+      return "clean"
+        & ASCII.LF & "  Remove generated files"
+        & ASCII.LF & "  alias: --clean";
    end Get_Short_Help;
 
    procedure Delete (Str : String)
@@ -984,7 +1009,7 @@ package body Ghdllocal is
       Str : String_Access;
    begin
       if Args'Length /= 0 then
-         Error ("command '--clean' does not accept any argument");
+         Error ("command 'clean' does not accept any argument");
          raise Option_Error;
       end if;
 
@@ -1034,14 +1059,17 @@ package body Ghdllocal is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "--remove";
+      return Name = "remove"
+        or else Name = "--remove";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Remove) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "--remove           Remove generated files and library file";
+      return "remove"
+        & ASCII.LF & "  Remove generated files and library file"
+        & ASCII.LF & "  alias: --remove";
    end Get_Short_Help;
 
    procedure Perform_Action (Cmd : in out Command_Remove; Args : Argument_List)
@@ -1049,7 +1077,7 @@ package body Ghdllocal is
       use Name_Table;
    begin
       if Args'Length /= 0 then
-         Error ("command '--remove' does not accept any argument");
+         Error ("command 'remove' does not accept any argument");
          raise Option_Error;
       end if;
       Perform_Action (Command_Clean (Cmd), Args);
@@ -1068,14 +1096,17 @@ package body Ghdllocal is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "--copy";
+      return Name = "copy"
+        or else Name = "--copy";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Copy) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "--copy             Copy work library to current directory";
+      return "copy"
+        & ASCII.LF & "  Copy work library to current directory"
+        & ASCII.LF & "  alias: --copy";
    end Get_Short_Help;
 
    procedure Perform_Action (Cmd : in out Command_Copy; Args : Argument_List)
@@ -1088,7 +1119,7 @@ package body Ghdllocal is
       Dir : Name_Id;
    begin
       if Args'Length /= 0 then
-         Error ("command '--copy' does not accept any argument");
+         Error ("command 'copy' does not accept any argument");
          raise Option_Error;
       end if;
 
@@ -1146,14 +1177,17 @@ package body Ghdllocal is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "--disp-standard";
+      return Name = "disp-standard"
+        or else Name = "--disp-standard";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Disp_Standard) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "--disp-standard    Disp std.standard in pseudo-vhdl";
+      return "disp-standard"
+        & ASCII.LF & "  Disp std.standard in pseudo-vhdl"
+        & ASCII.LF & "  alias: --disp-standard";
    end Get_Short_Help;
 
    procedure Perform_Action (Cmd : in out Command_Disp_Standard;
@@ -1162,7 +1196,7 @@ package body Ghdllocal is
       pragma Unreferenced (Cmd);
    begin
       if Args'Length /= 0 then
-         Error ("command '--disp-standard' does not accept any argument");
+         Error ("command 'disp-standard' does not accept any argument");
          raise Option_Error;
       end if;
       Flags.Bootstrap := True;
@@ -1183,14 +1217,17 @@ package body Ghdllocal is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "--find-top";
+      return Name = "find-top"
+        or else Name = "--find-top";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Find_Top) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "--find-top         Disp possible top entity in work library";
+      return "find-top"
+        & ASCII.LF & "  Display possible top entity in work library"
+        & ASCII.LF & "  alias: --find-top";
    end Get_Short_Help;
 
    procedure Perform_Action (Cmd : in out Command_Find_Top;
@@ -1213,7 +1250,7 @@ package body Ghdllocal is
             raise Option_Error;
          end if;
       else
-         Error ("command '--find-top' accepts at most one argument");
+         Error ("command 'find-top' accepts at most one argument");
          raise Option_Error;
       end if;
 
@@ -1240,14 +1277,17 @@ package body Ghdllocal is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "--bug-box";
+      return Name = "bug-box"
+        or else Name = "--bug-box";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Bug_Box) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "!--bug-box          Crash and emit a bug-box";
+      return "!bug-box"
+        & ASCII.LF & "  Crash and emit a bug-box"
+        & ASCII.LF & "  alias: --bug-box";
    end Get_Short_Help;
 
    procedure Perform_Action (Cmd : in out Command_Bug_Box;
@@ -1733,14 +1773,17 @@ package body Ghdllocal is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "--elab-order";
+      return Name = "elab-order"
+        or else Name = "--elab-order";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Elab_Order) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "--elab-order [OPTS] UNIT [ARCH]  Display ordered source files";
+      return "elab-order [OPTS] UNIT [ARCH]"
+        & ASCII.LF & "  Display ordered source files"
+        & ASCII.LF & "  alias: --elab-order";
    end Get_Short_Help;
 
    function Is_Makeable_File (File : Iir_Design_File) return Boolean is
@@ -1788,6 +1831,62 @@ package body Ghdllocal is
          Next (Files_It);
       end loop;
    end Perform_Action;
+
+   --  Used by --gen-makefile
+   procedure Gen_Makefile_Disp_Header
+   is
+      use Ada.Command_Line;
+   begin
+      Put_Line ("# Makefile automatically generated by ghdl");
+      Put ("# Version: GHDL ");
+      Put (Version.Ghdl_Ver);
+      Put (' ');
+      Put (Version.Ghdl_Release);
+      Put (" - ");
+      if Version_String /= null then
+         Put (Version_String.all);
+      end if;
+      New_Line;
+      Put_Line ("# Command used to generate this makefile:");
+      Put ("# ");
+      Put (Command_Name);
+      for I in 1 .. Argument_Count loop
+         Put (' ');
+         Put (Argument (I));
+      end loop;
+      New_Line;
+   end Gen_Makefile_Disp_Header;
+
+   procedure Gen_Makefile_Disp_Variables
+   is
+      use Ada.Command_Line;
+   begin
+      Put ("GHDL=");
+      Put_Line (Command_Name);
+
+      --  Extract options for command line.
+      Put ("GHDLFLAGS=");
+      for I in 2 .. Argument_Count loop
+         declare
+            Arg : constant String := Argument (I);
+         begin
+            if Arg (1) = '-' then
+               if (Arg'Length > 10 and then Arg (1 .. 10) = "--workdir=")
+                 or else (Arg'Length > 7 and then Arg (1 .. 7) = "--ieee=")
+                 or else (Arg'Length > 6 and then Arg (1 .. 6) = "--std=")
+                 or else (Arg'Length > 7 and then Arg (1 .. 7) = "--work=")
+                 or else (Arg'Length > 2 and then Arg (1 .. 2) = "-P")
+                 or else (Arg'Length > 2 and then Arg (1 .. 2) = "-f")
+                 or else (Arg'Length > 6 and then Arg (1 .. 6) = "--std=")
+               then
+                  Put (" ");
+                  Put (Arg);
+               end if;
+            end if;
+         end;
+      end loop;
+      New_Line;
+   end Gen_Makefile_Disp_Variables;
 
    procedure Register_Commands is
    begin

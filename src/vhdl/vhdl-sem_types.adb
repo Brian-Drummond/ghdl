@@ -1051,9 +1051,13 @@ package body Vhdl.Sem_Types is
             --  Index_Name is a subtype_indication, which can be a type_mark.
          else
             --  Avoid errors.
-            Index_Name :=
-              Build_Simple_Name (Natural_Subtype_Declaration, Index_Type);
-            Set_Type (Index_Name, Natural_Subtype_Definition);
+            Index_Name := Create_Iir (Iir_Kind_Integer_Subtype_Definition);
+            Location_Copy (Index_Name, Index_Type);
+            Set_Range_Constraint
+              (Index_Name,
+               Create_Error_Expr (Index_Type, Integer_Subtype_Definition));
+            Set_Parent_Type (Index_Name, Integer_Subtype_Definition);
+            Set_Type_Staticness (Index_Name, Globally);
          end if;
 
          Set_Nth_Element (Index_List, I, Index_Name);
@@ -1528,7 +1532,7 @@ package body Vhdl.Sem_Types is
             Error_Kind ("copy_subtype_indication", Def);
       end case;
       Location_Copy (Res, Def);
-      Set_Parent_Type (Res, Get_Base_Type (Def));
+      Set_Parent_Type (Res, Def);
       Set_Type_Staticness (Res, Get_Type_Staticness (Def));
       Set_Signal_Type_Flag (Res, Get_Signal_Type_Flag (Def));
       return Res;
@@ -1610,6 +1614,7 @@ package body Vhdl.Sem_Types is
          --  constrained on indexes.
          Set_Index_Constraint_Flag (Def, Get_Index_Constraint_Flag (Mark_Def));
          Set_Index_Subtype_List (Def, Get_Index_Subtype_List (Mark_Def));
+         Index_Staticness := Get_Type_Staticness (Mark_Def);
       else
          if Get_Index_Constraint_Flag (Mark_Def) then
             Error_Msg_Sem (+Def, "constrained array cannot be re-constrained");
@@ -1689,7 +1694,7 @@ package body Vhdl.Sem_Types is
       Index_Staticness : Iir_Staticness;
    begin
       -- Check each index constraint against array type.
-      Set_Parent_Type (Def, Base_Type);
+      Set_Parent_Type (Def, Type_Mark);
 
       Sem_Array_Constraint_Indexes
         (Def, Type_Mark, Base_Type, Index_Staticness);
@@ -2315,6 +2320,7 @@ package body Vhdl.Sem_Types is
                      Location_Copy (Res, Def);
                      Set_Parent_Type (Res, Type_Mark);
                      Set_Designated_Subtype_Indication (Res, Sub_Type);
+                     Set_Designated_Type (Res, Sub_Type);
                      Set_Signal_Type_Flag (Res, False);
 
                      --  The type_mark is a type_mark of the access subtype,

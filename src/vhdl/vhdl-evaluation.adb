@@ -36,6 +36,8 @@ package body Vhdl.Evaluation is
    --  If FORCE is true, always return a literal.
    function Eval_Expr_Keep_Orig (Expr : Iir; Force : Boolean) return Iir;
 
+   function Eval_Check_Bound (Expr : Iir; Sub_Type : Iir) return Boolean;
+
    function Eval_Enum_To_String (Lit : Iir; Orig : Iir) return Iir;
    function Eval_Integer_Image (Val : Int64; Orig : Iir) return Iir;
    function Eval_Floating_Image (Val : Fp64; Orig : Iir) return Iir;
@@ -783,110 +785,139 @@ package body Vhdl.Evaluation is
    function Eval_Dyadic_Bit_Array_Operator
      (Expr : Iir;
       Left, Right : Iir;
-      Func : Iir_Predefined_Dyadic_TF_Array_Functions)
-     return Iir
+      Func : Iir_Predefined_Dyadic_TF_Array_Functions) return Iir
    is
-      use Str_Table;
-      L_Str : constant String8_Id := Get_String8_Id (Left);
-      R_Str : constant String8_Id := Get_String8_Id (Right);
-      Len : Nat32;
-      Id : String8_Id;
+      Expr_Type : constant Iir := Get_Type (Expr);
+      El_Type : constant Iir :=
+        Get_Base_Type (Get_Element_Subtype (Expr_Type));
+      Enum_List : constant Iir_Flist := Get_Enumeration_Literal_List (El_Type);
+      Cst_0 : constant Iir := Get_Nth_Element (Enum_List, 0);
+      Cst_1 : constant Iir := Get_Nth_Element (Enum_List, 1);
+      Left_Val, Right_Val : Iir;
+      R_List, L_List : Iir_Flist;
+      Len : Natural;
       Res : Iir;
+      Res_List : Iir_Flist;
+      El : Iir;
    begin
-      Len := Get_String_Length (Left);
-      if Len /= Get_String_Length (Right) then
+      Left_Val := Eval_String_Literal (Left);
+      Right_Val := Eval_String_Literal (Right);
+
+      L_List := Get_Simple_Aggregate_List (Left_Val);
+      R_List := Get_Simple_Aggregate_List (Right_Val);
+      Len := Get_Nbr_Elements (L_List);
+
+      if Len /= Get_Nbr_Elements (R_List) then
          Warning_Msg_Sem (Warnid_Runtime_Error, +Expr,
                           "length of left and right operands mismatch");
-         return Build_Overflow (Expr);
+         Res := Build_Overflow (Expr);
       else
-         Id := Create_String8;
+         Res_List := Create_Iir_Flist (Len);
+
          case Func is
             when Iir_Predefined_TF_Array_And =>
-               for I in 1 .. Len loop
-                  case Element_String8 (L_Str, I) is
+               for I in 0 .. Len - 1 loop
+                  El := Get_Nth_Element (L_List, I);
+                  case Get_Enum_Pos (El) is
                      when 0 =>
-                        Append_String8 (0);
+                        null;
                      when 1 =>
-                        Append_String8 (Element_String8 (R_Str, I));
+                        El := Get_Nth_Element (R_List, I);
                      when others =>
                         raise Internal_Error;
                   end case;
+                  Set_Nth_Element (Res_List, I, El);
                end loop;
             when Iir_Predefined_TF_Array_Nand =>
-               for I in 1 .. Len loop
-                  case Element_String8 (L_Str, I) is
+               for I in 0 .. Len - 1 loop
+                  El := Get_Nth_Element (L_List, I);
+                  case Get_Enum_Pos (El) is
                      when 0 =>
-                        Append_String8 (1);
+                        El := Cst_1;
                      when 1 =>
-                        case Element_String8 (R_Str, I) is
+                        El := Get_Nth_Element (R_List, I);
+                        case Get_Enum_Pos (El) is
                            when 0 =>
-                              Append_String8 (1);
+                              El := Cst_1;
                            when 1 =>
-                              Append_String8 (0);
+                              El := Cst_0;
                            when others =>
                               raise Internal_Error;
                         end case;
                      when others =>
                         raise Internal_Error;
                   end case;
+                  Set_Nth_Element (Res_List, I, El);
                end loop;
             when Iir_Predefined_TF_Array_Or =>
-               for I in 1 .. Len loop
-                  case Element_String8 (L_Str, I) is
+               for I in 0 .. Len - 1 loop
+                  El := Get_Nth_Element (L_List, I);
+                  case Get_Enum_Pos (El) is
                      when 1 =>
-                        Append_String8 (1);
+                        null;
                      when 0 =>
-                        Append_String8 (Element_String8 (R_Str, I));
+                        El := Get_Nth_Element (R_List, I);
                      when others =>
                         raise Internal_Error;
                   end case;
+                  Set_Nth_Element (Res_List, I, El);
                end loop;
             when Iir_Predefined_TF_Array_Nor =>
-               for I in 1 .. Len loop
-                  case Element_String8 (L_Str, I) is
+               for I in 0 .. Len - 1 loop
+                  El := Get_Nth_Element (L_List, I);
+                  case Get_Enum_Pos (El) is
                      when 1 =>
-                        Append_String8 (0);
+                        El := Cst_0;
                      when 0 =>
-                        case Element_String8 (R_Str, I) is
+                        El := Get_Nth_Element (R_List, I);
+                        case Get_Enum_Pos (El) is
                            when 0 =>
-                              Append_String8 (1);
+                              El := Cst_1;
                            when 1 =>
-                              Append_String8 (0);
+                              El := Cst_0;
                            when others =>
                               raise Internal_Error;
                         end case;
                      when others =>
                         raise Internal_Error;
                   end case;
+                  Set_Nth_Element (Res_List, I, El);
                end loop;
             when Iir_Predefined_TF_Array_Xor =>
-               for I in 1 .. Len loop
-                  case Element_String8 (L_Str, I) is
+               for I in 0 .. Len - 1 loop
+                  El := Get_Nth_Element (L_List, I);
+                  case Get_Enum_Pos (El) is
                      when 1 =>
-                        case Element_String8 (R_Str, I) is
+                        El := Get_Nth_Element (R_List, I);
+                        case Get_Enum_Pos (El) is
                            when 0 =>
-                              Append_String8 (1);
+                              El := Cst_1;
                            when 1 =>
-                              Append_String8 (0);
+                              El := Cst_0;
                            when others =>
                               raise Internal_Error;
                         end case;
                      when 0 =>
-                        Append_String8 (Element_String8 (R_Str, I));
+                        El := Get_Nth_Element (R_List, I);
                      when others =>
                         raise Internal_Error;
                   end case;
+                  Set_Nth_Element (Res_List, I, El);
                end loop;
             when others =>
                Error_Internal (Expr, "eval_dyadic_bit_array_functions: " &
-                               Iir_Predefined_Functions'Image (Func));
+                                 Iir_Predefined_Functions'Image (Func));
          end case;
-         Res := Build_String (Id, Len, Expr);
 
-         --  The unconstrained type is replaced by the constrained one.
-         Set_Type (Res, Get_Type (Left));
-         return Res;
+         Res := Build_Simple_Aggregate (Res_List, Expr, Expr_Type);
       end if;
+
+      Free_Eval_Static_Expr (Left_Val, Left);
+      Free_Eval_Static_Expr (Right_Val, Right);
+
+      --  The unconstrained type is replaced by the constrained one.
+      Set_Type (Res, Get_Type (Left));
+      return Res;
    end Eval_Dyadic_Bit_Array_Operator;
 
    --  Return TRUE if VAL /= 0.
@@ -3388,8 +3419,9 @@ package body Vhdl.Evaluation is
            and then Get_Kind (Atype) in Iir_Kinds_Range_Type_Definition
          then
             --  Check bounds (as this can be done).
-            --  FIXME: create overflow_expr ?
-            Eval_Check_Bound (Res, Atype);
+            if not Eval_Check_Bound (Res, Atype) then
+               Res := Build_Overflow (Res, Atype);
+            end if;
          end if;
 
          return Res;
@@ -3628,13 +3660,24 @@ package body Vhdl.Evaluation is
       end case;
    end Eval_Is_In_Bound;
 
-   procedure Eval_Check_Bound (Expr : Iir; Sub_Type : Iir) is
+   function Eval_Check_Bound (Expr : Iir; Sub_Type : Iir) return Boolean is
    begin
       --  Note: use True not to repeat a message in case of overflow.
-      if not Eval_Is_In_Bound (Expr, Sub_Type, True) then
-         Warning_Msg_Sem (Warnid_Runtime_Error, +Expr,
-                          "static expression violates bounds");
+      if Eval_Is_In_Bound (Expr, Sub_Type, True) then
+         return True;
       end if;
+
+      Warning_Msg_Sem (Warnid_Runtime_Error, +Expr,
+                       "static expression violates bounds");
+      return False;
+   end Eval_Check_Bound;
+
+   procedure Eval_Check_Bound (Expr : Iir; Sub_Type : Iir)
+   is
+      Res : Boolean;
+   begin
+      Res := Eval_Check_Bound (Expr, Sub_Type);
+      pragma Unreferenced (Res);
    end Eval_Check_Bound;
 
    function Eval_Is_Range_In_Bound

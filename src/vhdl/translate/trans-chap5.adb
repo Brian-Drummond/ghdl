@@ -72,8 +72,7 @@ package body Trans.Chap5 is
       Push_Identifier_Prefix_Uniq (Mark);
       if Is_Anonymous_Type_Definition (Spec_Type) then
          Push_Identifier_Prefix (Mark2, "OT");
-         Chap3.Translate_Subtype_Definition
-           (Spec_Type, Get_Type (Attr), True);
+         Chap3.Translate_Subtype_Definition (Spec_Type, True);
          Pop_Identifier_Prefix (Mark2);
       end if;
 
@@ -336,10 +335,14 @@ package body Trans.Chap5 is
    is
       pragma Unreferenced (Formal_Type);
       Res : Connect_Data;
+      Fel : Iir;
    begin
+      Fel := Get_Nth_Element
+        (Get_Elements_Declaration_List (Data.Actual_Type),
+         Natural (Get_Element_Position (El)));
       Res := (Actual_Sig =>
-                Chap6.Translate_Selected_Element (Data.Actual_Sig, El),
-              Actual_Type => Get_Type (El),
+                Chap6.Translate_Selected_Element (Data.Actual_Sig, Fel),
+              Actual_Type => Get_Type (Fel),
               Mode => Data.Mode,
               By_Copy => Data.By_Copy);
       return Res;
@@ -558,7 +561,7 @@ package body Trans.Chap5 is
             Tinfo := Get_Info (Actual_Type);
             if Save
               and then
-              Get_Alloc_Kind_For_Var (Tinfo.S.Composite_Layout) = Alloc_Stack
+                Chap3.Get_Composite_Type_Layout_Alloc (Tinfo) = Alloc_Stack
             then
                --  We need a copy.
                Bounds_Copy := Alloc_Bounds (Actual_Type, Alloc_System);
@@ -705,9 +708,7 @@ package body Trans.Chap5 is
             if Get_Whole_Association_Flag (Assoc)
               and then Fbt_Info.Type_Mode in Type_Mode_Unbounded
             then
-               Open_Temp;
                Elab_Unconstrained_Port_Bounds (Formal, Assoc);
-               Close_Temp;
             end if;
 
             --  Allocate storage of ports.

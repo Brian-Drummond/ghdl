@@ -264,6 +264,9 @@ package Vhdl.Elocations is
    --
    --   Get/Set_Is_Location (Field4)
 
+   -- Iir_Kind_Function_Instantiation_Declaration (None)
+   -- Iir_Kind_Procedure_Instantiation_Declaration (None)
+
    -- Iir_Kind_Interface_Function_Declaration (None)
    -- Iir_Kind_Interface_Procedure_Declaration (None)
 
@@ -408,6 +411,9 @@ package Vhdl.Elocations is
    -- Iir_Kind_Concurrent_Simple_Signal_Assignment (L1)
    --
    --   Get/Set_Start_Location (Field1)
+
+   -- Iir_Kind_Signal_Force_Assignment_Statement (None)
+   -- Iir_Kind_Signal_Release_Assignment_Statement (None)
 
    -- Iir_Kind_Sensitized_Process_Statement (L4)
    -- Iir_Kind_Process_Statement (L4)

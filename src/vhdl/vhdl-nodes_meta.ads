@@ -36,6 +36,7 @@ package Vhdl.Nodes_Meta is
       Type_Iir_Constraint,
       Type_Iir_Delay_Mechanism,
       Type_Iir_Flist,
+      Type_Iir_Force_Mode,
       Type_Iir_Index32,
       Type_Iir_Int32,
       Type_Iir_List,
@@ -179,6 +180,7 @@ package Vhdl.Nodes_Meta is
       Field_Impure_Depth,
       Field_Return_Type,
       Field_Implicit_Definition,
+      Field_Uninstantiated_Subprogram_Name,
       Field_Default_Value,
       Field_Deferred_Declaration,
       Field_Deferred_Declaration_Flag,
@@ -258,6 +260,8 @@ package Vhdl.Nodes_Meta is
       Field_Guard,
       Field_Delay_Mechanism,
       Field_Reject_Time_Expression,
+      Field_Force_Mode,
+      Field_Has_Force_Mode,
       Field_Sensitivity_List,
       Field_Process_Origin,
       Field_Package_Origin,
@@ -527,6 +531,11 @@ package Vhdl.Nodes_Meta is
    procedure Set_Iir_Flist
       (N : Iir; F : Fields_Enum; V: Iir_Flist);
 
+   function Get_Iir_Force_Mode
+      (N : Iir; F : Fields_Enum) return Iir_Force_Mode;
+   procedure Set_Iir_Force_Mode
+      (N : Iir; F : Fields_Enum; V: Iir_Force_Mode);
+
    function Get_Iir_Index32
       (N : Iir; F : Fields_Enum) return Iir_Index32;
    procedure Set_Iir_Index32
@@ -751,6 +760,8 @@ package Vhdl.Nodes_Meta is
    function Has_Impure_Depth (K : Iir_Kind) return Boolean;
    function Has_Return_Type (K : Iir_Kind) return Boolean;
    function Has_Implicit_Definition (K : Iir_Kind) return Boolean;
+   function Has_Uninstantiated_Subprogram_Name (K : Iir_Kind)
+      return Boolean;
    function Has_Default_Value (K : Iir_Kind) return Boolean;
    function Has_Deferred_Declaration (K : Iir_Kind) return Boolean;
    function Has_Deferred_Declaration_Flag (K : Iir_Kind) return Boolean;
@@ -833,6 +844,8 @@ package Vhdl.Nodes_Meta is
    function Has_Guard (K : Iir_Kind) return Boolean;
    function Has_Delay_Mechanism (K : Iir_Kind) return Boolean;
    function Has_Reject_Time_Expression (K : Iir_Kind) return Boolean;
+   function Has_Force_Mode (K : Iir_Kind) return Boolean;
+   function Has_Has_Force_Mode (K : Iir_Kind) return Boolean;
    function Has_Sensitivity_List (K : Iir_Kind) return Boolean;
    function Has_Process_Origin (K : Iir_Kind) return Boolean;
    function Has_Package_Origin (K : Iir_Kind) return Boolean;

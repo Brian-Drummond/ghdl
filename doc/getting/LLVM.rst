@@ -7,14 +7,14 @@ LLVM backend
 
 * GCC (Gnu Compiler Collection)
 * GNAT (Ada compiler for GCC)
-* LLVM (Low-Level-Virtual Machine) and CLANG (Compiler front-end for LLVM): 3.5, 3.8, 3.9, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0 or 10.0
+* LLVM (Low-Level-Virtual Machine) and CLANG (Compiler front-end for LLVM): 3.5, 3.8, 3.9, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0 or 11.0
 
 .. _BUILD:llvm:GNAT:
 
 GCC/GNAT: GNU/Linux or Windows (MinGW/MSYS2)
 ============================================
 
-.. HINT:: You need to install LLVM (usually depends on ``libedit``, see :ghdlsharp:`29`). Debugging is only supported with LLVM 3.5.
+.. HINT:: You need to install LLVM (usually depends on ``libedit``, see :ghdlsharp:`29`). Debugging is supported with LLVM 3.5 or ``>=6``.
 
 GHDL is configured by ``configure`` and built by ``make``.
 

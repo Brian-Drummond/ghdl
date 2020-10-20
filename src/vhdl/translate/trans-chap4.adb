@@ -1625,18 +1625,9 @@ package body Trans.Chap4 is
    is
       Def : constant Iir := Get_Type (Decl);
       Mark  : Id_Mark_Type;
-      Parent_Type : Iir;
    begin
       Push_Identifier_Prefix (Mark, Get_Identifier (Decl));
-      Parent_Type := Get_Subtype_Type_Mark (Def);
-      if Parent_Type /= Null_Iir then
-         --  For normal user subtype declaration.
-         Parent_Type := Get_Type (Get_Named_Entity (Parent_Type));
-      else
-         --  For implicit subtype declaration of a type declaration.
-         Parent_Type := Get_Base_Type (Def);
-      end if;
-      Chap3.Translate_Subtype_Definition (Def, Parent_Type, True);
+      Chap3.Translate_Subtype_Definition (Def, True);
       Pop_Identifier_Prefix (Mark);
    end Translate_Subtype_Declaration;
 
@@ -1757,15 +1748,18 @@ package body Trans.Chap4 is
             A : Var_Type renames Alias_Info.Alias_Var (Mode);
             Alias_Node : Mnode;
          begin
+            --  FIXME: use subtype conversion ?
             case Tinfo.Type_Mode is
                when Type_Mode_Unbounded =>
                   Stabilize (N);
                   Alias_Node := Stabilize (Get_Var (A, Tinfo, Mode));
-                  Copy_Fat_Pointer (Alias_Node, N);
+                  Chap7.Convert_Constrained_To_Unconstrained (Alias_Node, N);
                when Type_Mode_Bounded_Arrays =>
                   Stabilize (N);
-                  New_Assign_Stmt (Get_Var (A),
-                                   M2E (Chap3.Get_Composite_Base (N)));
+                  New_Assign_Stmt
+                    (Get_Var (A),
+                     New_Convert_Ov (M2E (Chap3.Get_Composite_Base (N)),
+                                     Tinfo.Ortho_Ptr_Type (Mode)));
                   Chap3.Check_Composite_Match
                     (Decl_Type, T2M (Decl_Type, Mode),
                      Name_Type, N, Decl);
@@ -2819,6 +2813,7 @@ package body Trans.Chap4 is
       Constr      : O_Assoc_List;
       Subprg_Info : Subprg_Info_Acc;
       Res         : Mnode;
+      M1          : Mnode;
       Imp         : Iir;
       Func        : Iir;
       Obj         : Iir;  --  Method object for function conversion
@@ -2981,8 +2976,9 @@ package body Trans.Chap4 is
          when Conv_Mode_Out =>
             V1 := New_Selected_Acc_Value (New_Obj (Var_Data),
                                           Conv_Info.In_Sig_Field);
-            R := M2E (Lop2M (V1, In_Info, Mode_Signal));
-            R := Chap7.Translate_Signal_Driving_Value (R, In_Type);
+            M1 := Lop2M (V1, In_Info, Mode_Signal);
+            M1 := Chap7.Translate_Signal_Driving_Value (M1, In_Type);
+            R := M2E (M1);
       end case;
 
       case Get_Kind (Imp) is

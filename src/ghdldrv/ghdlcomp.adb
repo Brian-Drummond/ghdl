@@ -34,7 +34,6 @@ with Vhdl.Utils;
 with Vhdl.Configuration;
 with Errorout; use Errorout;
 with Libraries;
-with Version;
 
 package body Ghdlcomp is
 
@@ -117,14 +116,19 @@ package body Ghdlcomp is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "-r" or Name = "--elab-run";
+      return Name = "elab-run"
+        or else Name = "--elab-run"
+        or else Name = "-r"
+        or else Name = "run";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Run) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "-r,--elab-run [OPTS] UNIT [ARCH] [RUNOPTS]  Run UNIT";
+      return "elab-run [OPTS] UNIT [ARCH] [RUNOPTS]"
+        & ASCII.LF & "  Elaborate and run design UNIT"
+        & ASCII.LF & "  aliases: --elab-run, -r, run";
    end Get_Short_Help;
 
 
@@ -172,15 +176,17 @@ package body Ghdlcomp is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "-c";
+      return Name = "compile"
+        or else Name = "-c";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Compile) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "-c [OPTS] FILEs -r UNIT [ARCH] [RUNOPTS]  "
-        & "Compile, elaborate and run UNIT";
+      return "compile [OPTS] FILEs -e|-r UNIT [ARCH] [RUNOPTS]"
+        & ASCII.LF & "  Compile, elaborate (and run) design UNIT"
+        & ASCII.LF & "  alias: -c";
    end Get_Short_Help;
 
    procedure Decode_Option (Cmd : in out Command_Compile;
@@ -428,14 +434,18 @@ package body Ghdlcomp is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "-a";
+      return Name = "analyze"
+        or else Name = "-a"
+        or else Name = "analyse";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Analyze) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "-a [OPTS] FILEs    Analyze FILEs";
+      return "analyze [OPTS] FILEs"
+        & ASCII.LF & "  Analyze one or multiple VHDL files"
+        & ASCII.LF & "  aliases: -a, analyse";
    end Get_Short_Help;
 
    procedure Perform_Action (Cmd : in out Command_Analyze;
@@ -565,14 +575,17 @@ package body Ghdlcomp is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "-e";
+      return Name = "elaborate"
+        or else Name = "-e";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Elab) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "-e [OPTS] UNIT [ARCH]  Elaborate UNIT";
+      return "elaborate [OPTS] UNIT [ARCH]"
+        & ASCII.LF & "  Elaborate design UNIT"
+        & ASCII.LF & "  alias: -e";
    end Get_Short_Help;
 
    procedure Decode_Option (Cmd : in out Command_Elab;
@@ -640,14 +653,19 @@ package body Ghdlcomp is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "--dispconfig" or else Name = "--disp-config";
+      return Name = "disp-config"
+        or else Name = "--disp-config"
+        or else Name = "dispconfig"
+        or else Name = "--dispconfig";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Dispconfig) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "--disp-config      Disp tools path";
+      return "disp-config"
+        & ASCII.LF & "  Display tools path"
+        & ASCII.LF & "  aliases: --disp-config, dispconfig, --dispconfig";
    end Get_Short_Help;
 
    procedure Disp_Config
@@ -692,14 +710,17 @@ package body Ghdlcomp is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "-m";
+      return Name = "make"
+        or else Name = "-m";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Make) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "-m [OPTS] UNIT [ARCH]  Make UNIT";
+      return "make [OPTS] UNIT [ARCH]"
+        & ASCII.LF & "  Make design UNIT"
+        & ASCII.LF & "  alias: -m";
    end Get_Short_Help;
 
    procedure Perform_Action (Cmd : in out Command_Make; Args : Argument_List)
@@ -819,14 +840,17 @@ package body Ghdlcomp is
    is
       pragma Unreferenced (Cmd);
    begin
-      return Name = "--gen-makefile";
+      return Name = "gen-makefile"
+        or else Name = "--gen-makefile";
    end Decode_Command;
 
    function Get_Short_Help (Cmd : Command_Gen_Makefile) return String
    is
       pragma Unreferenced (Cmd);
    begin
-      return "--gen-makefile [OPTS] UNIT [ARCH]  Generate a Makefile for UNIT";
+      return "gen-makefile [OPTS] UNIT [ARCH]"
+        & ASCII.LF & "  Generate a Makefile for UNIT"
+        & ASCII.LF & "  alias: --gen-makefile";
    end Get_Short_Help;
 
    function Is_Makeable_File (File : Iir_Design_File) return Boolean is
@@ -842,7 +866,6 @@ package body Ghdlcomp is
    is
       pragma Unreferenced (Cmd);
       use Simple_IO;
-      use Ada.Command_Line;
       use Name_Table;
 
       HT : constant Character := ASCII.HT;
@@ -861,52 +884,11 @@ package body Ghdlcomp is
       Setup_Libraries (True);
       Files_List := Build_Dependence (Prim_Id, Sec_Id);
 
-      Put_Line ("# Makefile automatically generated by ghdl");
-      Put ("# Version: GHDL ");
-      Put (Version.Ghdl_Ver);
-      Put (' ');
-      Put (Version.Ghdl_Release);
-      Put (" - ");
-      if Version_String /= null then
-         Put (Version_String.all);
-      end if;
-      New_Line;
-      Put_Line ("# Command used to generate this makefile:");
-      Put ("# ");
-      Put (Command_Name);
-      for I in 1 .. Argument_Count loop
-         Put (' ');
-         Put (Argument (I));
-      end loop;
-      New_Line;
+      Ghdllocal.Gen_Makefile_Disp_Header;
 
       New_Line;
 
-      Put ("GHDL=");
-      Put_Line (Command_Name);
-
-      --  Extract options for command line.
-      Put ("GHDLFLAGS=");
-      for I in 2 .. Argument_Count loop
-         declare
-            Arg : constant String := Argument (I);
-         begin
-            if Arg (1) = '-' then
-               if (Arg'Length > 10 and then Arg (1 .. 10) = "--workdir=")
-                 or else (Arg'Length > 7 and then Arg (1 .. 7) = "--ieee=")
-                 or else (Arg'Length > 6 and then Arg (1 .. 6) = "--std=")
-                 or else (Arg'Length > 7 and then Arg (1 .. 7) = "--work=")
-                 or else (Arg'Length > 2 and then Arg (1 .. 2) = "-P")
-                 or else (Arg'Length > 2 and then Arg (1 .. 2) = "-f")
-                 or else (Arg'Length > 6 and then Arg (1 .. 6) = "--std=")
-               then
-                  Put (" ");
-                  Put (Arg);
-               end if;
-            end if;
-         end;
-      end loop;
-      New_Line;
+      Ghdllocal.Gen_Makefile_Disp_Variables;
 
       Put ("GHDLRUNFLAGS=");
       for I in Next_Arg .. Args'Last loop

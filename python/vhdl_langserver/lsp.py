@@ -10,10 +10,12 @@ except ImportError:
     from urllib2 import quote
     from urlparse import unquote
 
-log = logging.getLogger('ghdl-ls')
+log = logging.getLogger("ghdl-ls")
+
 
 class ProtocolError(Exception):
     pass
+
 
 class LSPConn:
     def __init__(self, reader, writer):
@@ -32,6 +34,7 @@ class LSPConn:
         self.writer.write(out.encode())
         self.writer.flush()
 
+
 def path_from_uri(uri):
     # Convert file uri to path (strip html like head part)
     if not uri.startswith("file://"):
@@ -46,7 +49,7 @@ def path_from_uri(uri):
 def path_to_uri(path):
     # Convert path to file uri (add html like head part)
     if os.name == "nt":
-        return "file:///" + quote(path.replace('\\', '/'))
+        return "file:///" + quote(path.replace("\\", "/"))
     else:
         return "file://" + quote(path)
 
@@ -68,20 +71,20 @@ class LanguageProtocolServer(object):
             # Return on EOF.
             if not line:
                 return None
-            if line[-2:] != '\r\n':
+            if line[-2:] != "\r\n":
                 raise ProtocolError("invalid end of line in header")
             line = line[:-2]
             if not line:
                 # End of headers.
-                log.debug('Headers: %r', headers)
-                length = headers.get('Content-Length', None)
+                log.debug("Headers: %r", headers)
+                length = headers.get("Content-Length", None)
                 if length is not None:
                     body = self.conn.read(int(length))
                     return body
                 else:
                     raise ProtocolError("missing Content-Length in header")
             else:
-                key, value = line.split(': ', 1)
+                key, value = line.split(": ", 1)
                 headers[key] = value
 
     def run(self):
@@ -93,31 +96,44 @@ class LanguageProtocolServer(object):
 
             # Text to JSON
             msg = json.loads(body)
-            log.debug('Read msg: %s', msg)
+            log.debug("Read msg: %s", msg)
 
             reply = self.handle(msg)
             if reply is not None:
                 self.write_output(reply)
 
     def handle(self, msg):
-        if msg.get('jsonrpc', None) != '2.0':
+        if msg.get("jsonrpc", None) != "2.0":
             raise ProtocolError("invalid jsonrpc version")
-        tid = msg.get('id', None)
-        method = msg.get('method', None)
+        tid = msg.get("id", None)
+        method = msg.get("method", None)
         if method is None:
             # This is a reply.
-            log.error('Unexpected reply for %s', tid)
+            log.error("Unexpected reply for %s", tid)
             return
-        params = msg.get('params', None)
+        params = msg.get("params", None)
         fmethod = self.handler.dispatcher.get(method, None)
         if fmethod:
             if params is None:
                 params = {}
-            response = fmethod(**params)
+            try:
+                response = fmethod(**params)
+            except Exception as e:
+                log.exception(
+                    "Caught exception while handling %s with params %s:", method, params
+                )
+                self.show_message(
+                    MessageType.Error,
+                    (
+                        "Caught exception while handling {}, "
+                        + "see VHDL language server output for details."
+                    ).format(method),
+                )
+                response = None
             if tid is None:
                 # If this was just a notification, discard it
                 return None
-            log.debug('Response: %s', response)
+            log.debug("Response: %s", response)
             rbody = {
                 "jsonrpc": "2.0",
                 "id": tid,
@@ -125,7 +141,7 @@ class LanguageProtocolServer(object):
             }
         else:
             # Unknown method.
-            log.error('Unknown method %s', method)
+            log.error("Unknown method %s", method)
             # If this was just a notification, discard it
             if tid is None:
                 return None
@@ -135,15 +151,15 @@ class LanguageProtocolServer(object):
                 "id": tid,
                 "error": {
                     "code": JSONErrorCodes.MethodNotFound,
-                    "message": "unknown method {}".format(method)
-                }
+                    "message": "unknown method {}".format(method),
+                },
             }
         return rbody
 
     def write_output(self, body):
         output = json.dumps(body, separators=(",", ":"))
-        self.conn.write('Content-Length: {}\r\n'.format(len(output)))
-        self.conn.write('\r\n')
+        self.conn.write("Content-Length: {}\r\n".format(len(output)))
+        self.conn.write("\r\n")
         self.conn.write(output)
 
     def notify(self, method, params):
@@ -171,14 +187,16 @@ class LanguageProtocolServer(object):
         self.running = False
 
     def show_message(self, typ, message):
-        self.notify('window/showMessage', {'type': typ, 'message': message})
+        self.notify("window/showMessage", {"type": typ, "message": message})
 
     def configuration(self, items):
-        return self.send_request("workspace/configuration", {'items': items})
+        return self.send_request("workspace/configuration", {"items": items})
 
-#----------------------------------------------------------------------
+
+# ----------------------------------------------------------------------
 #  Standard defines and object types
 #
+
 
 class JSONErrorCodes(object):
     # Defined by JSON RPC
@@ -224,16 +242,19 @@ class DiagnosticSeverity(object):
     Information = 3
     Hint = 4
 
+
 class TextDocumentSyncKind(object):
-    NONE = 0,
+    NONE = (0,)
     FULL = 1
     INCREMENTAL = 2
+
 
 class MessageType(object):
     Error = 1
     Warning = 2
     Info = 3
     Log = 4
+
 
 class SymbolKind(object):
     File = 1
@@ -255,6 +276,7 @@ class SymbolKind(object):
     Boolean = 17
     Array = 18
 
+
 @attr.s
 class HoverInfo(object):
     language = attr.ib()
@@ -273,6 +295,7 @@ class Completion(object):
 class Position(object):
     line = attr.ib()
     character = attr.ib()
+
 
 @attr.s
 class Range(object):

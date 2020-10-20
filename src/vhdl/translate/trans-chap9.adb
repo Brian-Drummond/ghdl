@@ -168,7 +168,7 @@ package body Trans.Chap9 is
       Mark, Mark2 : Id_Mark_Type;
       Assoc, Inter : Iir;
       Num : Iir_Int32;
-      Has_Conv_Record      : Boolean := False;
+      Has_Conv_Record : Boolean := False;
    begin
       Info := Add_Info (Inst, Kind_Block);
       Push_Identifier_Prefix (Mark, Get_Label (Inst));
@@ -338,10 +338,10 @@ package body Trans.Chap9 is
       Push_Instance_Factory (Info.Psl_Scope'Access);
 
       --  Create the state vector type.
-      Info.Psl_Vect_Type := New_Constrained_Array_Type
+      Info.Psl_Vect_Type := New_Array_Subtype
         (Std_Boolean_Array_Type,
-         New_Unsigned_Literal (Ghdl_Index_Type,
-                               Unsigned_64 (Get_PSL_Nbr_States (Stmt))));
+         Std_Boolean_Type_Node,
+         New_Index_Lit (Unsigned_64 (Get_PSL_Nbr_States (Stmt))));
       New_Type_Decl (Create_Identifier ("VECTTYPE"), Info.Psl_Vect_Type);
 
       --  Create the variables.
@@ -1382,6 +1382,7 @@ package body Trans.Chap9 is
                  | Type_Tri_State_Type
                  | Type_Iir_Pure_State
                  | Type_Iir_Delay_Mechanism
+                 | Type_Iir_Force_Mode
                  | Type_Iir_Predefined_Functions
                  | Type_Direction_Type
                  | Type_Iir_Int32
@@ -1783,7 +1784,7 @@ package body Trans.Chap9 is
       if Is_Sensitized then
          List_Orig := Get_Sensitivity_List (Proc);
          if List_Orig = Iir_List_All then
-            List := Vhdl.Canon.Canon_Extract_Process_Sensitivity (Proc);
+            List := Vhdl.Canon.Canon_Extract_Sensitivity_Process (Proc);
          else
             List := List_Orig;
          end if;

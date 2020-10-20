@@ -368,6 +368,8 @@ package body Vhdl.Sem_Inst is
             Set_Iir_Pure_State (Res, F, Get_Iir_Pure_State (N, F));
          when Type_Iir_Delay_Mechanism =>
             Set_Iir_Delay_Mechanism (Res, F, Get_Iir_Delay_Mechanism (N, F));
+         when Type_Iir_Force_Mode =>
+            Set_Iir_Force_Mode (Res, F, Get_Iir_Force_Mode (N, F));
          when Type_Iir_Predefined_Functions =>
             Set_Iir_Predefined_Functions
               (Res, F, Get_Iir_Predefined_Functions (N, F));
@@ -1025,6 +1027,37 @@ package body Vhdl.Sem_Inst is
 
       return Res;
    end Copy_Tree;
+
+   procedure Instantiate_Subprogram_Declaration (Inst : Iir; Subprg : Iir)
+   is
+      Prev_Instance_File : constant Source_File_Entry := Instance_File;
+      Mark : constant Instance_Index_Type := Prev_Instance_Table.Last;
+   begin
+      Create_Relocation (Inst, Subprg);
+      Set_Instance_Source_File (Inst, Instance_File);
+
+      --  Be sure Get_Origin_Priv can be called on existing nodes.
+      Expand_Origin_Table;
+
+      --  For Parent: the instance of PKG is INST.
+      Set_Origin (Subprg, Inst);
+
+      --  Manually instantiate the package declaration.
+      Set_Generic_Chain
+        (Inst, Instantiate_Generic_Chain (Inst, Get_Generic_Chain (Subprg)));
+      Instantiate_Generic_Map_Chain (Inst, Subprg);
+      if Get_Kind (Subprg) = Iir_Kind_Function_Instantiation_Declaration then
+         Set_Return_Type (Inst, Instantiate_Iir (Subprg, True));
+      end if;
+      Set_Interface_Declaration_Chain
+        (Inst,
+         Instantiate_Iir_Chain (Get_Interface_Declaration_Chain (Subprg)));
+
+      Set_Origin (Subprg, Null_Iir);
+
+      Instance_File := Prev_Instance_File;
+      Restore_Origin (Mark);
+   end Instantiate_Subprogram_Declaration;
 
    procedure Instantiate_Package_Declaration (Inst : Iir; Pkg : Iir)
    is

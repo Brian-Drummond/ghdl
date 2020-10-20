@@ -512,6 +512,10 @@ package body Vhdl.Errors is
             return Disp_Identifier (Node, "procedure");
          when Iir_Kind_Function_Declaration =>
             return Disp_Identifier (Node, "function");
+         when Iir_Kind_Function_Instantiation_Declaration =>
+            return Disp_Identifier (Node, "function instantiation");
+         when Iir_Kind_Procedure_Instantiation_Declaration =>
+            return Disp_Identifier (Node, "procedure instantiation");
          when Iir_Kind_Interface_Procedure_Declaration =>
             return Disp_Identifier (Node, "interface procedure");
          when Iir_Kind_Interface_Function_Declaration =>
@@ -811,6 +815,10 @@ package body Vhdl.Errors is
          when Iir_Kind_Selected_Waveform_Assignment_Statement =>
             return Disp_Label
               (Node, "selected waveform assignment statement");
+         when Iir_Kind_Signal_Force_Assignment_Statement =>
+            return Disp_Label (Node, "signal force assignment");
+         when Iir_Kind_Signal_Release_Assignment_Statement =>
+            return Disp_Label (Node, "signal release assignment");
          when Iir_Kind_Variable_Assignment_Statement =>
             return Disp_Label (Node, "variable assignment statement");
          when Iir_Kind_Conditional_Variable_Assignment_Statement =>

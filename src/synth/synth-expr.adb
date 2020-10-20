@@ -23,6 +23,7 @@ with Name_Table;
 with Std_Names;
 with Str_Table;
 with Mutils; use Mutils;
+with Errorout; use Errorout;
 
 with Vhdl.Types;
 with Vhdl.Ieee.Std_Logic_1164; use Vhdl.Ieee.Std_Logic_1164;
@@ -107,8 +108,12 @@ package body Synth.Expr is
          when Value_Net =>
             N := V.Val.N;
          when Value_Wire =>
-            return Read_Discrete
-              (Synth.Environment.Get_Static_Wire (V.Val.W)) >= 0;
+            if Synth.Environment.Is_Static_Wire (V.Val.W) then
+               return Read_Discrete
+                 (Synth.Environment.Get_Static_Wire (V.Val.W)) >= 0;
+            else
+               return False;
+            end if;
          when others =>
             raise Internal_Error;
       end case;
@@ -665,6 +670,27 @@ package body Synth.Expr is
               Len => Get_Range_Length (Rng));
    end Synth_Bounds_From_Range;
 
+   function Synth_Bounds_From_Length (Atype : Node; Len : Int32)
+                                     return Bound_Type
+   is
+      Rng : constant Node := Get_Range_Constraint (Atype);
+      Limit : Int32;
+   begin
+      Limit := Int32 (Eval_Pos (Get_Left_Limit (Rng)));
+      case Get_Direction (Rng) is
+         when Dir_To =>
+            return (Dir => Dir_To,
+                    Left => Limit,
+                    Right => Limit + Len - 1,
+                    Len => Uns32 (Len));
+         when Dir_Downto =>
+            return (Dir => Dir_Downto,
+                    Left => Limit,
+                    Right => Limit - Len + 1,
+                    Len => Uns32 (Len));
+      end case;
+   end Synth_Bounds_From_Length;
+
    function Synth_Simple_Aggregate (Syn_Inst : Synth_Instance_Acc;
                                     Aggr : Node) return Valtyp
    is
@@ -751,16 +777,16 @@ package body Synth.Expr is
             return Vt;
          when Type_Discrete =>
             pragma Assert (Vtype.Kind in Type_All_Discrete);
-            declare
-               N : Net;
-            begin
-               if Vtype.W /= Dtype.W then
-                  --  Truncate.
-                  --  TODO: check overflow.
-                  case Vt.Val.Kind is
-                     when Value_Net
-                       | Value_Wire
-                       | Value_Alias =>
+            case Vt.Val.Kind is
+               when Value_Net
+                  | Value_Wire
+                  | Value_Alias =>
+                  if Vtype.W /= Dtype.W then
+                     --  Truncate.
+                     --  TODO: check overflow.
+                     declare
+                        N : Net;
+                     begin
                         if Is_Static_Val (Vt.Val) then
                            return Create_Value_Discrete
                              (Get_Static_Discrete (Vt), Dtype);
@@ -775,20 +801,27 @@ package body Synth.Expr is
                              (Ctxt, N, Dtype.W, Get_Location (Loc));
                         end if;
                         return Create_Value_Net (N, Dtype);
-                     when Value_Const =>
-                        return Synth_Subtype_Conversion
-                          (Ctxt, (Vt.Typ, Vt.Val.C_Val), Dtype, Bounds, Loc);
-                     when Value_Memory =>
-                        return Create_Value_Discrete
-                          (Read_Discrete (Vt), Dtype);
-                     when others =>
-                        raise Internal_Error;
-                  end case;
-               else
-                  --  TODO: check overflow if sign differ.
-                  return Vt;
-               end if;
-            end;
+                     end;
+                  else
+                     return Vt;
+                  end if;
+               when Value_Const =>
+                  return Synth_Subtype_Conversion
+                    (Ctxt, (Vt.Typ, Vt.Val.C_Val), Dtype, Bounds, Loc);
+               when Value_Memory =>
+                  --  Check for overflow.
+                  declare
+                     Val : constant Int64 := Read_Discrete (Vt);
+                  begin
+                     if not In_Range (Dtype.Drange, Val) then
+                        Error_Msg_Synth (+Loc, "value out of range");
+                        return No_Valtyp;
+                     end if;
+                     return Create_Value_Discrete (Val, Dtype);
+                  end;
+               when others =>
+                  raise Internal_Error;
+            end case;
          when Type_Float =>
             pragma Assert (Vtype.Kind = Type_Float);
             --  TODO: check range
@@ -797,7 +830,9 @@ package body Synth.Expr is
             pragma Assert (Vtype.Kind = Type_Vector
                              or Vtype.Kind = Type_Slice);
             if Dtype.W /= Vtype.W then
-               Error_Msg_Synth (+Loc, "mismatching vector length");
+               Error_Msg_Synth
+                 (+Loc, "mismatching vector length; got %v, expect %v",
+                  (Errorout."+" (Vtype.W), +Dtype.W));
                return No_Valtyp;
             end if;
             if Bounds then
@@ -986,6 +1021,18 @@ package body Synth.Expr is
         (Synth_Image_Attribute_Str (V, Get_Type (Param)), Dtype);
    end Synth_Image_Attribute;
 
+   function Synth_Instance_Name_Attribute
+     (Syn_Inst : Synth_Instance_Acc; Attr : Node) return Valtyp
+   is
+      Atype : constant Node := Get_Type (Attr);
+      Atyp  : constant Type_Acc := Get_Subtype_Object (Syn_Inst, Atype);
+      Name  : constant Path_Instance_Name_Type :=
+        Get_Path_Instance_Name_Suffix (Attr);
+   begin
+      --  Return a truncated name, as the prefix is not completly known.
+      return String_To_Valtyp (Name.Suffix, Atyp);
+   end Synth_Instance_Name_Attribute;
+
    function Synth_Name (Syn_Inst : Synth_Instance_Acc; Name : Node)
                        return Valtyp is
    begin
@@ -1034,16 +1081,6 @@ package body Synth.Expr is
             Error_Kind ("synth_name", Name);
       end case;
    end Synth_Name;
-
-   function In_Bounds (Bnd : Bound_Type; V : Int32) return Boolean is
-   begin
-      case Bnd.Dir is
-         when Dir_To =>
-            return V >= Bnd.Left and then V <= Bnd.Right;
-         when Dir_Downto =>
-            return V <= Bnd.Left and then V >= Bnd.Right;
-      end case;
-   end In_Bounds;
 
    --  Convert index IDX in PFX to an offset.
    --  SYN_INST and LOC are used in case of error.
@@ -1177,9 +1214,9 @@ package body Synth.Expr is
 
          Bnd := Get_Array_Bound (Pfx_Type, Dim_Type (I + 1));
 
-         if Is_Static (Idx_Val.Val) then
+         if Is_Static_Val (Idx_Val.Val) then
             Idx_Off := Index_To_Offset (Syn_Inst, Bnd,
-                                        Read_Discrete (Idx_Val), Name);
+                                        Get_Static_Discrete (Idx_Val), Name);
             Off.Net_Off := Off.Net_Off + Idx_Off.Net_Off * Stride * El_Typ.W;
             Off.Mem_Off := Off.Mem_Off
               + Idx_Off.Mem_Off * Size_Type (Stride) * El_Typ.Sz;
@@ -1703,16 +1740,33 @@ package body Synth.Expr is
       end case;
    end Synth_Type_Conversion;
 
-   procedure Error_Ieee_Operator (Imp : Node; Loc : Node) is
+   procedure Error_Ieee_Operator (Imp : Node; Loc : Node)
+   is
+      use Std_Names;
+      Parent : constant Iir := Get_Parent (Imp);
    begin
-      if Get_Kind (Get_Parent (Imp)) = Iir_Kind_Package_Declaration
+      if Get_Kind (Parent) = Iir_Kind_Package_Declaration
         and then (Get_Identifier
-                    (Get_Library
-                       (Get_Design_File (Get_Design_Unit (Get_Parent (Imp)))))
-                    = Std_Names.Name_Ieee)
+                    (Get_Library (Get_Design_File (Get_Design_Unit (Parent))))
+                    = Name_Ieee)
       then
-         Error_Msg_Synth (+Loc, "unhandled predefined IEEE operator %i", +Imp);
-         Error_Msg_Synth (+Imp, " declared here");
+         case Get_Identifier (Parent) is
+            when Name_Std_Logic_1164
+               | Name_Std_Logic_Arith
+               | Name_Std_Logic_Signed
+               | Name_Std_Logic_Unsigned
+               | Name_Std_Logic_Misc
+               | Name_Numeric_Std
+               | Name_Numeric_Bit
+               | Name_Math_Real =>
+               Error_Msg_Synth
+                 (+Loc, "unhandled predefined IEEE operator %i", +Imp);
+               Error_Msg_Synth
+                 (+Imp, " declared here");
+            when others =>
+               --  ieee 2008 packages are handled like regular packages.
+               null;
+         end case;
       end if;
    end Error_Ieee_Operator;
 
@@ -1737,8 +1791,9 @@ package body Synth.Expr is
          when Type_Array =>
             Bounds := Str_Typ.Abounds.D (1);
          when Type_Unbounded_Vector
-           | Type_Unbounded_Array =>
-            Bounds := Synth_Array_Bounds (Syn_Inst, Str_Type, 1);
+            | Type_Unbounded_Array =>
+            Bounds := Synth_Bounds_From_Length
+              (Get_Index_Type (Str_Type, 0), Get_String_Length (Str));
          when others =>
             raise Internal_Error;
       end case;
@@ -2301,6 +2356,8 @@ package body Synth.Expr is
             return Synth_Value_Attribute (Syn_Inst, Expr);
          when Iir_Kind_Image_Attribute =>
             return Synth_Image_Attribute (Syn_Inst, Expr);
+         when Iir_Kind_Instance_Name_Attribute =>
+            return Synth_Instance_Name_Attribute (Syn_Inst, Expr);
          when Iir_Kind_Null_Literal =>
             return Create_Value_Access (Null_Heap_Index, Expr_Type);
          when Iir_Kind_Allocator_By_Subtype =>

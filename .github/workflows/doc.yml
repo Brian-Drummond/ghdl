@@ -2,12 +2,42 @@ name: 'doc'
 
 on:
   push:
-  pull_request:
 
 jobs:
   linux:
     runs-on: ubuntu-latest
     steps:
+
     - uses: actions/checkout@v2
-    - name: build doc
-      run: ./doc/make.sh
+
+    - name: Build ghdl/doc
+      run: |
+        docker build -t ghdl/doc - <<-EOF
+        FROM ghdl/vunit:llvm
+        ENV PYTHONPATH=/src/python
+        RUN apt update -qq && apt install -y gnat-gps
+        EOF
+
+    - name: Run gnatdoc
+      run: |
+        cat > run.sh <<-EOF
+        #!/usr/bin/env sh
+        ./configure
+        make
+        gnatdoc -P./ghdl
+        mkdir public
+        mv gnatdoc public
+        EOF
+        chmod +x run.sh
+        docker run --rm -v $(pwd):/src -w /src ghdl/doc ./run.sh
+
+    - uses: buildthedocs/btd@v0
+      with:
+        token: ${{ github.token }}
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: doc
+        path: |
+          doc/_build/html
+          doc/_build/latex

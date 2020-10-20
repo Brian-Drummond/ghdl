@@ -1662,6 +1662,36 @@ package Vhdl.Nodes is
    -- Only for Iir_Kind_Procedure_Body:
    --   Get/Set_Suspend_Flag (Flag11)
 
+   -- Iir_Kind_Function_Instantiation_Declaration (Medium)
+   -- Iir_Kind_Procedure_Instantiation_Declaration (Medium)
+   --
+   --   Get/Set_Parent (Field0)
+   --
+   -- Only for Iir_Kind_Function_Instantiation_Declaration:
+   --   Get/Set_Return_Type (Field1)
+   --
+   -- Only for Iir_Kind_Function_Instantiation_Declaration:
+   --   Get/Set_Type (Alias Field1)
+   --
+   --   Get/Set_Chain (Field2)
+   --
+   --   Get/Set_Identifier (Field3)
+   --
+   --   Get/Set_Subprogram_Hash (Field4)
+   --
+   --   Get/Set_Interface_Declaration_Chain (Field5)
+   --
+   --   Get/Set_Generic_Chain (Field6)
+   --
+   --  A signature or a simple name.
+   --   Get/Set_Uninstantiated_Subprogram_Name (Field7)
+   --
+   --   Get/Set_Generic_Map_Aspect_Chain (Field8)
+   --
+   --   Get/Set_Instance_Source_File (Field10)
+   --
+   --   Get/Set_Visible_Flag (Flag4)
+
    -- Iir_Kind_Interface_Function_Declaration (Medium)
    -- Iir_Kind_Interface_Procedure_Declaration (Medium)
    --
@@ -1795,6 +1825,8 @@ package Vhdl.Nodes is
    --   Get/Set_Expr_Staticness (State1)
    --
    --   Get/Set_Name_Staticness (State2)
+   --
+   --   Get/Set_Is_Ref (Flag12)
 
    -- Iir_Kind_Anonymous_Signal_Declaration (Short)
    --
@@ -2911,6 +2943,9 @@ package Vhdl.Nodes is
    --  index subtypes of the type_mark.
    --   Get/Set_Index_Subtype_List (Field9)
    --
+   --  Set when the element is re-constrained.
+   --  Note that the element subtype may be different from the parent also if
+   --  it is resolved.  This is mostly for ownership.
    --   Get/Set_Array_Element_Constraint (Field8)
    --
    --   Get/Set_Tolerance (Field7)
@@ -3780,6 +3815,32 @@ package Vhdl.Nodes is
    --   Get/Set_Visible_Flag (Flag4)
    --
    --   Get/Set_Is_Ref (Flag12)
+
+   -- Iir_Kind_Signal_Force_Assignment_Statement (Short)
+   -- Iir_Kind_Signal_Release_Assignment_Statement (Short)
+   --
+   --   Get/Set_Parent (Field0)
+   --
+   --   Get/Set_Target (Field1)
+   --
+   --   Get/Set_Chain (Field2)
+   --
+   --   Get/Set_Label (Field3)
+   --   Get/Set_Identifier (Alias Field3)
+   --
+   -- Only for Iir_Kind_Signal_Force_Assignment_Statement:
+   --   Get/Set_Expression (Field5)
+   --
+   --   Get/Set_Force_Mode (Flag1)
+   --
+   --   Get/Set_Visible_Flag (Flag4)
+   --
+   --  True if the target of the assignment is guarded
+   --   Get/Set_Guarded_Target_State (State1)
+   --
+   --   Get/Set_Is_Ref (Flag12)
+   --
+   --   Get/Set_Has_Force_Mode (Flag2)
 
    -- Iir_Kind_Simple_Signal_Assignment_Statement (Short)
    -- Iir_Kind_Conditional_Signal_Assignment_Statement (Short)
@@ -4866,6 +4927,8 @@ package Vhdl.Nodes is
       Iir_Kind_Procedure_Declaration,           --  Subprg, Proc
       Iir_Kind_Function_Body,
       Iir_Kind_Procedure_Body,
+      Iir_Kind_Function_Instantiation_Declaration,
+      Iir_Kind_Procedure_Instantiation_Declaration,
 
       Iir_Kind_Terminal_Declaration,
 
@@ -4994,6 +5057,8 @@ package Vhdl.Nodes is
       Iir_Kind_Simple_Signal_Assignment_Statement,
       Iir_Kind_Conditional_Signal_Assignment_Statement,
       Iir_Kind_Selected_Waveform_Assignment_Statement,
+      Iir_Kind_Signal_Force_Assignment_Statement,
+      Iir_Kind_Signal_Release_Assignment_Statement,
       Iir_Kind_Null_Statement,
       Iir_Kind_Assertion_Statement,
       Iir_Kind_Report_Statement,
@@ -5118,6 +5183,12 @@ package Vhdl.Nodes is
      (
       Iir_Inertial_Delay,
       Iir_Transport_Delay
+     );
+
+   type Iir_Force_Mode is
+     (
+      Iir_Force_In,
+      Iir_Force_Out
      );
 
    --  LRM93 2.7 (conformance rules).
@@ -5754,6 +5825,26 @@ package Vhdl.Nodes is
       Iir_Predefined_Ieee_Numeric_Std_Rot_Left_Sgn_Nat,
       Iir_Predefined_Ieee_Numeric_Std_Rot_Right_Sgn_Nat,
 
+      --  Reduction
+      Iir_Predefined_Ieee_Numeric_Std_And_Sgn,
+      Iir_Predefined_Ieee_Numeric_Std_Nand_Sgn,
+      Iir_Predefined_Ieee_Numeric_Std_Or_Sgn,
+      Iir_Predefined_Ieee_Numeric_Std_Nor_Sgn,
+      Iir_Predefined_Ieee_Numeric_Std_Xor_Sgn,
+      Iir_Predefined_Ieee_Numeric_Std_Xnor_Sgn,
+      Iir_Predefined_Ieee_Numeric_Std_And_Uns,
+      Iir_Predefined_Ieee_Numeric_Std_Nand_Uns,
+      Iir_Predefined_Ieee_Numeric_Std_Or_Uns,
+      Iir_Predefined_Ieee_Numeric_Std_Nor_Uns,
+      Iir_Predefined_Ieee_Numeric_Std_Xor_Uns,
+      Iir_Predefined_Ieee_Numeric_Std_Xnor_Uns,
+
+      --  Find.
+      Iir_Predefined_Ieee_Numeric_Std_Find_Leftmost_Uns,
+      Iir_Predefined_Ieee_Numeric_Std_Find_Rightmost_Uns,
+      Iir_Predefined_Ieee_Numeric_Std_Find_Leftmost_Sgn,
+      Iir_Predefined_Ieee_Numeric_Std_Find_Rightmost_Sgn,
+
       --  Std_Match functions.
       Iir_Predefined_Ieee_Numeric_Std_Match_Log,
       Iir_Predefined_Ieee_Numeric_Std_Match_Uns,
@@ -5785,6 +5876,8 @@ package Vhdl.Nodes is
       Iir_Predefined_Ieee_Std_Logic_Unsigned_Sub_Slv_Log,
       Iir_Predefined_Ieee_Std_Logic_Unsigned_Sub_Log_Slv,
 
+      Iir_Predefined_Ieee_Std_Logic_Unsigned_Id_Slv,
+
       Iir_Predefined_Ieee_Std_Logic_Unsigned_Mul_Slv_Slv,
 
       Iir_Predefined_Ieee_Std_Logic_Unsigned_Lt_Slv_Slv,
@@ -5813,6 +5906,9 @@ package Vhdl.Nodes is
 
       Iir_Predefined_Ieee_Std_Logic_Unsigned_Conv_Integer,
 
+      Iir_Predefined_Ieee_Std_Logic_Unsigned_Shl,
+      Iir_Predefined_Ieee_Std_Logic_Unsigned_Shr,
+
       --  Std_Logic_Signed (synopsys extension).
       Iir_Predefined_Ieee_Std_Logic_Signed_Add_Slv_Slv,
       Iir_Predefined_Ieee_Std_Logic_Signed_Add_Slv_Int,
@@ -5826,9 +5922,40 @@ package Vhdl.Nodes is
       Iir_Predefined_Ieee_Std_Logic_Signed_Sub_Slv_Log,
       Iir_Predefined_Ieee_Std_Logic_Signed_Sub_Log_Slv,
 
+      Iir_Predefined_Ieee_Std_Logic_Signed_Id_Slv,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Neg_Slv,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Abs_Slv,
+
       Iir_Predefined_Ieee_Std_Logic_Signed_Mul_Slv_Slv,
 
+      Iir_Predefined_Ieee_Std_Logic_Signed_Lt_Slv_Slv,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Lt_Slv_Int,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Lt_Int_Slv,
+
+      Iir_Predefined_Ieee_Std_Logic_Signed_Le_Slv_Slv,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Le_Slv_Int,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Le_Int_Slv,
+
+      Iir_Predefined_Ieee_Std_Logic_Signed_Gt_Slv_Slv,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Gt_Slv_Int,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Gt_Int_Slv,
+
+      Iir_Predefined_Ieee_Std_Logic_Signed_Ge_Slv_Slv,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Ge_Slv_Int,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Ge_Int_Slv,
+
+      Iir_Predefined_Ieee_Std_Logic_Signed_Eq_Slv_Slv,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Eq_Slv_Int,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Eq_Int_Slv,
+
+      Iir_Predefined_Ieee_Std_Logic_Signed_Ne_Slv_Slv,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Ne_Slv_Int,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Ne_Int_Slv,
+
       Iir_Predefined_Ieee_Std_Logic_Signed_Conv_Integer,
+
+      Iir_Predefined_Ieee_Std_Logic_Signed_Shl,
+      Iir_Predefined_Ieee_Std_Logic_Signed_Shr,
 
       --  std_logic_arith (synopsys extention).
       Iir_Predefined_Ieee_Std_Logic_Arith_Conv_Unsigned_Int,
@@ -5848,6 +5975,21 @@ package Vhdl.Nodes is
 
       Iir_Predefined_Ieee_Std_Logic_Arith_Ext,
       Iir_Predefined_Ieee_Std_Logic_Arith_Sxt,
+
+      Iir_Predefined_Ieee_Std_Logic_Arith_Id_Uns_Uns,
+      Iir_Predefined_Ieee_Std_Logic_Arith_Id_Sgn_Sgn,
+      Iir_Predefined_Ieee_Std_Logic_Arith_Neg_Sgn_Sgn,
+      Iir_Predefined_Ieee_Std_Logic_Arith_Abs_Sgn_Sgn,
+
+      Iir_Predefined_Ieee_Std_Logic_Arith_Shl_Uns,
+      Iir_Predefined_Ieee_Std_Logic_Arith_Shl_Sgn,
+      Iir_Predefined_Ieee_Std_Logic_Arith_Shr_Uns,
+      Iir_Predefined_Ieee_Std_Logic_Arith_Shr_Sgn,
+
+      Iir_Predefined_Ieee_Std_Logic_Arith_Id_Uns_Slv,
+      Iir_Predefined_Ieee_Std_Logic_Arith_Id_Sgn_Slv,
+      Iir_Predefined_Ieee_Std_Logic_Arith_Neg_Sgn_Slv,
+      Iir_Predefined_Ieee_Std_Logic_Arith_Abs_Sgn_Slv,
 
       Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Uns_Uns_Uns,
       Iir_Predefined_Ieee_Std_Logic_Arith_Mul_Sgn_Sgn_Sgn,
@@ -6711,6 +6853,8 @@ package Vhdl.Nodes is
      Iir_Kind_Simple_Signal_Assignment_Statement ..
    --Iir_Kind_Conditional_Signal_Assignment_Statement
    --Iir_Kind_Selected_Waveform_Assignment_Statement
+   --Iir_Kind_Signal_Force_Assignment_Statement
+   --Iir_Kind_Signal_Release_Assignment_Statement
    --Iir_Kind_Null_Statement
    --Iir_Kind_Assertion_Statement
    --Iir_Kind_Report_Statement
@@ -7795,6 +7939,10 @@ package Vhdl.Nodes is
    function Get_Implicit_Definition (D : Iir) return Iir_Predefined_Functions;
    procedure Set_Implicit_Definition (D : Iir; Def : Iir_Predefined_Functions);
 
+   --  Field: Field7
+   function Get_Uninstantiated_Subprogram_Name (N : Iir) return Iir;
+   procedure Set_Uninstantiated_Subprogram_Name (N : Iir; Name : Iir);
+
    --  Get the default value of an object declaration.
    --  Null_iir if no default value.
    --  Note that this node can be shared between declarations if they are
@@ -8170,6 +8318,14 @@ package Vhdl.Nodes is
    --  Field: Field4
    function Get_Reject_Time_Expression (Target : Iir) return Iir;
    procedure Set_Reject_Time_Expression (Target : Iir; Expr : Iir);
+
+   --  Field: Flag1 (uc)
+   function Get_Force_Mode (Stmt : Iir) return Iir_Force_Mode;
+   procedure Set_Force_Mode (Stmt : Iir; Mode : Iir_Force_Mode);
+
+   --  Field: Flag2
+   function Get_Has_Force_Mode (Stmt : Iir) return Boolean;
+   procedure Set_Has_Force_Mode (Stmt : Iir; Flag : Boolean);
 
    --  The Is_Ref flag is set for extracted sensitivity lists.
    --  Field: Field6 Of_Maybe_Ref (uc)

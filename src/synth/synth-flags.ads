@@ -61,7 +61,7 @@ package Synth.Flags is
    Flag_Debug_Init : Boolean := False;
 
    --  True to start debugger on error.
-   Flag_Debug_Enable : Boolean := True;
+   Flag_Debug_Enable : Boolean := False;
 
    --  Maximum number of iterations for (while)/loop.  0 means unlimited.
    Flag_Max_Loop : Natural := 1000;
@@ -71,6 +71,10 @@ package Synth.Flags is
 
    --  Synthesize PSL and assertions.
    Flag_Formal : Boolean := True;
+
+   --  If true, automatically add a cover on PSL asserts to know if the
+   --  asserted has been started.
+   Flag_Assert_Cover : Boolean := True;
 
    Flag_Verbose : Boolean := False;
 end Synth.Flags;
