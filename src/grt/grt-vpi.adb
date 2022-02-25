@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) - VPI interface.
 --  Copyright (C) 2002 - 2014 Tristan Gingold & Felix Bertram
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 -- Description: VPI interface for GRT runtime
 --              the main purpose of this code is to interface with the
@@ -39,8 +37,7 @@
 -------------------------------------------------------------------------------
 
 with Ada.Unchecked_Deallocation;
-with System.Storage_Elements; --  Work around GNAT bug.
-pragma Unreferenced (System.Storage_Elements);
+
 with Grt.Stdio; use Grt.Stdio;
 with Grt.C; use Grt.C;
 with Grt.Signals; use Grt.Signals;
@@ -51,7 +48,9 @@ with Grt.Hooks; use Grt.Hooks;
 with Grt.Options;
 with Grt.Vcd; use Grt.Vcd;
 with Grt.Errors; use Grt.Errors;
+with Grt.Rtis; use Grt.Rtis;
 with Grt.Rtis_Types;
+with Grt.Rtis_Addr;
 with Grt.Std_Logic_1164; use Grt.Std_Logic_1164;
 with Grt.Callbacks; use Grt.Callbacks;
 with Grt.Vstrings; use Grt.Vstrings;
@@ -214,6 +213,8 @@ package body Grt.Vpi is
             Trace ("vpiModule");
          when vpiNet =>
             Trace ("vpiNet");
+         when vpiNetArray =>
+            Trace ("vpiNetArray");
          when vpiPort =>
             Trace ("vpiPort");
          when vpiParameter =>
@@ -226,6 +227,8 @@ package body Grt.Vpi is
             Trace ("vpiLeftRange");
          when vpiRightRange =>
             Trace ("vpiRightRange");
+         when vpiRange =>
+            Trace ("vpiRange");
 
          when vpiStop =>
             Trace ("vpiStop");
@@ -451,11 +454,12 @@ package body Grt.Vpi is
    begin
       Get_Verilog_Wire (Ref.Ref, Info);
       case Info.Vtype is
-         when Vcd_Var_Vectors =>
+         when Vcd_Var_Vectors
+            | Vcd_Array =>
             return Natural (Get_Wire_Length (Info));
          when Vcd_Bool
-           | Vcd_Bit
-           | Vcd_Stdlogic =>
+            | Vcd_Bit
+            | Vcd_Stdlogic =>
             return 1;
          when Vcd_Integer32 =>
             return 32;
@@ -463,7 +467,8 @@ package body Grt.Vpi is
             return 8;
          when Vcd_Float64 =>
             return 0;
-         when Vcd_Bad =>
+         when Vcd_Bad
+            | Vcd_Struct =>
             return 0;
       end case;
    end Vpi_Get_Size;
@@ -484,7 +489,9 @@ package body Grt.Vpi is
          when Vcd_Bitvector
            | Vcd_Stdlogic_Vector =>
             return True;
-         when Vcd_Bad =>
+         when Vcd_Bad
+           | Vcd_Struct
+           | Vcd_Array =>
             return False;
       end case;
    end Vpi_Get_Vector;
@@ -543,29 +550,33 @@ package body Grt.Vpi is
    begin
       case Vhpi_Get_Kind (Res) is
          when VhpiEntityDeclK
-           | VhpiArchBodyK
-           | VhpiBlockStmtK
-           | VhpiIfGenerateK
-           | VhpiForGenerateK
-           | VhpiCompInstStmtK =>
+            | VhpiArchBodyK
+            | VhpiBlockStmtK
+            | VhpiIfGenerateK
+            | VhpiForGenerateK
+            | VhpiCompInstStmtK =>
             return vpiModule;
-         when VhpiPortDeclK =>
+         when VhpiPortDeclK
+            | VhpiSigDeclK =>
             declare
                Info : Verilog_Wire_Info;
             begin
                Get_Verilog_Wire (Res, Info);
-               if Info.Vtype /= Vcd_Bad then
-                  return vpiNet;
-               end if;
-            end;
-         when VhpiSigDeclK =>
-            declare
-               Info : Verilog_Wire_Info;
-            begin
-               Get_Verilog_Wire (Res, Info);
-               if Info.Vtype /= Vcd_Bad then
-                  return vpiNet;
-               end if;
+               case Info.Vtype is
+                  when Vcd_Enum8
+                    | Vcd_Bool
+                    | Vcd_Var_Vectors
+                    | Vcd_Integer32
+                    | Vcd_Bit
+                    | Vcd_Stdlogic =>
+                     return vpiNet;
+                  when Vcd_Array =>
+                     return vpiNetArray;
+                  when Vcd_Bad
+                    | Vcd_Struct
+                    | Vcd_Float64 =>
+                     return vpiUndefined;
+               end case;
             end;
          when VhpiGenericDeclK =>
             declare
@@ -601,6 +612,9 @@ package body Grt.Vpi is
          when vpiNet =>
             return new struct_vpiHandle'(mType => vpiNet,
                                          Ref => Res);
+         when vpiNetArray =>
+            return new struct_vpiHandle'(mType => vpiNetArray,
+                                         Ref => Res);
          when vpiPort =>
             return new struct_vpiHandle'(mType => vpiPort,
                                          Ref => Res);
@@ -614,6 +628,18 @@ package body Grt.Vpi is
             return null;
       end case;
    end Build_vpiHandle;
+
+   function Vhpi_Handle_To_Vpi (H : VhpiHandleT) return vpiHandle
+   is
+      Prop : Integer;
+   begin
+      Prop := Vhpi_Handle_To_Vpi_Prop (H);
+      if Prop /= vpiUndefined then
+         return Build_vpiHandle (H, Prop);
+      else
+         return null;
+      end if;
+   end Vhpi_Handle_To_Vpi;
 
    ------------------------------------------------------------------------
    -- vpiHandle  vpi_scan(vpiHandle iter)
@@ -668,7 +694,7 @@ package body Grt.Vpi is
          Kind := Vhpi_Handle_To_Vpi_Prop (Res);
          if Kind /= vpiUndefined
            and then (Kind = Expected_Kind
-                       or(Kind = vpiPort and Expected_Kind = vpiNet))
+                       or (Kind = vpiPort and Expected_Kind = vpiNet))
          then
             return Build_vpiHandle (Res, Kind);
          end if;
@@ -796,9 +822,11 @@ package body Grt.Vpi is
                   return null;
             end case;
          when vpiRightRange
-           | vpiLeftRange =>
+            | vpiLeftRange =>
             case Ref.mType is
-               when vpiPort| vpiNet =>
+               when vpiPort
+                  | vpiNet
+                  | vpiNetArray =>
                   Res := new struct_vpiHandle (aType);
                   Res.Ref := Ref.Ref;
                   return Res;
@@ -852,11 +880,31 @@ package body Grt.Vpi is
    type Map_Type_E8 is array (Ghdl_E8 range 0..8) of character;
    Map_Std_E8: constant Map_Type_E8 := "UX01ZWLH-";
 
+   type Map_Type_E8_Int is array (Ghdl_E8 range 0..8) of Ghdl_I32;
+   Map_Std_E8_Int: constant Map_Type_E8_Int := (0, 0, 0, 1, 0, 0, 0, 1, 0);
+
    type Map_Type_B1 is array (Ghdl_B1) of character;
    Map_Std_B1: constant Map_Type_B1 := "01";
 
-   function ii_vpi_get_value_bin_str (Obj : VhpiHandleT)
-                                     return Ghdl_C_String
+   function Get_Value_Obj (Obj : VhpiHandleT) return Verilog_Wire_Info
+   is
+      Info : Verilog_Wire_Info;
+   begin
+      case Vhpi_Get_Kind (Obj) is
+         when VhpiPortDeclK
+            | VhpiSigDeclK
+            | VhpiGenericDeclK
+            | VhpiConstDeclK
+            | VhpiIndexedNameK =>
+            Get_Verilog_Wire (Obj, Info);
+            return Info;
+         when others =>
+            return (Vtype => Vcd_Bad,
+                    Val => Vcd_Effective, Ptr => Null_Address);
+      end case;
+   end Get_Value_Obj;
+
+   function Vpi_Get_Value_Bin (Obj : VhpiHandleT) return Ghdl_C_String
    is
       function E8_To_Char (Val : Ghdl_E8) return Character is
       begin
@@ -870,29 +918,15 @@ package body Grt.Vpi is
       Info : Verilog_Wire_Info;
       Len : Ghdl_Index_Type;
    begin
-      case Vhpi_Get_Kind (Obj) is
-         when VhpiPortDeclK
-           | VhpiSigDeclK
-           | VhpiGenericDeclK
-           | VhpiConstDeclK =>
-            null;
-         when others =>
-            return null;
-      end case;
-
-      --  Get verilog compat info.
-      Get_Verilog_Wire (Obj, Info);
-      if Info.Vtype = Vcd_Bad then
-         return null;
-      end if;
-
-      Len := Get_Wire_Length (Info);
+      Info := Get_Value_Obj (Obj);
 
       Reset (Buf_Value); -- reset string buffer
 
       case Info.Vtype is
          when Vcd_Bad
-           | Vcd_Float64 =>
+            | Vcd_Float64
+            | Vcd_Array
+            | Vcd_Struct =>
             return null;
          when Vcd_Enum8 =>
             declare
@@ -909,22 +943,121 @@ package body Grt.Vpi is
                Append_Bin (Ghdl_U64 (V), 32);
             end;
          when Vcd_Bit
-           | Vcd_Bool =>
+            | Vcd_Bool =>
             Append (Buf_Value, Map_Std_B1 (Verilog_Wire_Val (Info).B1));
          when Vcd_Bitvector =>
+            Len := Get_Wire_Length (Info);
             for J in 0 .. Len - 1 loop
                Append (Buf_Value, Map_Std_B1 (Verilog_Wire_Val (Info, J).B1));
             end loop;
          when Vcd_Stdlogic =>
             Append (Buf_Value, E8_To_Char (Verilog_Wire_Val (Info).E8));
          when Vcd_Stdlogic_Vector =>
+            Len := Get_Wire_Length (Info);
             for J in 0 .. Len - 1 loop
                Append (Buf_Value, E8_To_Char (Verilog_Wire_Val (Info, J).E8));
             end loop;
       end case;
       Append (Buf_Value, NUL);
       return Get_C_String (Buf_Value);
-   end ii_vpi_get_value_bin_str;
+   end Vpi_Get_Value_Bin;
+
+   function Vpi_Get_Value_Int (Obj : VhpiHandleT) return VhpiIntT
+   is
+      function E8_To_Int (Val : Ghdl_E8) return VhpiIntT is
+      begin
+         if Val not in Map_Type_E8_Int'range then
+            return 0;
+         else
+            return Map_Std_E8_Int (Val);
+         end if;
+      end E8_To_Int;
+
+      Info : Verilog_Wire_Info;
+      Len : Ghdl_Index_Type;
+      Res : VhpiIntT;
+   begin
+      Info := Get_Value_Obj (Obj);
+
+      Reset (Buf_Value); -- reset string buffer
+
+      case Info.Vtype is
+         when Vcd_Bad
+            | Vcd_Float64
+            | Vcd_Array
+            | Vcd_Struct =>
+            --  FIXME: is it possible to return an error ?
+            dbgPut_Line ("vpi_get_value: vpiIntVal, unknown mType");
+            return -1;
+         when Vcd_Enum8 =>
+            declare
+               V : Ghdl_E8;
+            begin
+               V := Verilog_Wire_Val (Info).E8;
+               return Ghdl_E8'Pos (V);
+            end;
+         when Vcd_Integer32 =>
+            declare
+               V : Ghdl_U32;
+            begin
+               V := Verilog_Wire_Val (Info).E32;
+               return To_Ghdl_I32 (V);
+            end;
+         when Vcd_Bit
+            | Vcd_Bool =>
+            return Ghdl_B1'Pos (Verilog_Wire_Val (Info).B1);
+         when Vcd_Bitvector =>
+            Res := 0;
+            Len := Get_Wire_Length (Info);
+            --  FIXME: handle overflow ?
+            for J in 0 .. Len - 1 loop
+               Res := Res * 2 + Ghdl_B1'Pos (Verilog_Wire_Val (Info, J).B1);
+            end loop;
+            return Res;
+         when Vcd_Stdlogic =>
+            return E8_To_Int (Verilog_Wire_Val (Info).E8);
+         when Vcd_Stdlogic_Vector =>
+            Len := Get_Wire_Length (Info);
+            Res := 0;
+            for J in 0 .. Len - 1 loop
+               Res := Res * 2 + E8_To_Int (Verilog_Wire_Val (Info, J).E8);
+            end loop;
+            return Res;
+      end case;
+   end Vpi_Get_Value_Int;
+
+   function Vpi_Get_Value_Range (Expr : vpiHandle) return Integer
+   is
+      Info : Verilog_Wire_Info;
+      Rng : Ghdl_Range_Ptr;
+   begin
+      Get_Verilog_Wire (Expr.Ref, Info);
+      case Info.Vtype is
+         when Vcd_Var_Vectors =>
+            Rng := Info.Vec_Range;
+         when Vcd_Array =>
+            declare
+               use Grt.Rtis_Addr;
+               Arr_Rti : constant Ghdl_Rtin_Type_Array_Acc :=
+                 Get_Base_Array_Type (Info.Arr_Rti);
+               Rngs : Ghdl_Range_Array (0 .. 0);
+            begin
+               Bound_To_Range (Info.Arr_Bounds, Arr_Rti, Rngs);
+               Rng := Rngs (0);
+            end;
+         when others =>
+            Rng := null;
+      end case;
+      if Rng /= null then
+         if Expr.mType = vpiLeftRange then
+            return Integer (Rng.I32.Left);
+         else
+            return Integer (Rng.I32.Right);
+         end if;
+      else
+         return 0;
+      end if;
+   end Vpi_Get_Value_Range;
 
    procedure vpi_get_value (Expr : vpiHandle; Value : p_vpi_value) is
    begin
@@ -945,44 +1078,31 @@ package body Grt.Vpi is
             -- For a time variable, vpiTimeVal with vpiSimTime
             -- For a vector, vpiVectorVal
             dbgPut_Line ("vpi_get_value: vpiObjTypeVal");
-         when vpiBinStrVal=>
-            Value.Str := ii_vpi_get_value_bin_str (Expr.Ref);
+         when vpiBinStrVal =>
+            Value.Str := Vpi_Get_Value_Bin (Expr.Ref);
             --aValue.mStr := NulTerminate2(aExpr.mRef.Name.all);
-         when vpiOctStrVal=>
-            dbgPut_Line("vpi_get_value: vpiNet, vpiOctStrVal");
-         when vpiDecStrVal=>
-            dbgPut_Line("vpi_get_value: vpiNet, vpiDecStrVal");
-         when vpiHexStrVal=>
-            dbgPut_Line("vpi_get_value: vpiNet, vpiHexStrVal");
-         when vpiScalarVal=>
-            dbgPut_Line("vpi_get_value: vpiNet, vpiScalarVal");
-         when vpiIntVal=>
+         when vpiOctStrVal =>
+            dbgPut_Line ("vpi_get_value: vpiNet, vpiOctStrVal");
+         when vpiDecStrVal =>
+            dbgPut_Line ("vpi_get_value: vpiNet, vpiDecStrVal");
+         when vpiHexStrVal =>
+            dbgPut_Line ("vpi_get_value: vpiNet, vpiHexStrVal");
+         when vpiScalarVal =>
+            dbgPut_Line ("vpi_get_value: vpiNet, vpiScalarVal");
+         when vpiIntVal =>
             case Expr.mType is
                when vpiLeftRange
-                 | vpiRightRange=>
-                  declare
-                     Info : Verilog_Wire_Info;
-                  begin
-                     Get_Verilog_Wire (Expr.Ref, Info);
-                     if Info.Irange /= null then
-                        if Expr.mType = vpiLeftRange then
-                           Value.Integer_m := Integer (Info.Irange.I32.Left);
-                        else
-                           Value.Integer_m := Integer (Info.Irange.I32.Right);
-                        end if;
-                     else
-                        Value.Integer_m  := 0;
-                     end if;
-                  end;
-               when others=>
-                  dbgPut_Line ("vpi_get_value: vpiIntVal, unknown mType");
+                  | vpiRightRange =>
+                  Value.Integer_m := Vpi_Get_Value_Range (Expr);
+               when others =>
+                  Value.Integer_m := Integer (Vpi_Get_Value_Int (Expr.Ref));
             end case;
-         when vpiRealVal=>     dbgPut_Line("vpi_get_value: vpiRealVal");
-         when vpiStringVal=>   dbgPut_Line("vpi_get_value: vpiStringVal");
-         when vpiTimeVal=>     dbgPut_Line("vpi_get_value: vpiTimeVal");
-         when vpiVectorVal=>   dbgPut_Line("vpi_get_value: vpiVectorVal");
-         when vpiStrengthVal=> dbgPut_Line("vpi_get_value: vpiStrengthVal");
-         when others=>         dbgPut_Line("vpi_get_value: unknown mFormat");
+         when vpiRealVal =>     dbgPut_Line ("vpi_get_value: vpiRealVal");
+         when vpiStringVal =>   dbgPut_Line ("vpi_get_value: vpiStringVal");
+         when vpiTimeVal =>     dbgPut_Line ("vpi_get_value: vpiTimeVal");
+         when vpiVectorVal =>   dbgPut_Line ("vpi_get_value: vpiVectorVal");
+         when vpiStrengthVal => dbgPut_Line ("vpi_get_value: vpiStrengthVal");
+         when others =>         dbgPut_Line ("vpi_get_value: unknown mFormat");
       end case;
 
       if Flag_Trace then
@@ -1003,7 +1123,9 @@ package body Grt.Vpi is
                                Vec : Std_Ulogic_Array) is
    begin
       case Info.Vtype is
-         when Vcd_Bad =>
+         when Vcd_Bad
+            | Vcd_Array
+            | Vcd_Struct =>
             return;
          when Vcd_Bit
            | Vcd_Bool
@@ -1013,7 +1135,7 @@ package body Grt.Vpi is
                   V : constant Ghdl_B1 :=
                     Ghdl_B1 (Vec (J) = '1' or Vec (J) = 'H');
                begin
-                  case Info.Val is
+                  case Vcd_Value_Valid (Info.Val) is
                      when Vcd_Effective =>
                         Ghdl_Signal_Force_Effective_B1
                           (To_Signal_Arr_Ptr (Info.Ptr)(J), V);
@@ -1033,7 +1155,7 @@ package body Grt.Vpi is
                declare
                   V : constant Ghdl_E8 := Std_Ulogic'Pos (Vec (J));
                begin
-                  case Info.Val is
+                  case Vcd_Value_Valid (Info.Val) is
                      when Vcd_Effective =>
                         Ghdl_Signal_Force_Effective_E8
                           (To_Signal_Arr_Ptr (Info.Ptr)(J), V);
@@ -1051,12 +1173,12 @@ package body Grt.Vpi is
             begin
                V := 0;
                for I in reverse Vec'Range loop
-                  if Vec (I) = '1' then
+                  if Vec (I) = '1' or Vec (I) = 'H' then
                      --  Ok, handles 'X', 'Z'... like '0'.
                      V := V or Shift_Left (1, Natural (Vec'Last - I));
                   end if;
                end loop;
-               case Info.Val is
+               case Vcd_Value_Valid (Info.Val) is
                   when Vcd_Effective =>
                      Ghdl_Signal_Force_Effective_E8
                        (To_Signal_Arr_Ptr (Info.Ptr)(0), V);
@@ -1067,8 +1189,35 @@ package body Grt.Vpi is
                      Verilog_Wire_Val (Info).E8 := V;
                end case;
             end;
-         when Vcd_Integer32
-           | Vcd_Float64 =>
+         when Vcd_Integer32 =>
+            declare
+               R : Ghdl_U32;
+               V : Ghdl_I32;
+            begin
+               R := 0;
+               --  FIXME: what about sign extension ?
+               --  FIXME: what about range checks ?
+               for I in Vec'Range loop
+                  R := Shift_Left (R, 1);
+                  if Vec (I) = '1' or Vec (I) = 'H' then
+                     --  Ok, handles 'X', 'Z'... like '0'.
+                     R := R or 1;
+                  end if;
+               end loop;
+               V := To_Ghdl_I32 (R);
+               case Vcd_Value_Valid (Info.Val) is
+                  when Vcd_Effective =>
+                     Ghdl_Signal_Force_Effective_I32
+                       (To_Signal_Arr_Ptr (Info.Ptr)(0), V);
+                  when Vcd_Driving =>
+                     Ghdl_Signal_Force_Driving_I32
+                       (To_Signal_Arr_Ptr (Info.Ptr)(0), V);
+                  when Vcd_Variable =>
+                     Verilog_Wire_Val (Info).I32 := V;
+               end case;
+            end;
+
+         when Vcd_Float64 =>
             null;
       end case;
    end Ii_Vpi_Put_Value;
@@ -1196,31 +1345,33 @@ package body Grt.Vpi is
       --         call (from grt-signals)
       -- Set_Effective_Value(sig_ptr, conv_value);
 
-      -- Checks the format of aValue. Only vpiBinStrVal will be accepted
-      --  for now.
+      --  Convert LEN (number of elements) to number of bits.
+      case Info.Vtype is
+         when Vcd_Bad
+            | Vcd_Array
+            | Vcd_Struct =>
+            dbgPut_Line ("vpi_put_value: bad object kind");
+            return null;
+         when Vcd_Bit
+           | Vcd_Bool
+           | Vcd_Bitvector
+           | Vcd_Stdlogic
+           | Vcd_Stdlogic_Vector =>
+            null;
+         when Vcd_Enum8 =>
+            Len := Len * 8;
+         when Vcd_Integer32 =>
+            Len := Len * 32;
+         when Vcd_Float64 =>
+            Len := Len * 64;
+      end case;
+
+      -- Checks the format of aValue.
       case aValue.Format is
          when vpiObjTypeVal =>
             dbgPut_Line ("vpi_put_value: vpiObjTypeVal");
          when vpiBinStrVal =>
-            --  Convert LEN (number of elements) to number of bits.
-            case Info.Vtype is
-               when Vcd_Bad =>
-                  null;
-               when Vcd_Bit
-                 | Vcd_Bool
-                 | Vcd_Bitvector
-                 | Vcd_Stdlogic
-                 | Vcd_Stdlogic_Vector =>
-                  null;
-               when Vcd_Enum8 =>
-                  Len := Len * 8;
-               when Vcd_Integer32 =>
-                  Len := Len * 32;
-               when Vcd_Float64 =>
-                  Len := Len * 64;
-            end case;
             Ii_Vpi_Put_Value_Bin_Str (Info, Len, aValue.Str);
-            -- dbgPut_Line ("vpi_put_value: vpiBinStrVal");
          when vpiOctStrVal =>
             dbgPut_Line ("vpi_put_value: vpiNet, vpiOctStrVal");
          when vpiDecStrVal =>
@@ -1232,7 +1383,6 @@ package body Grt.Vpi is
          when vpiIntVal =>
             Ii_Vpi_Put_Value_Int
               (Info, Len, To_Unsigned_32 (aValue.Integer_m));
-            -- dbgPut_Line ("vpi_put_value: vpiIntVal");
          when vpiRealVal =>
             dbgPut_Line("vpi_put_value: vpiRealVal");
          when vpiStringVal =>
@@ -1566,32 +1716,65 @@ package body Grt.Vpi is
 
    -- int vpi_get_vlog_info(p_vpi_vlog_info vlog_info_p)
    function vpi_get_vlog_info (info : p_vpi_vlog_info) return integer is
+      function To_Address is new Ada.Unchecked_Conversion
+         (Source => Grt.Options.Argv_Type, Target => System.Address);
    begin
       if Flag_Trace then
          Trace_Start ("vpi_get_vlog_info");
          Trace_Newline;
       end if;
 
-      info.all := (Argc => 0,
-                   Argv => Null_Address,
+      info.all := (Argc => Options.Argc,
+                   Argv => To_Address(Options.Argv),
                    Product => To_Ghdl_C_String (Product'Address),
                    Version => To_Ghdl_C_String (GhdlVersion'Address));
       return 1;
    end vpi_get_vlog_info;
 
-   -- vpiHandle vpi_handle_by_index(vpiHandle ref, int index)
-   function vpi_handle_by_index (aRef: vpiHandle; aIndex: integer)
+   function Vpi_Handle_By_Index_Internal (Ref: vpiHandle; Index: Integer)
+                                         return vpiHandle
+   is
+      Temp : VhpiHandleT;
+      Err : AvhpiErrorT;
+   begin
+      case Ref.mType is
+         when vpiNetArray =>
+            Vhpi_Handle_By_Array_Index (Ref.Ref, VhpiIntT (Index), Temp, Err);
+            if Err = AvhpiErrorOk then
+               --  FIXME: can be an array or a struct.
+               return Build_vpiHandle (Temp, vpiNet);
+            end if;
+         when others =>
+            null;
+      end case;
+      return null;
+   end Vpi_Handle_By_Index_Internal;
+
+   function vpi_handle_by_index (Ref : vpiHandle; Index : Integer)
                                 return vpiHandle
    is
-      pragma Unreferenced (aRef);
-      pragma Unreferenced (aIndex);
+      Res : vpiHandle;
    begin
       if Flag_Trace then
-         Trace_Start ("vpi_handle_by_index UNIMPLEMENTED!");
+         Trace_Start ("vpi_handle_by_index (");
+         Trace (Ref);
+         Trace (", ");
+         Trace (Index);
+         Trace (") = ");
+      end if;
+
+      if Ref = null then
+         Res := null;
+      else
+         Res := Vpi_Handle_By_Index_Internal (Ref, Index);
+      end if;
+
+      if Flag_Trace then
+         Trace (Res);
          Trace_Newline;
       end if;
 
-      return null;
+      return Res;
    end vpi_handle_by_index;
 
    --  Return True iff L and R are equal.  L must not have an element set to
@@ -1648,8 +1831,6 @@ package body Grt.Vpi is
       B, E : Natural;
       Base, El : VhpiHandleT;
       Err : AvhpiErrorT;
-      Prop : Integer;
-      Res : vpiHandle;
       Escaped : Boolean;
    begin
       --  Extract the start point.
@@ -1708,14 +1889,7 @@ package body Grt.Vpi is
          B := B + 1;
       end loop;
 
-      Prop := Vhpi_Handle_To_Vpi_Prop (Base);
-      if Prop /= vpiUndefined then
-         Res := Build_vpiHandle (Base, Prop);
-      else
-         Res := null;
-      end if;
-
-      return Res;
+      return Vhpi_Handle_To_Vpi (Base);
    end Vpi_Handle_By_Name_Internal;
 
    function vpi_handle_by_name (Name : Ghdl_C_String; Scope : vpiHandle)
@@ -1765,12 +1939,12 @@ package body Grt.Vpi is
       return 0;
    end vpi_mcd_open;
 
-   function vpi_register_systf (aSs: System.Address) return vpiHandle
-   is
-      pragma Unreferenced (aSs);
+   function vpi_register_systf (Data : p_vpi_systf_data) return vpiHandle is
    begin
       if Flag_Trace then
-         Trace_Start ("vpi_register_systf");
+         Trace_Start ("vpi_register_systf(");
+         Trace (Data.tfname);
+         Trace (")");
          Trace_Newline;
       end if;
       return null;
@@ -1842,8 +2016,16 @@ package body Grt.Vpi is
 -- * * *   G H D L   h o o k s   * * * * * * * * * * * * * * * * * * * * * * *
 ------------------------------------------------------------------------------
 
-   --  VCD filename.
-   Vpi_Filename : String_Access := null;
+
+   type Lib_Cell;
+   type Lib_Access is access Lib_Cell;
+
+   type Lib_Cell is record
+      File_Name : String_Access;
+      Next : Lib_Access;
+   end record;
+
+   Vpi_Libraries : Lib_Access := null;
 
    ------------------------------------------------------------------------
    --  Return TRUE if OPT is an option for VPI.
@@ -1855,10 +2037,32 @@ package body Grt.Vpi is
          return False;
       end if;
       if Opt'Length > 6 and then Opt (F + 5) = '=' then
-         --  Add an extra NUL character.
-         Vpi_Filename := new String (1 .. Opt'Length - 6 + 1);
-         Vpi_Filename (1 .. Opt'Length - 6) := Opt (F + 6 .. Opt'Last);
-         Vpi_Filename (Vpi_Filename'Last) := NUL;
+         declare
+            Lib : Lib_Access;
+            File : String_Access;
+         begin
+            -- Store library info.
+            Lib := new Lib_Cell;
+            --  Add an extra NUL character.
+            File := new String (1 .. Opt'Length - 6 + 1);
+            File (1 .. Opt'Length - 6) := Opt (F + 6 .. Opt'Last);
+            File (File'Last) := NUL;
+            Lib.File_Name := File;
+
+            -- Add new library to the list.
+            if Vpi_Libraries = null then
+               Vpi_Libraries := Lib;
+            else
+               declare
+                  L : Lib_Access := Vpi_Libraries;
+               begin
+                  while L.Next /= null loop
+                     L := L.Next;
+                  end loop;
+                  L.Next := Lib;
+               end;
+            end if;
+         end;
          return True;
       elsif Opt'Length >= 11 and then Opt (F + 5 .. F + 10) = "-trace" then
          if Opt'Length > 11 and then Opt (F + 11) = '=' then
@@ -1894,8 +2098,9 @@ package body Grt.Vpi is
    ------------------------------------------------------------------------
    procedure Vpi_Help is
    begin
-      Put_Line (" --vpi=FILENAME     load VPI module");
-      Put_Line (" --vpi-trace[=FILE] trace vpi calls to FILE");
+      Put_Line (" --vpi=FILENAME      load VPI library");
+      Put_Line
+        (" --vpi-trace[=FILE]  trace vpi calls to stdout or provided FILE");
    end Vpi_Help;
 
    ------------------------------------------------------------------------
@@ -1907,12 +2112,19 @@ package body Grt.Vpi is
 
    procedure Vpi_Init
    is
+      Lib : Lib_Access := Vpi_Libraries;
    begin
-      if Vpi_Filename /= null then
-         if LoadVpiModule (Vpi_Filename.all'Address) /= 0 then
-            Error ("cannot load VPI module");
-         end if;
+      if Lib = null then
+         return;
       end if;
+      while Lib /= null loop
+         if LoadVpiModule (Lib.File_Name.all'Address) /= 0 then
+            Error_S ("cannot load VPI module '");
+            Diag_C (Lib.File_Name.all);
+            Error_E ("'");
+         end if;
+         Lib := Lib.Next;
+      end loop;
    end Vpi_Init;
 
    ------------------------------------------------------------------------
@@ -1922,7 +2134,7 @@ package body Grt.Vpi is
       Res : Integer;
       pragma Unreferenced (Res);
    begin
-      if Vpi_Filename = null then
+      if Vpi_Libraries = null then
          return;
       end if;
 

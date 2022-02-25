@@ -1,35 +1,38 @@
 --  Iir to ortho translator.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
+with Flags;
+with Libraries;
+
+with Vhdl.Canon;
+with Vhdl.Canon_PSL;
 with Vhdl.Utils; use Vhdl.Utils;
 with Vhdl.Errors; use Vhdl.Errors;
 with Vhdl.Std_Package; use Vhdl.Std_Package;
-with Flags;
-with Libraries;
-with Vhdl.Canon;
-with Trans_Analyzes;
 with Vhdl.Nodes_Meta;
+with Vhdl.Ieee.Std_Logic_1164;
+
 with PSL.Types; use PSL.Types;
 with PSL.Nodes;
 with PSL.NFAs;
 with PSL.NFAs.Utils;
+with PSL.Subsets;
 with PSL.Errors; use PSL.Errors;
-with Vhdl.Ieee.Std_Logic_1164;
+
+with Trans_Analyzes;
 with Trans.Chap1;
 with Trans.Chap3;
 with Trans.Chap4;
@@ -174,6 +177,7 @@ package body Trans.Chap9 is
       Push_Identifier_Prefix (Mark, Get_Label (Inst));
       Num := 0;
 
+      --  Add a pointer to the instance.
       if Is_Component_Instantiation (Inst) then
          --  Via a component declaration.
          declare
@@ -202,8 +206,7 @@ package body Trans.Chap9 is
       Assoc := Get_Port_Map_Aspect_Chain (Inst);
       Inter := Get_Port_Chain (Ports);
       while Assoc /= Null_Iir loop
-         if Get_Kind (Assoc) = Iir_Kind_Association_Element_By_Expression
-         then
+         if Get_Kind (Assoc) = Iir_Kind_Association_Element_By_Name then
             declare
                Act_Conv : constant Iir := Get_Actual_Conversion (Assoc);
                Act_Type : constant Iir := Get_Type (Get_Actual (Assoc));
@@ -344,18 +347,23 @@ package body Trans.Chap9 is
          New_Index_Lit (Unsigned_64 (Get_PSL_Nbr_States (Stmt))));
       New_Type_Decl (Create_Identifier ("VECTTYPE"), Info.Psl_Vect_Type);
 
-      --  Create the variables.
+      --  Create count variables
       if Get_Kind (Stmt) = Iir_Kind_Psl_Endpoint_Declaration then
          --  FIXME: endpoint is a variable (and not a signal). This is required
          --  to have the right value for the current cycle, but as a
          --  consequence, this process must be evaluated before using the
          --  endpoint.
-         Info.Psl_Count_Var := Create_Var
+         Info.Psl_Finish_Count_Var := Create_Var
            (Create_Var_Identifier ("ENDPOINT"), Std_Boolean_Type_Node);
       else
-         Info.Psl_Count_Var := Create_Var
-           (Create_Var_Identifier ("COUNT"), Ghdl_Index_Type);
+         Info.Psl_Finish_Count_Var := Create_Var
+           (Create_Var_Identifier ("FINISH_COUNT"), Ghdl_Index_Type);
+         Info.Psl_Start_Count_Var := Create_Var
+           (Create_Var_Identifier ("START_COUNT"), Ghdl_Index_Type);
       end if;
+
+      Info.Psl_State_Var := Create_Var
+         (Create_Var_Identifier ("STATE"), Trans.Rtis.Ghdl_Rti_Psl_State);
 
       Info.Psl_Vect_Var := Create_Var
         (Create_Var_Identifier ("VECT"), Info.Psl_Vect_Type);
@@ -369,6 +377,36 @@ package body Trans.Chap9 is
       Add_Scope_Field
         (Create_Identifier_Without_Prefix (Stmt), Info.Psl_Scope);
    end Translate_Psl_Directive_Declarations;
+
+   --  Initialize/reset the PSL state vector for STMT.
+   procedure Elab_PSL_State_Vector (Stmt : Iir)
+   is
+      Info   : constant Psl_Info_Acc := Get_Info (Stmt);
+      Var_I  : O_Dnode;
+      Label  : O_Snode;
+   begin
+      Start_Declare_Stmt;
+      New_Var_Decl (Var_I, Wki_I, O_Storage_Local, Ghdl_Index_Type);
+      New_Assign_Stmt (New_Indexed_Element (Get_Var (Info.Psl_Vect_Var),
+                                            New_Lit (Ghdl_Index_0)),
+                       New_Lit (Std_Boolean_True_Node));
+      New_Assign_Stmt (New_Obj (Var_I), New_Lit (Ghdl_Index_1));
+      Start_Loop_Stmt (Label);
+      Gen_Exit_When
+        (Label,
+         New_Compare_Op (ON_Ge,
+                         New_Obj_Value (Var_I),
+                         New_Lit (New_Unsigned_Literal
+                                    (Ghdl_Index_Type,
+                                     Unsigned_64 (Get_PSL_Nbr_States (Stmt)))),
+                         Ghdl_Bool_Type));
+      New_Assign_Stmt (New_Indexed_Element (Get_Var (Info.Psl_Vect_Var),
+                       New_Obj_Value (Var_I)),
+                       New_Lit (Std_Boolean_False_Node));
+      Inc_Var (Var_I);
+      Finish_Loop_Stmt (Label);
+      Finish_Declare_Stmt;
+   end Elab_PSL_State_Vector;
 
    function Translate_Psl_Expr (Expr : PSL_Node; Eos : Boolean)
                                return O_Enode
@@ -423,6 +461,27 @@ package body Trans.Chap9 is
               (ON_Or,
                Translate_Psl_Expr (Get_Left (Expr), Eos),
                Translate_Psl_Expr (Get_Right (Expr), Eos));
+         when N_Imp_Bool =>
+            --  Equivalent to (not (a) or (b)) so this is a short-cut
+            --  operation.
+            declare
+               Bool : constant O_Tnode :=
+                 Get_Ortho_Type (Boolean_Type_Definition, Mode_Value);
+               L : O_Dnode;
+               If_Blk   : O_If_Block;
+            begin
+               L := Create_Temp (Bool);
+               New_Assign_Stmt
+                 (New_Obj (L), Translate_Psl_Expr (Get_Left (Expr), Eos));
+               Start_If_Stmt (If_Blk, New_Obj_Value (L));
+               New_Assign_Stmt
+                 (New_Obj (L), Translate_Psl_Expr (Get_Right (Expr), Eos));
+               New_Else_Stmt (If_Blk);
+               New_Assign_Stmt
+                 (New_Obj (L), New_Lit (Std_Boolean_True_Node));
+               Finish_If_Stmt (If_Blk);
+               return New_Obj_Value (L);
+            end;
          when others =>
             Error_Kind ("translate_psl_expr", Expr);
       end case;
@@ -496,7 +555,7 @@ package body Trans.Chap9 is
       Start_Association (Assocs, Ghdl_Psl_Cover_Failed);
       New_Association (Assocs, New_Obj_Value (Msg_Var));
       New_Association (Assocs, New_Lit (Get_Ortho_Literal
-                                          (Severity_Level_Error)));
+                                          (Severity_Level_Warning)));
       New_Association (Assocs, New_Address (New_Obj (Loc),
                                             Ghdl_Location_Ptr_Node));
       New_Procedure_Call (Assocs);
@@ -524,14 +583,18 @@ package body Trans.Chap9 is
      (Stmt : Iir; Base : Block_Info_Acc)
    is
       use PSL.NFAs;
+      use PSL.Nodes;
+      use PSL.Subsets;
       Info       : constant Psl_Info_Acc := Get_Info (Stmt);
       Inter_List : O_Inter_List;
       Instance   : O_Dnode;
       Var_I      : O_Dnode;
       Var_Nvec   : O_Dnode;
+      Var_SFlag  : O_Dnode;
       Report_Proc : O_Dnode;
       Label      : O_Snode;
       Clk_Blk    : O_If_Block;
+      Abort_Blk  : O_If_Block;
       S_Blk      : O_If_Block;
       E_Blk      : O_If_Block;
       S          : NFA_State;
@@ -542,12 +605,28 @@ package body Trans.Chap9 is
       NFA        : PSL_NFA;
       D_Lit      : O_Cnode;
       Assocs     : O_Assoc_List;
+      Has_Sync_Abort  : Boolean;
+      Has_Async_Abort : Boolean;
+      Abort_Prop : PSL_Node;
    begin
+      Has_Async_Abort := False;
+      Has_Sync_Abort := False;
+      Abort_Prop := Null_PSL_Node;
       case Get_Kind (Stmt) is
          when Iir_Kind_Psl_Cover_Directive =>
             Translate_Psl_Report (Stmt, Base, Report_Proc);
-         when others =>
+         when Iir_Kind_Psl_Restrict_Directive =>
             null;
+         when Iir_Kind_Psl_Endpoint_Declaration =>
+            null;
+         when Iir_Kinds_Psl_Property_Directive =>
+            if Get_PSL_Abort_Flag (Stmt) then
+               Abort_Prop := Get_Psl_Property (Stmt);
+               Has_Async_Abort := Is_Async_Abort (Abort_Prop);
+               Has_Sync_Abort := not Has_Async_Abort;
+            end if;
+         when others =>
+            raise Internal_Error;
       end case;
 
       Start_Procedure_Decl (Inter_List, Create_Identifier ("PROC"),
@@ -563,6 +642,30 @@ package body Trans.Chap9 is
 
       --  New state vector.
       New_Var_Decl (Var_Nvec, Wki_Res, O_Storage_Local, Info.Psl_Vect_Type);
+
+      --  Flag for active edge from start state (assertion "started" flag).
+      New_Var_Decl (Var_SFlag, Wki_Flag, O_Storage_Local, Ghdl_Bool_Type);
+
+      --  'if' statement for async abort
+      Open_Temp;
+      if Has_Async_Abort then
+         Start_If_Stmt (Abort_Blk,
+                        Translate_Psl_Expr (Get_Boolean (Abort_Prop), False));
+         Elab_PSL_State_Vector (Stmt);
+         New_Else_Stmt (Abort_Blk);
+      end if;
+
+      --  Global 'if' statement for the clock.
+      Start_If_Stmt (Clk_Blk,
+                     Translate_Psl_Expr (Get_PSL_Clock (Stmt), False));
+
+      --  'if' statement for sync abort.
+      if Has_Sync_Abort then
+         Start_If_Stmt (Abort_Blk,
+                        Translate_Psl_Expr (Get_Boolean (Abort_Prop), False));
+         Elab_PSL_State_Vector (Stmt);
+         New_Else_Stmt (Abort_Blk);
+      end if;
 
       --  Initialize the new state vector.
       Start_Declare_Stmt;
@@ -596,10 +699,12 @@ package body Trans.Chap9 is
       Finish_Loop_Stmt (Label);
       Finish_Declare_Stmt;
 
-      --  Global 'if' statement for the clock.
-      Open_Temp;
-      Start_If_Stmt (Clk_Blk,
-                     Translate_Psl_Expr (Get_PSL_Clock (Stmt), False));
+      -- Default "started" flag is not set
+      New_Assign_Stmt (New_Obj (Var_SFlag), New_Lit (Ghdl_Bool_False_Node));
+
+      -- Default simplified state -> Inactive
+      New_Assign_Stmt (Get_Var (Info.Psl_State_Var),
+                       New_Lit (Trans.Rtis.Ghdl_Rti_Psl_State_Inactive));
 
       --  For each state: if set, evaluate all outgoing edges.
       NFA := Get_PSL_NFA (Stmt);
@@ -615,6 +720,15 @@ package body Trans.Chap9 is
                New_Lit (New_Index_Lit
                  (Unsigned_64 (S_Num))))));
 
+         -- Get simplified state:
+         --  - If in transient state -> In progress.
+         -- Set also if in final state, will be overrided later in
+         -- failure check.
+         if S /= Get_First_State(NFA) then
+            New_Assign_Stmt (Get_Var (Info.Psl_State_Var),
+                             New_Lit (Trans.Rtis.Ghdl_Rti_Psl_State_Running));
+         end if;
+
          E := Get_First_Src_Edge (S);
          while E /= No_Edge loop
             Sd := Get_Edge_Dest (E);
@@ -627,10 +741,17 @@ package body Trans.Chap9 is
                  New_Lit (D_Lit))));
             Cond := New_Dyadic_Op
               (ON_And, Cond, Translate_Psl_Expr (Get_Edge_Expr (E), False));
+
+            -- If NFA edge expression is valid -> Fire-up destination state.
             Start_If_Stmt (E_Blk, Cond);
             New_Assign_Stmt
               (New_Indexed_Element (New_Obj (Var_Nvec), New_Lit (D_Lit)),
                New_Lit (Std_Boolean_True_Node));
+            -- If we fire from start state -> set "started" flag.
+            if S = Get_First_State (NFA) then
+               New_Assign_Stmt (New_Obj (Var_SFlag),
+                                New_Lit (Ghdl_Bool_True_Node));
+            end if;
             Finish_If_Stmt (E_Blk);
 
             Close_Temp;
@@ -642,6 +763,7 @@ package body Trans.Chap9 is
          S := Get_Next_State (S);
       end loop;
 
+
       --  Check fail state.
       S := Get_Final_State (NFA);
       S_Num := Get_State_Label (S);
@@ -652,7 +774,7 @@ package body Trans.Chap9 is
                                          (Unsigned_64 (S_Num)))));
 
       if Get_Kind (Stmt) = Iir_Kind_Psl_Endpoint_Declaration then
-         New_Assign_Stmt (Get_Var (Info.Psl_Count_Var), Cond);
+         New_Assign_Stmt (Get_Var (Info.Psl_Finish_Count_Var), Cond);
       else
          Start_If_Stmt (S_Blk, Cond);
          Open_Temp;
@@ -660,8 +782,14 @@ package body Trans.Chap9 is
             when Iir_Kind_Psl_Assert_Directive =>
                Chap8.Translate_Report
                  (Stmt, Ghdl_Psl_Assert_Failed, Severity_Level_Error);
+               New_Assign_Stmt (
+                  Get_Var (Info.Psl_State_Var),
+                  New_Lit (Trans.Rtis.Ghdl_Rti_Psl_State_Failed));
             when Iir_Kind_Psl_Assume_Directive =>
                Call_Psl_Fail (Stmt, Ghdl_Psl_Assume_Failed);
+               New_Assign_Stmt (
+                  Get_Var (Info.Psl_State_Var),
+                  New_Lit (Trans.Rtis.Ghdl_Rti_Psl_State_Failed));
             when Iir_Kind_Psl_Cover_Directive =>
                if Get_Report_Expression (Stmt) /= Null_Iir then
                   Start_Association (Assocs, Report_Proc);
@@ -669,15 +797,27 @@ package body Trans.Chap9 is
                   New_Association (Assocs, New_Lit (Ghdl_Bool_True_Node));
                   New_Procedure_Call (Assocs);
                end if;
+               New_Assign_Stmt (
+                  Get_Var (Info.Psl_State_Var),
+                  New_Lit (Trans.Rtis.Ghdl_Rti_Psl_State_Covered));
             when others =>
                Error_Kind ("Translate_Psl_Directive_Statement", Stmt);
          end case;
          New_Assign_Stmt
-           (Get_Var (Info.Psl_Count_Var),
+           (Get_Var (Info.Psl_Finish_Count_Var),
             New_Dyadic_Op (ON_Add_Ov,
-                           New_Value (Get_Var (Info.Psl_Count_Var)),
+                           New_Value (Get_Var (Info.Psl_Finish_Count_Var)),
                            New_Lit (Ghdl_Index_1)));
          Close_Temp;
+         Finish_If_Stmt (S_Blk);
+
+         -- Check "started" flag, increment started count if set
+         Start_If_Stmt (S_Blk, New_Value (New_Obj (Var_SFlag)));
+         New_Assign_Stmt
+               (Get_Var (Info.Psl_Start_Count_Var),
+               New_Dyadic_Op (ON_Add_Ov,
+                              New_Value (Get_Var (Info.Psl_Start_Count_Var)),
+                              New_Lit (Ghdl_Index_1)));
          Finish_If_Stmt (S_Blk);
       end if;
 
@@ -703,8 +843,16 @@ package body Trans.Chap9 is
       Finish_Loop_Stmt (Label);
       Finish_Declare_Stmt;
 
-      Close_Temp;
+      if Has_Sync_Abort then
+         Finish_If_Stmt (Abort_Blk);
+      end if;
+
       Finish_If_Stmt (Clk_Blk);
+
+      if Has_Async_Abort then
+         Finish_If_Stmt (Abort_Blk);
+      end if;
+      Close_Temp;
 
       Clear_Scope (Base.Block_Scope);
       Pop_Local_Factory;
@@ -773,7 +921,7 @@ package body Trans.Chap9 is
             Start_If_Stmt
               (S_Blk,
                New_Compare_Op (ON_Eq,
-                               New_Value (Get_Var (Info.Psl_Count_Var)),
+                               New_Value (Get_Var (Info.Psl_Finish_Count_Var)),
                                New_Lit (Ghdl_Index_0),
                                Ghdl_Bool_Type));
             Start_Association (Assocs, Report_Proc);
@@ -910,7 +1058,7 @@ package body Trans.Chap9 is
       Info.Block_Configured_Field := Add_Instance_Factory_Field
         (Get_Identifier ("CONFIGURED"), Ghdl_Bool_Type);
 
-                  --  Iterator.
+      --  Iterator.
       It_Info := Add_Info (Param, Kind_Iterator);
       It_Info.Iterator_Var := Create_Var
         (Create_Var_Identifier (Param),
@@ -1036,12 +1184,16 @@ package body Trans.Chap9 is
       Parent      : constant Iir := Get_Parent (Stmt);
       Parent_Info : constant Block_Info_Acc := Get_Info (Parent);
 
+      Line : constant Natural := Get_Line_Number (Stmt);
+
       Comp       : Iir;
       Comp_Info  : Comp_Info_Acc;
       Inter_List : O_Inter_List;
       Instance   : O_Dnode;
    begin
       --  Create the elaborator for the instantiation.
+      New_Debug_Line_Decl (Line);
+
       Start_Procedure_Decl (Inter_List, Create_Identifier ("COMP_ELAB"),
                             O_Storage_Private);
       New_Interface_Decl (Inter_List, Instance, Wki_Instance,
@@ -1051,8 +1203,6 @@ package body Trans.Chap9 is
       Start_Subprogram_Body (Info.Block_Elab_Subprg (Elab_Decls));
       Push_Local_Factory;
       Set_Scope_Via_Param_Ptr (Base.Block_Scope, Instance);
-
-      New_Debug_Line_Stmt (Get_Line_Number (Stmt));
 
       --  Add access to the instantiation-specific data.
       --  This is used only for anonymous subtype variables.
@@ -1091,6 +1241,7 @@ package body Trans.Chap9 is
 
       Clear_Scope (Base.Block_Scope);
       Pop_Local_Factory;
+      New_Debug_Line_Stmt (Line);
       Finish_Subprogram_Body;
    end Translate_Component_Instantiation_Subprogram;
 
@@ -1118,14 +1269,22 @@ package body Trans.Chap9 is
       Base_Info : constant Block_Info_Acc := Get_Info (Base_Block);
       Stmt      : Iir;
       Mark      : Id_Mark_Type;
+      Kind      : Iir_Kind;
    begin
       Chap4.Translate_Declaration_Chain_Subprograms
         (Block, Subprg_Translate_Spec_And_Body);
 
       Stmt := Get_Concurrent_Statement_Chain (Block);
       while Stmt /= Null_Iir loop
-         Push_Identifier_Prefix (Mark, Get_Identifier (Stmt));
-         case Get_Kind (Stmt) is
+         Kind := Get_Kind (Stmt);
+         case Kind is
+            when Iir_Kind_Psl_Default_Clock =>
+               null;
+            when others =>
+               Push_Identifier_Prefix (Mark, Get_Identifier (Stmt));
+         end case;
+
+         case Kind is
             when Iir_Kind_Process_Statement
                | Iir_Kind_Sensitized_Process_Statement =>
                if Flag_Direct_Drivers then
@@ -1211,7 +1370,12 @@ package body Trans.Chap9 is
             when others =>
                Error_Kind ("translate_block_subprograms", Stmt);
          end case;
-         Pop_Identifier_Prefix (Mark);
+         case Kind is
+            when Iir_Kind_Psl_Default_Clock =>
+               null;
+            when others =>
+               Pop_Identifier_Prefix (Mark);
+         end case;
          Stmt := Get_Chain (Stmt);
       end loop;
    end Translate_Block_Subprograms;
@@ -1688,7 +1852,7 @@ package body Trans.Chap9 is
       New_Association
         (Constr,
          New_Lit (New_Subprogram_Address (Info.Process_Subprg,
-           Ghdl_Ptr_Type)));
+                                          Ghdl_Ptr_Type)));
       Rtis.Associate_Rti_Context (Constr, Proc);
       New_Procedure_Call (Constr);
 
@@ -1802,6 +1966,42 @@ package body Trans.Chap9 is
       end if;
    end Elab_Process;
 
+   procedure Elab_Inertial_Association (Assoc : Iir; Formal : Iir)
+   is
+      Info      : constant Inertial_Info_Acc := Get_Info (Assoc);
+      Constr        : O_Assoc_List;
+      List          : Iir_List;
+   begin
+      New_Debug_Line_Stmt (Get_Line_Number (Assoc));
+
+      --  Register proc.
+      Start_Association (Constr, Ghdl_Sensitized_Process_Register);
+      New_Association
+        (Constr, New_Convert_Ov (Get_Instance_Access (Info.Inertial_Block),
+                                 Ghdl_Ptr_Type));
+      New_Association
+        (Constr,
+         New_Lit (New_Subprogram_Address (Info.Inertial_Proc,
+                                          Ghdl_Ptr_Type)));
+      Rtis.Associate_Null_Rti_Context (Constr);
+      New_Procedure_Call (Constr);
+
+      --  Driver
+      Register_Signal (Chap6.Translate_Name (Formal, Mode_Signal),
+                       Get_Type (Formal),
+                       Ghdl_Process_Add_Driver);
+
+      --  Sensitivity
+      List := Create_Iir_List;
+      Vhdl.Canon.Canon_Extract_Sensitivity_Expression
+        (Get_Actual (Assoc), List, False);
+      --  For extracted sensitivity, any signal can appear in the list.
+      --  Remove transient types now.
+      Destroy_Types_In_List (List);
+      Register_Signal_List (List, Ghdl_Process_Add_Sensitivity);
+      Destroy_Iir_List (List);
+   end Elab_Inertial_Association;
+
    --  PROC: the process to be elaborated
    --  BLOCK: the block containing the process (its parent)
    --  BASE_INFO: info for the global block
@@ -1811,8 +2011,6 @@ package body Trans.Chap9 is
       Info   : constant Psl_Info_Acc := Get_Info (Stmt);
       Constr : O_Assoc_List;
       List   : Iir_List;
-      Var_I  : O_Dnode;
-      Label  : O_Snode;
       Init   : O_Cnode;
    begin
       New_Debug_Line_Stmt (Get_Line_Number (Stmt));
@@ -1834,6 +2032,26 @@ package body Trans.Chap9 is
       Destroy_Types_In_List (List);
       Register_Signal_List (List, Ghdl_Process_Add_Sensitivity);
 
+      --  Register async sensitivity.
+      if Get_Kind (Stmt) in Iir_Kinds_Psl_Property_Directive
+        and then Get_PSL_Abort_Flag (Stmt)
+      then
+         declare
+            use PSL.Nodes;
+            Prop : constant PSL_Node := Get_Psl_Property (Stmt);
+            List : Iir_List;
+         begin
+            if PSL.Subsets.Is_Async_Abort (Prop) then
+               List := Create_Iir_List;
+               Vhdl.Canon_PSL.Canon_Extract_Sensitivity
+                 (Get_Boolean (Prop), List);
+               Destroy_Types_In_List (List);
+               Register_Signal_List (List, Ghdl_Process_Add_Sensitivity);
+               Destroy_Iir_List (List);
+            end if;
+         end;
+      end if;
+
       --  Register finalizer (if any).
       if Info.Psl_Proc_Final_Subprg /= O_Dnode_Null then
          Start_Association (Constr, Ghdl_Finalize_Register);
@@ -1849,34 +2067,14 @@ package body Trans.Chap9 is
       end if;
 
       --  Initialize state vector.
-      Start_Declare_Stmt;
-      New_Var_Decl (Var_I, Wki_I, O_Storage_Local, Ghdl_Index_Type);
-      New_Assign_Stmt (New_Indexed_Element (Get_Var (Info.Psl_Vect_Var),
-                                            New_Lit (Ghdl_Index_0)),
-                       New_Lit (Std_Boolean_True_Node));
-      New_Assign_Stmt (New_Obj (Var_I), New_Lit (Ghdl_Index_1));
-      Start_Loop_Stmt (Label);
-      Gen_Exit_When
-        (Label,
-         New_Compare_Op (ON_Ge,
-                         New_Obj_Value (Var_I),
-                         New_Lit (New_Unsigned_Literal
-                                    (Ghdl_Index_Type,
-                                     Unsigned_64 (Get_PSL_Nbr_States (Stmt)))),
-                         Ghdl_Bool_Type));
-      New_Assign_Stmt (New_Indexed_Element (Get_Var (Info.Psl_Vect_Var),
-                       New_Obj_Value (Var_I)),
-                       New_Lit (Std_Boolean_False_Node));
-      Inc_Var (Var_I);
-      Finish_Loop_Stmt (Label);
-      Finish_Declare_Stmt;
+      Elab_PSL_State_Vector (Stmt);
 
       if Get_Kind (Stmt) = Iir_Kind_Psl_Endpoint_Declaration then
          Init := Std_Boolean_False_Node;
       else
          Init := Ghdl_Index_0;
       end if;
-      New_Assign_Stmt (Get_Var (Info.Psl_Count_Var), New_Lit (Init));
+      New_Assign_Stmt (Get_Var (Info.Psl_Finish_Count_Var), New_Lit (Init));
    end Elab_Psl_Directive;
 
    procedure Elab_Implicit_Guard_Signal
@@ -2063,22 +2261,22 @@ package body Trans.Chap9 is
             --  Set the ghdl_component_link_instance field.
             New_Assign_Stmt
               (New_Selected_Element
-                 (New_Selected_Element (Get_Instance_Ref (Ref_Scope),
-                  Link_Field),
+                 (New_Selected_Element
+                    (Get_Instance_Ref (Ref_Scope), Link_Field),
                   Rtis.Ghdl_Component_Link_Instance),
-               New_Address (New_Selected_Acc_Value
-                 (New_Obj (Var_Sub),
-                      Entity_Info.Block_Link_Field),
-                 Rtis.Ghdl_Entity_Link_Acc));
+               New_Address
+                 (New_Selected_Acc_Value
+                    (New_Obj (Var_Sub), Entity_Info.Block_Link_Field),
+                  Rtis.Ghdl_Entity_Link_Acc));
             --  Set the ghdl_entity_link_parent field.
             New_Assign_Stmt
               (New_Selected_Element
-                 (New_Selected_Acc_Value (New_Obj (Var_Sub),
-                  Entity_Info.Block_Link_Field),
+                 (New_Selected_Acc_Value
+                    (New_Obj (Var_Sub), Entity_Info.Block_Link_Field),
                   Rtis.Ghdl_Entity_Link_Parent),
                New_Address
-                 (New_Selected_Element (Get_Instance_Ref (Ref_Scope),
-                  Link_Field),
+                 (New_Selected_Element
+                    (Get_Instance_Ref (Ref_Scope), Link_Field),
                   Rtis.Ghdl_Component_Link_Acc));
          end Set_Links;
       begin

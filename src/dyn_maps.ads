@@ -1,27 +1,34 @@
 --  Maps - association of unique object with a value.
 --  Copyright (C) 2019-2020 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Types; use Types;
 with Hash; use Hash;
 with Dyn_Tables;
 
 --  This generic package provides a factory to build unique objects.
---  Get will return an existing object or create a new one.
+--  The container is iterable through the index.
+--  PARAMS_TYPE is the type used to find the key, and if the key does not
+--   exists, it is also used to build the new object.
+--  The key is of type OBJECT_TYPE.
+--  VALUE_TYPE is the value associated to the key.
+--
+--  FIXME: this is too confusing.
+--  Use the usual names KEY_TYPE and VALUE_TYPE.
+--  Use BUILD_TYPE instead of PARAMS_TYPE.
+
 generic
    --  Parameters of the object to be created.
    type Params_Type (<>) is private;
@@ -63,6 +70,10 @@ package Dyn_Maps is
    --  The index is doesn't change over the lifetime of the map.
    procedure Get_Index
      (Inst : in out Instance; Params : Params_Type; Idx : out Index_Type);
+
+   --  Return No_Index if not found.
+   function Get_Index_Soft (Inst : Instance; Params : Params_Type)
+                           return Index_Type;
 
    --  Get the number of elements in the table.
    function Last_Index (Inst : Instance) return Index_Type;

@@ -1,20 +1,18 @@
 --  Library interface for the analyzer.
 --  Copyright (C) 2017 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with GNAT.OS_Lib; use GNAT.OS_Lib;
 with Ghdllocal;
@@ -39,13 +37,24 @@ package body Libghdl is
       end if;
    end Set_Option;
 
-   procedure Compile_Init (Analyze_Only : Boolean) is
+   function Compile_Init_Status (Analyze_Only : Boolean) return Integer is
    begin
       if Analyze_Only then
-         return;
+         return 0;
       end if;
 
-      Ghdllocal.Setup_Libraries (True);
+      if not Ghdllocal.Setup_Libraries (True) then
+         return -1;
+      end if;
+
+      return 0;
+   end Compile_Init_Status;
+
+   procedure Compile_Init (Analyze_Only : Boolean) is
+   begin
+      if Compile_Init_Status (Analyze_Only) /= 0 then
+         raise Option_Error;
+      end if;
    end Compile_Init;
 
    procedure Compile_Elab
@@ -87,10 +96,22 @@ package body Libghdl is
                          Disp_Long_Help'Access);
    end Set_Hooks;
 
-   procedure Analyze_Init is
+   function Analyze_Init_Status return Integer is
    begin
       --  Load libraries...
-      Compile_Init (False);
+      if Compile_Init_Status (False) /= 0 then
+         return -1;
+      end if;
+
+      return 0;
+   end Analyze_Init_Status;
+
+   procedure Analyze_Init is
+   begin
+      --  Deprecated
+      if Analyze_Init_Status /= 0 then
+         raise Option_Error;
+      end if;
    end Analyze_Init;
 
    function Analyze_File (File : Thin_String_Ptr; Len : Natural) return Iir is

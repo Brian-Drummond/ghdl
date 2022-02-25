@@ -1,20 +1,18 @@
 --  PSL - Nodes definition.  This is in fact -*- Ada -*-
 --  Copyright (C) 2002-2016 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Ada.Unchecked_Conversion;
 with Tables;
@@ -341,6 +339,8 @@ package body PSL.Nodes is
             | N_Paren_Prop
             | N_Log_Imp_Prop
             | N_Log_Equiv_Prop
+            | N_Overlap_Imp_Seq
+            | N_Imp_Seq
             | N_Always
             | N_Never
             | N_Eventually
@@ -353,6 +353,8 @@ package body PSL.Nodes is
             | N_Before
             | N_Until
             | N_Abort
+            | N_Async_Abort
+            | N_Sync_Abort
             | N_Strong
             | N_Property_Parameter
             | N_Property_Instance =>
@@ -362,8 +364,6 @@ package body PSL.Nodes is
             | N_Fusion_SERE
             | N_Within_SERE
             | N_Clocked_SERE
-            | N_Overlap_Imp_Seq
-            | N_Imp_Seq
             | N_And_Seq
             | N_Or_Seq
             | N_Match_And_Seq
@@ -393,7 +393,8 @@ package body PSL.Nodes is
             | N_HDL_Bool =>
             return Type_Boolean;
          when N_Number
-            | N_Const_Parameter =>
+            | N_Const_Parameter
+            | N_Inf =>
             return Type_Numeric;
          when N_Vmode
             | N_Vunit
@@ -454,6 +455,8 @@ package body PSL.Nodes is
            | N_Next_Event_A
            | N_Next_Event_E
            | N_Abort
+           | N_Async_Abort
+           | N_Sync_Abort
            | N_Until
            | N_Before
            | N_Or_Prop
@@ -484,6 +487,7 @@ package body PSL.Nodes is
            | N_EOS
            | N_Name
            | N_Name_Decl
+           | N_Inf
            | N_Number =>
             return Format_Short;
       end case;

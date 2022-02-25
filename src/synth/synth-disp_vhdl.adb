@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,9 +14,7 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Simple_IO; use Simple_IO;
 with Utils_IO; use Utils_IO;
@@ -29,10 +27,10 @@ with Vhdl.Ieee.Std_Logic_1164;
 with Vhdl.Errors; use Vhdl.Errors;
 with Vhdl.Utils; use Vhdl.Utils;
 
+with Elab.Vhdl_Objtypes; use Elab.Vhdl_Objtypes;
+
 with Netlists.Iterators; use Netlists.Iterators;
 with Netlists.Disp_Vhdl; use Netlists.Disp_Vhdl;
-
-with Synth.Objtypes; use Synth.Objtypes;
 
 package body Synth.Disp_Vhdl is
    procedure Disp_Signal (Desc : Port_Desc) is
@@ -65,7 +63,7 @@ package body Synth.Disp_Vhdl is
       end loop;
       for I in 1 .. Get_Nbr_Outputs (M) loop
          Desc := Get_Output_Desc (M, I - 1);
-         if not Desc.Is_Inout then
+         if Desc.Dir /= Port_Inout then
             --  inout ports are not prefixed, so they must not be declared
             --  as signals.
             Disp_Signal (Desc);
@@ -250,7 +248,30 @@ package body Synth.Disp_Vhdl is
       Port_Type : constant Node := Get_Type (Port);
       Typ : constant Type_Acc := Get_Subtype_Object (Inst, Port_Type);
    begin
-      Disp_In_Converter (Port_Name, Port_Name, 0, Port_Type, Typ, True);
+      if Get_Kind (Get_Base_Type (Port_Type)) = Iir_Kind_Record_Type_Definition
+      then
+         --  Expand
+         declare
+            Els : constant Node_Flist :=
+              Get_Elements_Declaration_List (Port_Type);
+         begin
+            for I in Flist_First .. Flist_Last (Els) loop
+               declare
+                  El : constant Node := Get_Nth_Element (Els, I);
+                  El_Name : constant String :=
+                    Name_Table.Image (Get_Identifier (El));
+                  Et : Rec_El_Type renames
+                    Typ.Rec.E (Iir_Index32 (I + 1));
+               begin
+                  Disp_In_Converter
+                    (Port_Name & '_' & El_Name, Port_Name & '.' & El_Name,
+                     0, Get_Type (El), Et.Typ, True);
+               end;
+            end loop;
+         end;
+      else
+         Disp_In_Converter (Port_Name, Port_Name, 0, Port_Type, Typ, True);
+      end if;
    end Disp_Input_Port_Converter;
 
    procedure Disp_Out_Rhs
@@ -406,7 +427,30 @@ package body Synth.Disp_Vhdl is
       Port_Type : constant Node := Get_Type (Port);
       Typ : constant Type_Acc := Get_Subtype_Object (Inst, Port_Type);
    begin
-      Disp_Out_Converter (Port_Name, Port_Name, 0, Port_Type, Typ, True);
+      if Get_Kind (Get_Base_Type (Port_Type)) = Iir_Kind_Record_Type_Definition
+      then
+         --  Expand
+         declare
+            Els : constant Node_Flist :=
+              Get_Elements_Declaration_List (Port_Type);
+         begin
+            for I in Flist_First .. Flist_Last (Els) loop
+               declare
+                  El : constant Node := Get_Nth_Element (Els, I);
+                  El_Name : constant String :=
+                    Name_Table.Image (Get_Identifier (El));
+                  Et : Rec_El_Type renames
+                    Typ.Rec.E (Iir_Index32 (I + 1));
+               begin
+                  Disp_Out_Converter
+                    (Port_Name & '_' & El_Name, Port_Name & '.' & El_Name,
+                     0, Get_Type (El), Et.Typ, True);
+               end;
+            end loop;
+         end;
+      else
+         Disp_Out_Converter (Port_Name, Port_Name, 0, Port_Type, Typ, True);
+      end if;
    end Disp_Output_Port_Converter;
 
    procedure Disp_Vhdl_Wrapper
@@ -414,7 +458,6 @@ package body Synth.Disp_Vhdl is
    is
       Unit : constant Node := Get_Design_Unit (Ent);
       Main : Module;
-      Name_Wrap : Name_Id;
    begin
       --  Extract the first user submodule.
       Main := Get_First_Sub_Module (Top);
@@ -430,6 +473,7 @@ package body Synth.Disp_Vhdl is
          M : Module;
          Num : Natural;
       begin
+         --  Count number of modules.
          Num := 0;
          M := Get_Next_Sub_Module (Main);
          while M /= No_Module loop
@@ -439,6 +483,7 @@ package body Synth.Disp_Vhdl is
             M := Get_Next_Sub_Module (M);
          end loop;
 
+         --  Fill array of modules, display.
          declare
             type Module_Array is array (1 .. Num) of Module;
             Modules : Module_Array;
@@ -454,20 +499,38 @@ package body Synth.Disp_Vhdl is
             end loop;
 
             for I in reverse Modules'Range loop
-               Netlists.Disp_Vhdl.Disp_Vhdl (Modules (I), False);
+               --  Skip blackboxes.
+               if Get_Self_Instance (Modules (I)) /= No_Instance then
+                  Netlists.Disp_Vhdl.Disp_Vhdl (Modules (I), False);
+               end if;
             end loop;
          end;
       end;
       New_Line;
 
       --  Rename ports.
-      Name_Wrap := Name_Table.Get_Identifier ("wrap");
-      for P of Ports_Desc (Main) loop
-         pragma Assert (Get_Sname_Prefix (P.Name) = No_Sname);
-         if not P.Is_Inout then
-            Set_Sname_Prefix (P.Name, New_Sname_User (Name_Wrap, No_Sname));
-         end if;
-      end loop;
+      declare
+         Name_Wrap : Name_Id;
+         Pfx_Wrap : Sname;
+         Pfx : Sname;
+      begin
+         Name_Wrap := Name_Table.Get_Identifier ("wrap");
+         Pfx_Wrap := New_Sname_User (Name_Wrap, No_Sname);
+         for P of Ports_Desc (Main) loop
+            --  INOUT ports are handled specially.
+            if P.Dir /= Port_Inout then
+               Pfx := Get_Sname_Prefix (P.Name);
+               if Pfx = No_Sname then
+                  --  Normal port, without a prefix.
+                  Set_Sname_Prefix (P.Name, Pfx_Wrap);
+               elsif Get_Sname_Prefix (Pfx) = No_Sname then
+                  --  Prefixed port (for an expanded record).
+                  --  Add a prefix but once (prefix is shared).
+                  Set_Sname_Prefix (Pfx, Pfx_Wrap);
+               end if;
+            end if;
+         end loop;
+      end;
 
       Put_Line ("library ieee;");
       Put_Line ("use ieee.std_logic_1164.all;");
@@ -478,7 +541,6 @@ package body Synth.Disp_Vhdl is
       Put_Line (" is");
       Disp_Ports_As_Signals (Main);
       Disp_Architecture_Declarations (Main);
-      Disp_Architecture_Attributes (Main);
 
       Put_Line ("begin");
       if Inst /= null then

@@ -1,20 +1,18 @@
 --  Iir to ortho translator.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Simple_IO;
 with Name_Table;
@@ -231,8 +229,8 @@ package body Trans.Chap7 is
                            Idx := Idx + 1;
                         else
                            Assoc_Len := Iir_Index32
-                             (Eval_Discrete_Range_Length
-                                (Get_Choice_Range (Assoc)));
+                             (Eval_Discrete_Type_Length
+                                (Get_Index_Type (Get_Type (Expr), 0)));
                            for I in 0 .. Assoc_Len - 1 loop
                               El := Eval_Indexed_Name_By_Offset (Expr, I);
                               New_Array_Aggr_El
@@ -1097,6 +1095,8 @@ package body Trans.Chap7 is
       Iir_Predefined_Physical_Absolute => ON_Abs_Ov,
       Iir_Predefined_Physical_Minus => ON_Sub_Ov,
       Iir_Predefined_Physical_Plus => ON_Add_Ov,
+      Iir_Predefined_Physical_Rem => ON_Rem_Ov,
+      Iir_Predefined_Physical_Mod => ON_Mod_Ov,
 
       Iir_Predefined_Floating_Greater => ON_Gt,
       Iir_Predefined_Floating_Greater_Equal => ON_Ge,
@@ -1246,11 +1246,14 @@ package body Trans.Chap7 is
    is
       Expr_Type  : constant Iir := Get_Return_Type (Concat_Imp);
       Index_Type : constant Iir := Get_Index_Type (Expr_Type, 0);
-      Info : constant Type_Info_Acc := Get_Info (Expr_Type);
+      El_Type    : constant Iir := Get_Element_Subtype (Expr_Type);
+      Info       : constant Type_Info_Acc := Get_Info (Expr_Type);
+      Is_Unbounded_El : constant Boolean :=
+        not Is_Fully_Constrained_Type (El_Type);
       Static_Length : Int64 := 0;
       Nbr_Dyn_Expr : Natural := 0;
 
-      type Handle_Acc is access procedure (E : Iir);
+      type Handle_Acc is access procedure (E : Iir; Is_First : Boolean);
       type Handlers_Type is record
          Handle_El : Handle_Acc;
          Handle_Arr : Handle_Acc;
@@ -1262,6 +1265,7 @@ package body Trans.Chap7 is
       procedure Walk (Handlers : Handlers_Type)
       is
          Walk_Handlers : Handlers_Type;
+         Is_First : Boolean;
 
          --  Call handlers for each leaf of L IMP R.
          procedure Walk_Concat (Imp : Iir; L, R : Iir);
@@ -1299,7 +1303,8 @@ package body Trans.Chap7 is
                end if;
             end if;
 
-            Walk_Handlers.Handle_Arr (E);
+            Walk_Handlers.Handle_Arr (E, Is_First);
+            Is_First := False;
          end Walk_Arr;
 
          procedure Walk_Concat (Imp : Iir; L, R : Iir) is
@@ -1310,19 +1315,22 @@ package body Trans.Chap7 is
                   Walk_Arr (R);
                when Iir_Predefined_Array_Element_Concat =>
                   Walk_Arr (L);
-                  Walk_Handlers.Handle_El (R);
+                  Walk_Handlers.Handle_El (R, False);
                when Iir_Predefined_Element_Array_Concat =>
-                  Walk_Handlers.Handle_El (L);
+                  Walk_Handlers.Handle_El (L, Is_First);
+                  Is_First := False;
                   Walk_Arr (R);
                when Iir_Predefined_Element_Element_Concat =>
-                  Walk_Handlers.Handle_El (L);
-                  Walk_Handlers.Handle_El (R);
+                  Walk_Handlers.Handle_El (L, Is_First);
+                  Is_First := False;
+                  Walk_Handlers.Handle_El (R, False);
                when others =>
                   raise Internal_Error;
             end case;
          end Walk_Concat;
       begin
          Walk_Handlers := Handlers;
+         Is_First := True;
          Walk_Concat (Concat_Imp, Left, Right);
       end Walk;
 
@@ -1337,14 +1345,15 @@ package body Trans.Chap7 is
       end Is_Static_Arr;
 
       --  Pre_Walk: compute known static length and number of dynamic arrays.
-      procedure Pre_Walk_El (E : Iir)
+      procedure Pre_Walk_El (E : Iir; Is_First : Boolean)
       is
+         pragma Unreferenced (Is_First);
          pragma Unreferenced (E);
       begin
          Static_Length := Static_Length + 1;
       end Pre_Walk_El;
 
-      procedure Pre_Walk_Arr (E : Iir)
+      procedure Pre_Walk_Arr (E : Iir; Is_First : Boolean)
       is
          Idx_Type : Iir;
       begin
@@ -1352,7 +1361,9 @@ package body Trans.Chap7 is
          --  * type is fully constrained, range is static, length is known
          --  * type is fully constrained, range is not static, length isn't
          --  * type is not constrained
-         if Is_Static_Arr (E) then
+         if Is_Static_Arr (E)
+           and then not (Is_First and Is_Unbounded_El)
+         then
             Idx_Type := Get_Index_Type (Get_Type (E), 0);
             Static_Length := Static_Length
               + Eval_Discrete_Range_Length (Get_Range_Constraint (Idx_Type));
@@ -1392,17 +1403,28 @@ package body Trans.Chap7 is
       Dyn_I : Natural;
       E_Length : O_Enode;
 
-      procedure Nil_El (E : Iir) is
+      procedure Nil_El (E : Iir; Is_First : Boolean) is
       begin
          null;
       end Nil_El;
 
+      procedure Eval_First_El (E : Iir; Is_First : Boolean)
+      is
+         pragma Unreferenced (E);
+      begin
+         if Is_First and then Is_Unbounded_El then
+            raise Internal_Error;
+         end if;
+      end Eval_First_El;
+
       --  Evaluate a dynamic parameter.
-      procedure Eval_Dyn_Arr (E : Iir)
+      procedure Eval_Dyn_Arr (E : Iir; Is_First : Boolean)
       is
          E_Val : O_Enode;
       begin
-         if not Is_Static_Arr (E) then
+         if (Is_First and Is_Unbounded_El)
+           or else not Is_Static_Arr (E)
+         then
             Dyn_I := Dyn_I + 1;
             --  First, translate expression.
             E_Val := Translate_Expression (E, Expr_Type);
@@ -1410,15 +1432,30 @@ package body Trans.Chap7 is
             --  translate_expression).
             Dyn_Mnodes (Dyn_I) :=
               Stabilize (E2M (E_Val, Get_Info (Expr_Type), Mode_Value));
+
+            if Is_First and then Is_Unbounded_El then
+               --  Copy layout.
+               pragma Assert (Dyn_I = 1);
+               Gen_Memcpy
+                 (M2Addr (Chap3.Array_Bounds_To_Element_Layout
+                            (Var_Bounds, Expr_Type)),
+                  M2Addr (Chap3.Array_Bounds_To_Element_Layout
+                            (Chap3.Get_Composite_Bounds
+                               (Dyn_Mnodes (1)), Expr_Type)),
+                  New_Lit (New_Sizeof (Get_Info (El_Type).B.Layout_Type,
+                                       Ghdl_Index_Type)));
+            end if;
          end if;
       end Eval_Dyn_Arr;
 
       --  Add contribution to length of result from a dynamic parameter.
-      procedure Len_Dyn_Arr (E : Iir)
+      procedure Len_Dyn_Arr (E : Iir; Is_First : Boolean)
       is
          Elen : O_Enode;
       begin
-         if not Is_Static_Arr (E) then
+         if not Is_Static_Arr (E)
+           or else (Is_First and Is_Unbounded_El)
+         then
             Dyn_I := Dyn_I + 1;
             Elen := Chap3.Get_Array_Length (Dyn_Mnodes (Dyn_I), Get_Type (E));
             if E_Length = O_Enode_Null then
@@ -1432,18 +1469,46 @@ package body Trans.Chap7 is
       --  Offset in the result.
       Var_Off : O_Dnode;
 
-      --  Assign: write values to the result array.
-      procedure Assign_El (E : Iir)
-      is
-         El_Type : constant Iir := Get_Element_Subtype (Expr_Type);
+      --  Return the stride of the result array, if the element subtype is
+      --  unbounded.
+      function Get_Stride return O_Enode is
       begin
-         Chap3.Translate_Object_Copy
-           (Chap3.Index_Base (Var_Arr, Expr_Type, New_Obj_Value (Var_Off)),
-            Translate_Expression (E, El_Type), El_Type);
+         if Is_Unbounded_El then
+            return New_Value
+              (Chap3.Layout_To_Size
+                 (Chap3.Array_Bounds_To_Element_Layout (Var_Bounds, Expr_Type),
+                  Mode_Value));
+         else
+            return O_Enode_Null;
+         end if;
+      end Get_Stride;
+
+      --  Assign: write values to the result array.
+      procedure Assign_El (E : Iir; Is_First : Boolean)
+      is
+         pragma Unreferenced (Is_First);
+         Dest : Mnode;
+         Src : Mnode;
+      begin
+         Dest := Chap3.Index_Base
+           (Var_Arr, Expr_Type, New_Obj_Value (Var_Off), Get_Stride);
+
+         Src := Translate_Expression (E, El_Type);
+         if Is_Unbounded_El then
+            Gen_Memcpy (M2Addr (Dest),
+                        M2Addr (Chap3.Get_Composite_Base (Src)),
+                        New_Value (Chap3.Layout_To_Size
+                                     (Chap3.Array_Bounds_To_Element_Layout
+                                        (Var_Bounds, Expr_Type),
+                                      Mode_Value)));
+         else
+            Chap3.Translate_Object_Copy (Dest, Src, El_Type);
+         end if;
+
          Inc_Var (Var_Off);
       end Assign_El;
 
-      procedure Assign_Arr (E : Iir)
+      procedure Assign_Arr (E : Iir; Is_First : Boolean)
       is
          E_Val : O_Enode;
          M : Mnode;
@@ -1451,7 +1516,9 @@ package body Trans.Chap7 is
          Var_Sub_Arr : Mnode;
       begin
          Open_Temp;
-         if Is_Static_Arr (E) then
+         if Is_Static_Arr (E)
+           and then not (Is_First and Is_Unbounded_El)
+         then
             --  First, translate expression.
             E_Val := Translate_Expression (E, Expr_Type);
             --  Then create Mnode (type info may be computed by
@@ -1475,7 +1542,7 @@ package body Trans.Chap7 is
               (M2Addr (Chap3.Slice_Base (Var_Arr,
                                          Expr_Type,
                                          New_Obj_Value (Var_Off),
-                                         O_Enode_Null)),
+                                         Get_Stride)),
                Info.B.Base_Ptr_Type (Mode_Value)));
 
          --  Copy
@@ -1495,7 +1562,9 @@ package body Trans.Chap7 is
       Last_Expr : Iir;
       Last_Dyn_Expr : Natural;
 
-      procedure Find_Last_Arr (E : Iir) is
+      procedure Find_Last_Arr (E : Iir; Is_First : Boolean)
+      is
+         pragma Unreferenced (Is_First);
       begin
          Last_Expr := E;
          if Is_Static_Arr (E) then
@@ -1528,8 +1597,9 @@ package body Trans.Chap7 is
         of O_If_Block;
       Assign_Bounds_Ifs : O_If_Block_Array;
 
-      procedure Assign_Bounds_El_V87 (E : Iir)
+      procedure Assign_Bounds_El_V87 (E : Iir; Is_First : Boolean)
       is
+         pragma Unreferenced (Is_First);
          pragma Unreferenced (E);
       begin
          if Assign_Bounds_V87_Done then
@@ -1540,8 +1610,9 @@ package body Trans.Chap7 is
          Assign_Bounds_V87_Done := True;
       end Assign_Bounds_El_V87;
 
-      procedure Assign_Bounds_Arr_V87 (E : Iir)
+      procedure Assign_Bounds_Arr_V87 (E : Iir; Is_First : Boolean)
       is
+         pragma Unreferenced (Is_First);
          Idx_Rng : Iir;
       begin
          if Assign_Bounds_V87_Done then
@@ -1599,7 +1670,7 @@ package body Trans.Chap7 is
 
       --  Evaluate all dynamic expressions
       Dyn_I := 0;
-      Walk ((Nil_El'Access, Eval_Dyn_Arr'Access));
+      Walk ((Eval_First_El'Access, Eval_Dyn_Arr'Access));
       --  Check that all dynamic expressions have been handled.
       pragma Assert (Dyn_I = Dyn_Mnodes'Last);
 
@@ -1943,7 +2014,7 @@ package body Trans.Chap7 is
       Loc : Iir)
      return O_Enode
    is
-      Arr_Type      : constant Iir := Get_Type (Left);
+      Arr_Type      : constant Iir := Get_Base_Type (Get_Type (Left));
       Res_Btype     : constant Iir := Get_Base_Type (Res_Type);
       Res_Info      : constant Type_Info_Acc := Get_Info (Res_Btype);
       Base_Ptr_Type : constant O_Tnode :=
@@ -1956,8 +2027,10 @@ package body Trans.Chap7 is
       Res           : Mnode;
    begin
       --  Translate the array.
-      Arr := Stabilize (E2M (Translate_Expression (Left),
-                        Get_Info (Arr_Type), Mode_Value));
+      --  Need to convert to the base type as the subtype may not be
+      --  translated (for strings).
+      Arr := Stabilize (E2M (Translate_Expression (Left, Arr_Type),
+                             Get_Info (Arr_Type), Mode_Value));
 
       --  Extract its length.
       Len := Create_Temp_Init
@@ -2502,6 +2575,10 @@ package body Trans.Chap7 is
             return New_Dyadic_Op (ON_Mul_Ov,
                                   Left_Tree,
                                   New_Convert_Ov (Right_Tree, Res_Otype));
+         when Iir_Predefined_Universal_I_R_Mul =>
+            return New_Dyadic_Op (ON_Mul_Ov,
+                                  New_Convert_Ov (Left_Tree, Res_Otype),
+                                  Right_Tree);
 
          when Iir_Predefined_Floating_Exp =>
             Res := Translate_Lib_Operator
@@ -2618,12 +2695,12 @@ package body Trans.Chap7 is
                Left_Tree, Right_Tree, Res_Otype);
          when Iir_Predefined_Std_Ulogic_Match_Greater =>
             return Translate_Std_Ulogic_Match
-              (Ghdl_Std_Ulogic_Match_Lt,
-               Right_Tree, Left_Tree, Res_Otype);
+              (Ghdl_Std_Ulogic_Match_Gt,
+               Left_Tree, Right_Tree, Res_Otype);
          when Iir_Predefined_Std_Ulogic_Match_Greater_Equal =>
             return Translate_Std_Ulogic_Match
-              (Ghdl_Std_Ulogic_Match_Le,
-               Right_Tree, Left_Tree, Res_Otype);
+              (Ghdl_Std_Ulogic_Match_Ge,
+               Left_Tree, Right_Tree, Res_Otype);
 
          when Iir_Predefined_Bit_Array_Match_Equality =>
             return New_Compare_Op
@@ -2972,37 +3049,80 @@ package body Trans.Chap7 is
                                             Var_Index  : O_Dnode)
    is
       Index_List : Iir_Flist;
-      Expr_Type  : Iir;
+      Aggr_El_Type  : Iir;
       Final      : Boolean;
 
       --  Assign EXPR to current position (defined by index VAR_INDEX), and
       --  update VAR_INDEX.  Handles sub-aggregates.
-      procedure Do_Assign (Assoc : Iir; Expr : Iir; Assoc_Len : out Int64)
+      procedure Do_Assign_El (Expr : Iir; Assoc_Len : out Int64)
       is
          Dest : Mnode;
       begin
+         Dest := Chap3.Index_Base (Base_Ptr, Aggr_Type,
+                                   New_Obj_Value (Var_Index));
+         Translate_Assign (Dest, Expr, Aggr_El_Type);
+         Assoc_Len := 1;
+         Inc_Var (Var_Index);
+      end Do_Assign_El;
+
+      procedure Do_Assign_Vec (Assoc : Iir; Expr : Iir; Assoc_Len : out Int64)
+      is
+         Dest : Mnode;
+         Src : Mnode;
+         Expr_Type : Iir;
+         Idx_Type : Iir;
+         El_Len : O_Enode;
+         Bnd : Mnode;
+      begin
+         Expr_Type := Get_Type (Expr);
+         Dest := Chap3.Slice_Base (Base_Ptr, Aggr_Type,
+                                   New_Obj_Value (Var_Index),
+                                   O_Enode_Null);
+         Src := Translate_Expression (Expr, Expr_Type);
+         Stabilize (Src);
+         --  FIXME: check bounds ?
+         Gen_Memcpy (M2Addr (Dest),
+                     M2Addr (Chap3.Get_Composite_Base (Src)),
+                     Chap3.Get_Object_Size (Src, Expr_Type));
+         --  FIXME: handle non-static expression type (at least for
+         --  choice by range).
+         if Get_Kind (Assoc) = Iir_Kind_Choice_By_Range then
+            --  If there is a choice by range, then the range is static
+            --  (dynamic aggregate are not handled here).
+            pragma Assert (Get_Choice_Staticness (Assoc) = Locally);
+            Idx_Type := Get_Choice_Range (Assoc);
+         else
+            --  Try to get the range from the expression (if it is static).
+            pragma Assert (Get_Kind (Assoc) = Iir_Kind_Choice_By_None);
+            Idx_Type := Get_Index_Type (Expr_Type, 0);
+            if Get_Type_Staticness (Idx_Type) /= Locally then
+               Idx_Type := Null_Iir;
+            end if;
+         end if;
+         if Idx_Type /= Null_Iir then
+            Idx_Type := Get_Range_From_Discrete_Range (Idx_Type);
+            Assoc_Len := Eval_Discrete_Range_Length (Idx_Type);
+            El_Len := New_Lit (New_Index_Lit (Unsigned_64 (Assoc_Len)));
+         else
+            Bnd := Chap3.Get_Composite_Type_Bounds (Expr_Type);
+            El_Len := M2E
+              (Chap3.Range_To_Length
+                 (Chap3.Bounds_To_Range (Bnd, Expr_Type, 1)));
+            Assoc_Len := 0;
+         end if;
+         New_Assign_Stmt
+           (New_Obj (Var_Index),
+            New_Dyadic_Op (ON_Add_Ov,
+                           New_Obj_Value (Var_Index), El_Len));
+      end Do_Assign_Vec;
+
+      procedure Do_Assign (Assoc : Iir; Expr : Iir; Assoc_Len : out Int64) is
+      begin
          if Final then
             if Get_Element_Type_Flag (Assoc) then
-               Dest := Chap3.Index_Base (Base_Ptr, Aggr_Type,
-                                         New_Obj_Value (Var_Index));
-               Translate_Assign (Dest, Expr, Expr_Type);
-               Assoc_Len := 1;
-               Inc_Var (Var_Index);
+               Do_Assign_El (Expr, Assoc_Len);
             else
-               Dest := Chap3.Slice_Base (Base_Ptr, Aggr_Type,
-                                         New_Obj_Value (Var_Index),
-                                         O_Enode_Null);
-               Translate_Assign (Dest, Expr, Get_Type (Expr));
-               --  FIXME: handle non-static expression type (at least for
-               --  choice by range).
-               Assoc_Len := Eval_Discrete_Type_Length
-                 (Get_Index_Type (Get_Type (Expr), 0));
-               New_Assign_Stmt
-                 (New_Obj (Var_Index),
-                  New_Dyadic_Op
-                    (ON_Add_Ov,
-                     New_Obj_Value (Var_Index),
-                     New_Lit (New_Index_Lit (Unsigned_64 (Assoc_Len)))));
+               Do_Assign_Vec (Assoc, Expr, Assoc_Len);
             end if;
          else
             Translate_Array_Aggregate_Gen
@@ -3095,30 +3215,34 @@ package body Trans.Chap7 is
                   Do_Assign (El, Get_Associated_Expr (El), Assoc_Len);
                   return;
                when Iir_Kind_Choice_By_Range =>
-                  --  FIXME: todo.
-                  pragma Assert (Get_Element_Type_Flag (El));
-                  declare
-                     Var_Length : O_Dnode;
-                     Var_I      : O_Dnode;
-                     Label      : O_Snode;
-                  begin
-                     Open_Temp;
-                     Var_Length := Create_Temp_Init
-                       (Ghdl_Index_Type,
-                        Chap7.Translate_Range_Length (Get_Choice_Range (El)));
-                     Var_I := Create_Temp (Ghdl_Index_Type);
-                     Init_Var (Var_I);
-                     Start_Loop_Stmt (Label);
-                     Gen_Exit_When (Label,
-                                    New_Compare_Op (ON_Eq,
-                                                    New_Obj_Value (Var_I),
-                                                    New_Obj_Value (Var_Length),
-                                                    Ghdl_Bool_Type));
+                  if Get_Element_Type_Flag (El) then
+                     declare
+                        Var_Length : O_Dnode;
+                        Var_I      : O_Dnode;
+                        Label      : O_Snode;
+                     begin
+                        Open_Temp;
+                        Var_Length := Create_Temp_Init
+                          (Ghdl_Index_Type,
+                           Chap7.Translate_Range_Length
+                             (Get_Choice_Range (El)));
+                        Var_I := Create_Temp (Ghdl_Index_Type);
+                        Init_Var (Var_I);
+                        Start_Loop_Stmt (Label);
+                        Gen_Exit_When
+                          (Label,
+                           New_Compare_Op (ON_Eq,
+                                           New_Obj_Value (Var_I),
+                                           New_Obj_Value (Var_Length),
+                                           Ghdl_Bool_Type));
+                        Do_Assign (El, Get_Associated_Expr (El), Assoc_Len);
+                        Inc_Var (Var_I);
+                        Finish_Loop_Stmt (Label);
+                        Close_Temp;
+                     end;
+                  else
                      Do_Assign (El, Get_Associated_Expr (El), Assoc_Len);
-                     Inc_Var (Var_I);
-                     Finish_Loop_Stmt (Label);
-                     Close_Temp;
-                  end;
+                  end if;
                   return;
                when others =>
                   Error_Kind ("translate_array_aggregate_gen", El);
@@ -3231,7 +3355,7 @@ package body Trans.Chap7 is
       --  FINAL is true if the elements of the aggregate are elements of
       --  the array.
       if Get_Nbr_Elements (Index_List) = Dim then
-         Expr_Type := Get_Element_Subtype (Aggr_Type);
+         Aggr_El_Type := Get_Element_Subtype (Aggr_Type);
          Final:= True;
       else
          Final := False;
@@ -3515,7 +3639,7 @@ package body Trans.Chap7 is
    begin
       case Iir_Kinds_Composite_Type_Definition (Get_Kind (Target_Type)) is
          when Iir_Kind_Array_Subtype_Definition
-           | Iir_Kind_Array_Type_Definition =>
+            | Iir_Kind_Array_Type_Definition =>
             declare
                El : Iir;
             begin
@@ -3532,18 +3656,27 @@ package body Trans.Chap7 is
       end case;
    end Translate_Aggregate;
 
-   procedure Translate_Aggregate_Sub_Bounds (Bounds : Mnode; Aggr : Iir);
+   procedure Translate_Aggregate_Sub_Bounds
+     (Bounds : Mnode; Aggr : Iir; Mode : Object_Kind_Type);
 
-   procedure Translate_Array_Aggregate_Bounds (Bounds : Mnode; Aggr : Iir)
+   procedure Translate_Array_Aggregate_Bounds
+     (Bounds : Mnode; Aggr : Iir; Mode : Object_Kind_Type)
    is
-      Aggr_Type : constant Iir := Get_Type (Aggr);
+      Aggr_Type : constant Iir := Get_Base_Type (Get_Type (Aggr));
+      El_Type : constant Iir := Get_Element_Subtype (Aggr_Type);
       Assoc : Iir;
       Static_Len : Int64;
       Var_Len : O_Dnode;
       Expr_Type : Iir;
       Range_Type : Iir;
+      El_Bounds_Copied : Boolean;
    begin
+      pragma Assert (Is_Stable (Bounds));
       Static_Len := 0;
+
+      --  If the element subtype is fully constrained, there is no bounds to
+      --  be copied.
+      El_Bounds_Copied := Is_Fully_Constrained_Type (El_Type);
 
       --  First pass: static length.
       Assoc := Get_Association_Choices_Chain (Aggr);
@@ -3551,6 +3684,41 @@ package body Trans.Chap7 is
          pragma Assert (Get_Kind (Assoc) = Iir_Kind_Choice_By_None);
          if Get_Element_Type_Flag (Assoc) then
             Static_Len := Static_Len + 1;
+            if not El_Bounds_Copied then
+               declare
+                  Expr : constant Iir := Get_Associated_Expr (Assoc);
+                  Expr_Bnd : Mnode;
+                  El_Layout : Mnode;
+                  Info : Ortho_Info_Acc;
+                  Obj : Mnode;
+               begin
+                  Expr_Type := Get_Type (Expr);
+                  if Is_Fully_Constrained_Type (Expr_Type) then
+                     Expr_Bnd := Chap3.Get_Composite_Type_Bounds (Expr_Type);
+                  else
+                     Obj := Chap6.Translate_Name (Expr, Mode);
+                     Stabilize (Obj);
+                     Info := Add_Info (Assoc, Kind_Expr_Eval);
+                     Info.Expr_Eval := Obj;
+                     Expr_Bnd := Chap3.Get_Composite_Bounds (Obj);
+                  end if;
+                  El_Layout := Chap3.Array_Bounds_To_Element_Bounds
+                    (Bounds, Aggr_Type);
+                  Chap3.Copy_Bounds (El_Layout, Expr_Bnd, El_Type);
+                  --  Compute size.
+                  --  TODO: this is just a multiplication, could be done
+                  --  inline.
+                  Chap3.Gen_Call_Type_Builder
+                    (Chap3.Array_Bounds_To_Element_Layout (Bounds, Aggr_Type),
+                     Expr_Type, Mode);
+                  if Mode = Mode_Signal then
+                     Chap3.Gen_Call_Type_Builder
+                       (Chap3.Array_Bounds_To_Element_Layout (Bounds,
+                                                              Aggr_Type),
+                        Expr_Type, Mode_Value);
+                  end if;
+               end;
+            end if;
          else
             Expr_Type := Get_Type (Get_Associated_Expr (Assoc));
             pragma Assert (Is_One_Dimensional_Array_Type (Expr_Type));
@@ -3561,6 +3729,7 @@ package body Trans.Chap7 is
                     Static_Len + Eval_Discrete_Type_Length (Range_Type);
                end if;
             else
+               --  TODO
                raise Internal_Error;
             end if;
          end if;
@@ -3594,18 +3763,22 @@ package body Trans.Chap7 is
                   end;
                end if;
             else
+               --  TODO
                raise Internal_Error;
             end if;
          end if;
          Assoc := Get_Chain (Assoc);
       end loop;
 
+      --  FIXME: what about the other ranges: no need to compute, but extract
+      --   and check match.
       Chap3.Create_Range_From_Length
         (Get_Index_Type (Aggr_Type, 0), Var_Len,
          Chap3.Bounds_To_Range (Bounds, Aggr_Type, 1), Aggr);
    end Translate_Array_Aggregate_Bounds;
 
-   procedure Translate_Record_Aggregate_Bounds (Bounds : Mnode; Aggr : Iir)
+   procedure Translate_Record_Aggregate_Bounds
+     (Bounds : Mnode; Aggr : Iir; Mode : Object_Kind_Type)
    is
       Stable_Bounds : Mnode;
       Aggr_Type : constant Iir := Get_Type (Aggr);
@@ -3659,9 +3832,9 @@ package body Trans.Chap7 is
                if Get_Kind (Expr) = Iir_Kind_Aggregate then
                   --  Just translate bounds.
                   Translate_Aggregate_Sub_Bounds
-                    (Chap3.Record_Bounds_To_Element_Bounds
-                       (Stable_Bounds, Base_El),
-                     Expr);
+                    (Chap3.Record_Bounds_To_Element_Bounds (Stable_Bounds,
+                                                            Base_El),
+                     Expr, Mode);
                else
                   --  Eval expr
                   Val := Translate_Expression (Expr);
@@ -3685,29 +3858,31 @@ package body Trans.Chap7 is
    end Translate_Record_Aggregate_Bounds;
 
    --  Just create the bounds from AGGR.
-   procedure Translate_Aggregate_Sub_Bounds (Bounds : Mnode; Aggr : Iir)
+   procedure Translate_Aggregate_Sub_Bounds
+     (Bounds : Mnode; Aggr : Iir; Mode : Object_Kind_Type)
    is
       Aggr_Type : constant Iir := Get_Type (Aggr);
    begin
       case Iir_Kinds_Composite_Type_Definition (Get_Kind (Aggr_Type)) is
          when Iir_Kind_Array_Type_Definition
            | Iir_Kind_Array_Subtype_Definition =>
-            Translate_Array_Aggregate_Bounds (Bounds, Aggr);
+            Translate_Array_Aggregate_Bounds (Bounds, Aggr, Mode);
          when Iir_Kind_Record_Type_Definition
            | Iir_Kind_Record_Subtype_Definition =>
-            Translate_Record_Aggregate_Bounds (Bounds, Aggr);
+            Translate_Record_Aggregate_Bounds (Bounds, Aggr, Mode);
       end case;
    end Translate_Aggregate_Sub_Bounds;
 
    --  Create the bounds and build the type (set size).
-   procedure Translate_Aggregate_Bounds (Bounds : Mnode; Aggr : Iir)
+   procedure Translate_Aggregate_Bounds
+     (Bounds : Mnode; Aggr : Iir; Mode : Object_Kind_Type)
    is
       Aggr_Type : constant Iir := Get_Type (Aggr);
    begin
       case Iir_Kinds_Composite_Type_Definition (Get_Kind (Aggr_Type)) is
          when Iir_Kind_Array_Type_Definition
            | Iir_Kind_Array_Subtype_Definition =>
-            Translate_Array_Aggregate_Bounds (Bounds, Aggr);
+            Translate_Array_Aggregate_Bounds (Bounds, Aggr, Mode);
             declare
                El_Type : constant Iir := Get_Element_Subtype (Aggr_Type);
             begin
@@ -3716,13 +3891,13 @@ package body Trans.Chap7 is
                if Is_Unbounded_Type (Get_Info (El_Type)) then
                   Chap3.Gen_Call_Type_Builder
                     (Chap3.Array_Bounds_To_Element_Layout (Bounds, Aggr_Type),
-                     El_Type, Mode_Value);
+                     El_Type, Mode);
                end if;
             end;
          when Iir_Kind_Record_Type_Definition
            | Iir_Kind_Record_Subtype_Definition =>
-            Translate_Record_Aggregate_Bounds (Bounds, Aggr);
-            Chap3.Gen_Call_Type_Builder (Bounds, Aggr_Type, Mode_Value);
+            Translate_Record_Aggregate_Bounds (Bounds, Aggr, Mode);
+            Chap3.Gen_Call_Type_Builder (Bounds, Aggr_Type, Mode);
       end case;
    end Translate_Aggregate_Bounds;
 
@@ -4228,7 +4403,7 @@ package body Trans.Chap7 is
          New_Assign_Stmt (M2Lp (Chap3.Get_Composite_Bounds (Mres)),
                           M2Addr (Bounds));
          --  Build bounds from aggregate.
-         Chap7.Translate_Aggregate_Bounds (Bounds, Expr);
+         Chap7.Translate_Aggregate_Bounds (Bounds, Expr, Mode_Value);
          Chap3.Allocate_Unbounded_Composite_Base
            (Alloc_Stack, Mres, Aggr_Type);
       else
@@ -4365,7 +4540,6 @@ package body Trans.Chap7 is
             | Iir_Kind_Delayed_Attribute
             | Iir_Kind_Transaction_Attribute
             | Iir_Kind_Guard_Signal_Declaration
-            | Iir_Kind_Anonymous_Signal_Declaration
             | Iir_Kind_Attribute_Value
             | Iir_Kind_Attribute_Name =>
             Res := M2E (Chap6.Translate_Name (Expr, Mode_Value));
@@ -4525,7 +4699,7 @@ package body Trans.Chap7 is
             declare
                Info : constant Psl_Info_Acc := Get_Info (Expr);
             begin
-               return New_Value (Get_Var (Info.Psl_Count_Var));
+               return New_Value (Get_Var (Info.Psl_Finish_Count_Var));
             end;
 
          when others =>
@@ -6132,7 +6306,9 @@ package body Trans.Chap7 is
             | Iir_Predefined_Physical_Negation
             | Iir_Predefined_Physical_Absolute
             | Iir_Predefined_Physical_Plus
-            | Iir_Predefined_Physical_Minus =>
+            | Iir_Predefined_Physical_Minus
+            | Iir_Predefined_Physical_Mod
+            | Iir_Predefined_Physical_Rem =>
             pragma Assert (Predefined_To_Onop (Kind) /= ON_Nil);
             return;
 

@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,9 +14,7 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Types; use Types;
 with Tables;
@@ -24,9 +22,25 @@ with Tables;
 with Netlists; use Netlists;
 with Netlists.Builders;
 
-with Synth.Source;
-with Synth.Objtypes; use Synth.Objtypes;
+generic
+   --  Declaration type use for reporting errors.
+   type Decl_Type is private;
 
+   --  Static value
+   type Static_Type is private;
+
+   with function Is_Equal (L, R : Static_Type) return Boolean;
+   with function Get_Width (Val : Static_Type) return Uns32;
+   with function Static_To_Net (Ctxt : Builders.Context_Acc; Val : Static_Type)
+                               return Net;
+   with function Partial_Static_To_Net
+     (Ctxt : Builders.Context_Acc; Val : Static_Type; Off : Uns32; Wd : Uns32)
+     return Net;
+
+   with procedure Warning_No_Assignment
+     (Decl : Decl_Type; First_Off : Uns32; Last_Off : Uns32);
+   with procedure Error_Multiple_Assignments
+     (Decl : Decl_Type; First_Off : Uns32; Last_Off : Uns32);
 package Synth.Environment is
    --  This package declares the type Wire_Id and its methods.
    --
@@ -64,15 +78,20 @@ package Synth.Environment is
       Wire_Variable,
       Wire_Enable,
       Wire_Signal,
+      Wire_Unset,
       Wire_Input, Wire_Output, Wire_Inout
      );
 
    --  Create a wire.
-   function Alloc_Wire (Kind : Wire_Kind; Typ : Type_Acc; Obj : Source.Syn_Src)
-                       return Wire_Id;
+   function Alloc_Wire (Kind : Wire_Kind; Decl : Decl_Type) return Wire_Id;
 
    --  Mark the wire as free.
    procedure Free_Wire (Wid : Wire_Id);
+
+   --  Change wire WID kind.
+   --  The only allowed transitions are Unset <-> (Variable or Signal).
+   procedure Set_Kind (Wid : Wire_Id; Kind : Wire_Kind);
+   function Get_Kind (Wid : Wire_Id) return Wire_Kind;
 
    --  Read and write the mark flag.
    function Get_Wire_Mark (Wid : Wire_Id) return Boolean;
@@ -101,6 +120,7 @@ package Synth.Environment is
    --  Set the gate for a wire.
    procedure Set_Wire_Gate (Wid : Wire_Id; Gate : Net);
    function Get_Wire_Gate (Wid : Wire_Id) return Net;
+   procedure Replace_Wire_Gate (Wid : Wire_Id; Gate : Net);
 
    --  The current value of WID.  For variables, this is the last assigned
    --  value.  For signals, this is the gate.
@@ -119,7 +139,7 @@ package Synth.Environment is
      (Ctxt : Builders.Context_Acc; Dest : Wire_Id; Val : Net; Offset : Uns32);
 
    --  Assign a static value to DEST.  VAL is copied.
-   procedure Phi_Assign_Static (Dest : Wire_Id; Val : Memtyp);
+   procedure Phi_Assign_Static (Dest : Wire_Id; Val : Static_Type);
 
    --  A Phi represent a split in the control flow (two or more branches).
    type Phi_Type is private;
@@ -132,7 +152,7 @@ package Synth.Environment is
    --  Destroy the current phi context and merge it.  Can apply only for the
    --  first non-top level phi context.
    procedure Pop_And_Merge_Phi (Ctxt : Builders.Context_Acc;
-                                Stmt : Source.Syn_Src);
+                                Loc : Location_Type);
 
    --  All assignments in PHI to wires below MARK are propagated to the
    --  current phi.  Used to propagate assignments to wires defined out of
@@ -141,19 +161,27 @@ package Synth.Environment is
                                        Phi : Phi_Type;
                                        Mark : Wire_Id);
 
+   --  Merge current Phi for an initialization.  All the assignments must
+   --  be static values.  May upgrade Output gates to Ioutput.
+   procedure Pop_And_Merge_Initial_Phi (Ctxt : Builders.Context_Acc;
+                                        Loc : Location_Type);
+
    --  Handle if statement.  According to SEL, the value of the wires are
    --  those from T or from F.
    procedure Merge_Phis (Ctxt : Builders.Context_Acc;
                          Sel : Net;
                          T, F : Phi_Type;
-                         Stmt : Source.Syn_Src);
+                         Loc : Location_Type);
 
    --  Create or get (if already created) a net that is true iff the current
    --  phi is selected.  Used to enable sequential assertions.
    --  Because a wire is created, inference will run on it and therefore
    --  a dff is created if needed.
-   function Phi_Enable (Ctxt : Builders.Context_Acc; Loc : Source.Syn_Src)
-                       return Net;
+   function Phi_Enable (Ctxt : Builders.Context_Acc;
+                        Decl : Decl_Type;
+                        Val_0 : Static_Type;
+                        Val_1 : Static_Type;
+                        Loc : Location_Type) return Net;
 
    --  Lower level part.
    --  Currently public to handle case statements.
@@ -172,15 +200,34 @@ package Synth.Environment is
    function Get_Assign_Value (Ctxt : Builders.Context_Acc; Asgn : Seq_Assign)
                              return Net;
 
+   --  Return the value from the gate.
+   function Get_Gate_Value (Wid : Wire_Id) return Net;
+
+   --  Return the current assigned value.
+   function Get_Assigned_Value (Ctxt : Builders.Context_Acc; Wid : Wire_Id)
+                               return Net;
+
    --  For low-level phi merge.
    --  A sequential assignment is a linked list of partial assignment.
    type Partial_Assign is private;
    No_Partial_Assign : constant Partial_Assign;
 
-   type Seq_Assign_Value is private;
-   No_Seq_Assign_Value : constant Seq_Assign_Value;
+   type Seq_Assign_Value (Is_Static : Tri_State_Type := True) is record
+      case Is_Static is
+         when Unknown =>
+            --  Used only for no value (in that case, it will use the previous
+            --  value).
+            --  This is used only for temporary handling, and is never stored
+            --  in Seq_Assign.
+            null;
+         when True =>
+            Val : Static_Type;
+         when False =>
+            --  Values assigned.
+            Asgns : Partial_Assign;
+      end case;
+   end record;
 
-   function Get_Assign_Partial (Asgn : Seq_Assign) return Partial_Assign;
    function Get_Seq_Assign_Value (Asgn : Seq_Assign) return Seq_Assign_Value;
 
    function New_Partial_Assign (Val : Net; Offset : Uns32)
@@ -198,8 +245,8 @@ package Synth.Environment is
    --   3) All the values are equal.
    --  then assign directly.
    --  WID is used in case of unknown value.
-   function Is_Assign_Value_Array_Static
-     (Wid : Wire_Id; Arr : Seq_Assign_Value_Array) return Memtyp;
+--   function Is_Assign_Value_Array_Static
+--     (Wid : Wire_Id; Arr : Seq_Assign_Value_Array) return Static_Type;
 
    type Partial_Assign_List is limited private;
 
@@ -229,10 +276,12 @@ package Synth.Environment is
    type Conc_Assign is private;
    No_Conc_Assign : constant Conc_Assign;
 
-   procedure Add_Conc_Assign
-     (Wid : Wire_Id; Val : Net; Off : Uns32; Stmt : Source.Syn_Src);
+   procedure Add_Conc_Assign (Wid : Wire_Id; Val : Net; Off : Uns32);
 
-   procedure Finalize_Assignments (Ctxt : Builders.Context_Acc);
+   procedure Finalize_Assignment
+     (Ctxt : Builders.Context_Acc; Wid : Wire_Id);
+
+   procedure Finalize_Wires;
 
    --  A static wire is a wire_signal which has one whole (same width as the
    --  wire) assignment and whose assignment value is a const net.
@@ -240,7 +289,7 @@ package Synth.Environment is
    function Is_Static_Wire (Wid : Wire_Id) return Boolean;
 
    --  Return the corresponding net for a static wire.
-   function Get_Static_Wire (Wid : Wire_Id) return Memtyp;
+   function Get_Static_Wire (Wid : Wire_Id) return Static_Type;
 private
    type Wire_Id is new Uns32;
    No_Wire_Id : constant Wire_Id := 0;
@@ -278,11 +327,8 @@ private
       --  cleared after usage.
       Mark_Flag : Boolean;
 
-      --  Source node that created the wire.
-      Decl : Source.Syn_Src;
-
-      --  Type of the net.  Only for diagnostic purposes.
-      Typ : Type_Acc;
+      --  Source node that created the wire.  Only for diagnostic purposes.
+      Decl : Decl_Type;
 
       --  The initial net for the wire.
       --  This is a pseudo gate that is needed because the value of the wire
@@ -299,24 +345,6 @@ private
       Final_Assign : Conc_Assign;
       Nbr_Final_Assign : Natural;
    end record;
-
-   type Seq_Assign_Value (Is_Static : Tri_State_Type := True) is record
-      case Is_Static is
-         when Unknown =>
-            --  Used only for no value (in that case, it will use the previous
-            --  value).
-            --  This is used only for temporary handling, and is never stored
-            --  in Seq_Assign.
-            null;
-         when True =>
-            Val : Memtyp;
-         when False =>
-            --  Values assigned.
-            Asgns : Partial_Assign;
-      end case;
-   end record;
-
-   No_Seq_Assign_Value : constant Seq_Assign_Value := (Is_Static => Unknown);
 
    type Seq_Assign_Record is record
       --  Target of the assignment.
@@ -350,9 +378,6 @@ private
       --  Concurrent assignment at OFFSET.  The width is set by value width.
       Value : Net;
       Offset : Uns32;
-
-      --  Source of the assignment.  Useful to report errors.
-      Stmt : Source.Syn_Src;
    end record;
 
    type Phi_Type is record
@@ -364,6 +389,8 @@ private
       --  Enable wire created for this phi.
       En : Wire_Id;
    end record;
+
+   No_Seq_Assign_Value : constant Seq_Assign_Value := (Is_Static => Unknown);
 
    package Phis_Table is new Tables
      (Table_Component_Type => Phi_Type,

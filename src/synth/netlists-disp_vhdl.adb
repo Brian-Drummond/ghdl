@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,23 +14,22 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Simple_IO; use Simple_IO;
 with Utils_IO; use Utils_IO;
 with Types_Utils; use Types_Utils;
-with Name_Table; use Name_Table;
 with Files_Map;
 
 with Netlists.Utils; use Netlists.Utils;
 with Netlists.Iterators; use Netlists.Iterators;
 with Netlists.Gates; use Netlists.Gates;
 with Netlists.Locations;
+with Netlists.Dump; use Netlists.Dump;
 
 package body Netlists.Disp_Vhdl is
    Flag_Merge_Lit : constant Boolean := True;
+   Flag_Merge_Edge : constant Boolean := True;
 
    procedure Put_Type (W : Width) is
    begin
@@ -46,11 +45,6 @@ package body Netlists.Disp_Vhdl is
          Put (" downto 0)");
       end if;
    end Put_Type;
-
-   procedure Put_Id (N : Name_Id) is
-   begin
-      Put (Name_Table.Image (N));
-   end Put_Id;
 
    procedure Put_Name_Version (N : Sname) is
    begin
@@ -109,11 +103,9 @@ package body Netlists.Disp_Vhdl is
          return;
       end if;
 
-      --  Interface names are not versionned, and don't have prefix.
-      if Get_Sname_Kind (N) in Sname_User .. Sname_Artificial
-        and then Get_Sname_Prefix (N) = No_Sname
-      then
-         Put_Id (Get_Sname_Suffix (N));
+      --  Interface names are not versionned.
+      if Get_Sname_Kind (N) in Sname_User .. Sname_Artificial  then
+         Put_Name (N);
       else
          Put ("*err*");
       end if;
@@ -153,64 +145,6 @@ package body Netlists.Disp_Vhdl is
          end if;
       end;
    end Disp_Net_Name;
-
-   Bchar : constant array (Uns32 range 0 .. 3) of Character := "01ZX";
-
-   procedure Disp_Binary_Digit (Va : Uns32; Zx : Uns32; I : Natural) is
-   begin
-      Put (Bchar (((Va / 2**I) and 1) + ((Zx / 2**I) and 1) * 2));
-   end Disp_Binary_Digit;
-
-   procedure Disp_Binary_Digits (Va : Uns32; Zx : Uns32; W : Natural) is
-   begin
-      for I in 1 .. W loop
-         Disp_Binary_Digit (Va, Zx, W - I);
-      end loop;
-   end Disp_Binary_Digits;
-
-   procedure Disp_Pval_Binary (Pv : Pval)
-   is
-      Len : constant Uns32 := Get_Pval_Length (Pv);
-      V   : Logic_32;
-      Off : Uns32;
-   begin
-      Put ('"');
-      if Len > 0 then
-         V := Read_Pval (Pv, (Len - 1) / 32);
-         for I in reverse 0 .. Len - 1 loop
-            Off := I mod 32;
-            if Off = 31 then
-               V := Read_Pval (Pv, I / 32);
-            end if;
-            Disp_Binary_Digit (V.Val, V.Zx, Natural (Off));
-         end loop;
-      end if;
-      Put ('"');
-   end Disp_Pval_Binary;
-
-   procedure Disp_Pval_String (Pv : Pval)
-   is
-      Len : constant Uns32 := Get_Pval_Length (Pv);
-      pragma Assert (Len rem 8 = 0);
-      V   : Logic_32;
-      Off : Uns32;
-      C   : Uns32;
-   begin
-      Put ('"');
-      if Len > 0 then
-         V := Read_Pval (Pv, (Len - 1) / 32);
-         for I in reverse 0 .. (Len / 8) - 1 loop
-            Off := I mod 4;
-            if Off = 3 then
-               V := Read_Pval (Pv, I / 4);
-            end if;
-            pragma Assert (V.Zx = 0);
-            C := Shift_Right (V.Val, Natural (8 * Off)) and 16#ff#;
-            Put (Character'Val (C));
-         end loop;
-      end if;
-      Put ('"');
-   end Disp_Pval_String;
 
    procedure Disp_Instance_Gate (Inst : Instance)
    is
@@ -545,6 +479,37 @@ package body Netlists.Disp_Vhdl is
       return False;
    end Need_Signal;
 
+   --  Return TRUE if edge INST (posedge or negedge) is used outside clock
+   --  inputs.
+   function Need_Edge (Inst : Instance) return Boolean
+   is
+      I : Input;
+      Parent : Instance;
+   begin
+      I := Get_First_Sink (Get_Output (Inst, 0));
+      while I /= No_Input loop
+         Parent := Get_Input_Parent (I);
+         case Get_Id (Parent) is
+            when Id_Dff
+              | Id_Adff
+              | Id_Idff
+              | Id_Iadff =>
+               if I /= Get_Input (Parent, 0) then
+                  return True;
+               end if;
+            when Id_Mem_Rd_Sync
+              | Id_Mem_Wr_Sync =>
+               if I /= Get_Input (Parent, 2) then
+                  return True;
+               end if;
+            when others =>
+               return True;
+         end case;
+         I := Get_Next_Sink (I);
+      end loop;
+      return False;
+   end Need_Edge;
+
    type Conv_Type is
      (Conv_None, Conv_Slv, Conv_Unsigned, Conv_Signed, Conv_Edge, Conv_Clock);
 
@@ -559,7 +524,7 @@ package body Netlists.Disp_Vhdl is
 
       Net_Inst := Get_Net_Parent (N);
       if Flag_Merge_Lit
-        and then Is_Const_Module (Get_Id (Net_Inst))
+        and then Get_Id (Net_Inst) in Constant_Module_Id
         and then not Need_Name (Inst)
       then
          case Conv is
@@ -785,7 +750,7 @@ package body Netlists.Disp_Vhdl is
       Depth := Get_Width (Ports) / Data_W;
 
       --  Declare the memory.
-      Disp_Template ("    type \o0_type is array (0 to \n0)" & NL,
+      Disp_Template ("    type \l0_type is array (0 to \n0)" & NL,
                      Mem, (0 => Depth - 1));
       if Data_W = 1 then
          Disp_Template ("      of std_logic;" & NL, Mem);
@@ -793,7 +758,7 @@ package body Netlists.Disp_Vhdl is
          Disp_Template ("      of std_logic_vector (\n0 downto 0);" & NL,
                         Mem, (0 => Data_W - 1));
       end if;
-      Disp_Template ("    variable \o0 : \o0_type", Mem);
+      Disp_Template ("    variable \l0 : \l0_type", Mem);
       if Get_Id (Mem) = Id_Memory_Init then
          declare
             Val : Net;
@@ -801,9 +766,14 @@ package body Netlists.Disp_Vhdl is
          begin
             Val := Get_Input_Net (Mem, 1);
             Val_Inst := Get_Net_Parent (Val);
-            if Get_Id (Val_Inst) = Id_Isignal then
-               Val := Get_Input_Net (Val_Inst, 1);
-            end if;
+            case Get_Id (Val_Inst) is
+               when Id_Isignal =>
+                  Val := Get_Input_Net (Val_Inst, 1);
+               when Id_Signal =>
+                  Val := Get_Input_Net (Val_Inst, 0);
+               when others =>
+                  null;
+            end case;
             Put (" :=");
             Disp_Memory_Init (Val, Data_W, Depth);
          end;
@@ -820,19 +790,19 @@ package body Netlists.Disp_Vhdl is
                Disp_Template
                  ("    if \ei2 and (\fi3 = '1') then" & NL,
                   Port_Inst);
-               Disp_Template ("      \o0 (", Mem);
+               Disp_Template ("      \l0 (", Mem);
                Disp_Template ("to_integer (\ui1)) := \i4;" & NL, Port_Inst);
                Put_Line ("    end if;");
             when Id_Mem_Rd =>
                Disp_Template ("    \o1 <= ", Port_Inst);
-               Disp_Template ("\o0", Mem);
+               Disp_Template ("\l0", Mem);
                Disp_Template ("(to_integer (\ui1));" & NL, Port_Inst);
             when Id_Mem_Rd_Sync =>
                Disp_Template
                  ("    if \ei2 and (\fi3 = '1') then" & NL,
                   Port_Inst);
                Disp_Template ("      \o1 <= ", Port_Inst);
-               Disp_Template ("\o0", Mem);
+               Disp_Template ("\l0", Mem);
                Disp_Template ("(to_integer (\ui1));" & NL, Port_Inst);
                Put_Line ("    end if;");
             when Id_Memory
@@ -1343,7 +1313,8 @@ package body Netlists.Disp_Vhdl is
             Put_Line (";");
          when Id_Assert =>
             Disp_Template
-              ("  \l0: postponed assert \i0 = '1' severity error;" & NL, Inst);
+              ("  \l0: postponed assert \i0 = '1' severity error; --  assert"
+               & NL, Inst);
          when Id_Assume =>
             Disp_Template
               ("  \l0: assert \i0 = '1' severity warning; --  assume" & NL,
@@ -1365,6 +1336,40 @@ package body Netlists.Disp_Vhdl is
             Disp_Instance_Gate (Inst);
       end case;
    end Disp_Instance_Inline;
+
+   procedure Disp_Architecture_Attributes (Inst : Instance)
+   is
+      Attrs : constant Attribute := Get_Instance_First_Attribute (Inst);
+      Attr  : Attribute;
+      Kind  : Param_Type;
+      Val   : Pval;
+   begin
+      Attr := Attrs;
+      while Attr /= No_Attribute loop
+         Put ("  -- attribute ");
+         Put_Id (Get_Attribute_Name (Attr));
+         Put (" of ");
+         Put_Name (Get_Instance_Name (Inst));
+         Put (" is ");
+         Kind := Get_Attribute_Type (Attr);
+         Val := Get_Attribute_Pval (Attr);
+         case Kind is
+            when Param_Invalid
+              | Param_Uns32 =>
+               Put ("??");
+            when Param_Pval_String =>
+               Disp_Pval_String (Val);
+            when Param_Pval_Vector
+              | Param_Pval_Integer
+              | Param_Pval_Boolean
+              | Param_Pval_Real
+              | Param_Pval_Time_Ps =>
+               Disp_Pval_Binary (Val);
+         end case;
+         Put_Line (";");
+         Attr := Get_Attribute_Next (Attr);
+      end loop;
+   end Disp_Architecture_Attributes;
 
    procedure Disp_Architecture_Declarations (M : Module)
    is
@@ -1400,6 +1405,9 @@ package body Netlists.Disp_Vhdl is
                                  and then Id in Constant_Module_Id
                                  and then Id < Id_User_None
                                  and then not Need_Signal (Inst))
+                 and then not (Flag_Merge_Edge
+                                 and then Id in Edge_Module_Id
+                                 and then not Need_Edge (Inst))
                then
                   if Locations.Get_Location (Inst) = No_Location then
                      case Get_Id (Inst) is
@@ -1449,6 +1457,10 @@ package body Netlists.Disp_Vhdl is
                   end loop;
                end if;
          end case;
+
+         if Has_Instance_Attribute (Inst) then
+            Disp_Architecture_Attributes (Inst);
+         end if;
       end loop;
    end Disp_Architecture_Declarations;
 
@@ -1472,58 +1484,20 @@ package body Netlists.Disp_Vhdl is
       end;
 
       for Inst of Instances (M) loop
-         if not (Flag_Merge_Lit
-                   and then Is_Const_Module (Get_Id (Inst)))
-         then
-            Disp_Instance_Inline (Inst);
-         end if;
+         case Get_Id (Inst) is
+            when Constant_Module_Id =>
+               if not Flag_Merge_Lit then
+                  Disp_Instance_Inline (Inst);
+               end if;
+            when Edge_Module_Id =>
+               if (not Flag_Merge_Edge) or else Need_Edge (Inst) then
+                  Disp_Instance_Inline (Inst);
+               end if;
+            when others =>
+               Disp_Instance_Inline (Inst);
+         end case;
       end loop;
    end Disp_Architecture_Statements;
-
-   procedure Disp_Architecture_Attributes (M : Module)
-   is
-      Attrs : constant Attribute_Map_Acc := Get_Attributes (M);
-      Attr  : Attribute;
-      Inst  : Instance;
-      Kind  : Param_Type;
-      Val   : Pval;
-   begin
-      if Attrs = null then
-         --  No attributes at all.
-         return;
-      end if;
-
-      for I in
-        Attribute_Maps.First_Index .. Attribute_Maps.Last_Index (Attrs.all)
-      loop
-         Attr := Attribute_Maps.Get_Value (Attrs.all, I);
-         Inst := Attribute_Maps.Get_By_Index (Attrs.all, I);
-         while Attr /= No_Attribute loop
-            Put ("  -- attribute ");
-            Put_Id (Get_Attribute_Name (Attr));
-            Put (" of ");
-            Put_Name (Get_Instance_Name (Inst));
-            Put (" is ");
-            Kind := Get_Attribute_Type (Attr);
-            Val := Get_Attribute_Pval (Attr);
-            case Kind is
-               when Param_Invalid
-                  | Param_Uns32 =>
-                  Put ("??");
-               when Param_Pval_String =>
-                  Disp_Pval_String (Val);
-               when Param_Pval_Vector
-                  | Param_Pval_Integer
-                  | Param_Pval_Boolean
-                  | Param_Pval_Real
-                  | Param_Pval_Time_Ps =>
-                  Disp_Pval_Binary (Val);
-            end case;
-            Put_Line (";");
-            Attr := Get_Attribute_Next (Attr);
-         end loop;
-      end loop;
-   end Disp_Architecture_Attributes;
 
    procedure Disp_Architecture (M : Module)
    is
@@ -1544,8 +1518,6 @@ package body Netlists.Disp_Vhdl is
 
       Disp_Architecture_Declarations (M);
 
-      Disp_Architecture_Attributes (M);
-
       Put_Line ("begin");
 
       Disp_Architecture_Statements (M);
@@ -1554,8 +1526,7 @@ package body Netlists.Disp_Vhdl is
       New_Line;
    end Disp_Architecture;
 
-   procedure Disp_Entity_Port
-     (Desc : Port_Desc; Dir : Port_Kind; First : in out Boolean) is
+   procedure Disp_Entity_Port (Desc : Port_Desc; First : in out Boolean) is
    begin
       if First then
          Put_Line ("  port (");
@@ -1566,7 +1537,7 @@ package body Netlists.Disp_Vhdl is
       Put ("    ");
       Put_Name (Desc.Name);
       Put (" : ");
-      case Dir is
+      case Desc.Dir is
          when Port_In =>
             Put ("in");
          when Port_Out =>
@@ -1585,15 +1556,12 @@ package body Netlists.Disp_Vhdl is
    begin
       First := True;
       for I in 1 .. Get_Nbr_Inputs (M) loop
-         Disp_Entity_Port (Get_Input_Desc (M, I - 1), Port_In, First);
+         Desc := Get_Input_Desc (M, I - 1);
+         Disp_Entity_Port (Desc, First);
       end loop;
       for I in 1 .. Get_Nbr_Outputs (M) loop
          Desc := Get_Output_Desc (M, I - 1);
-         if Desc.Is_Inout then
-            Disp_Entity_Port (Desc, Port_Inout, First);
-         else
-            Disp_Entity_Port (Desc, Port_Out, First);
-         end if;
+         Disp_Entity_Port (Desc, First);
       end loop;
       if not First then
          Put_Line (");");

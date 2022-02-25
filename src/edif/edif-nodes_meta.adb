@@ -1,20 +1,18 @@
 --  Meta description of nodes.
 --  Copyright (C) 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 package body Edif.Nodes_Meta is
    Fields_Type : constant array (Fields_Enum) of Types_Enum :=
@@ -50,7 +48,7 @@ package body Edif.Nodes_Meta is
       Field_Cell_Ref => Type_Node,
       Field_Library_Ref => Type_Node,
       Field_View => Type_Node,
-      Field_Direction => Type_Direction_Type,
+      Field_Direction => Type_Dir_Type,
       Field_Boolean => Type_Boolean,
       Field_Value => Type_Node,
       Field_Owner => Type_Node,
@@ -481,29 +479,29 @@ package body Edif.Nodes_Meta is
       end case;
    end Set_Boolean;
 
-   function Get_Direction_Type
-      (N : Node; F : Fields_Enum) return Direction_Type is
+   function Get_Dir_Type
+      (N : Node; F : Fields_Enum) return Dir_Type is
    begin
-      pragma Assert (Fields_Type (F) = Type_Direction_Type);
+      pragma Assert (Fields_Type (F) = Type_Dir_Type);
       case F is
          when Field_Direction =>
             return Get_Direction (N);
          when others =>
             raise Internal_Error;
       end case;
-   end Get_Direction_Type;
+   end Get_Dir_Type;
 
-   procedure Set_Direction_Type
-      (N : Node; F : Fields_Enum; V: Direction_Type) is
+   procedure Set_Dir_Type
+      (N : Node; F : Fields_Enum; V: Dir_Type) is
    begin
-      pragma Assert (Fields_Type (F) = Type_Direction_Type);
+      pragma Assert (Fields_Type (F) = Type_Dir_Type);
       case F is
          when Field_Direction =>
             Set_Direction (N, V);
          when others =>
             raise Internal_Error;
       end case;
-   end Set_Direction_Type;
+   end Set_Dir_Type;
 
    function Get_Int32
       (N : Node; F : Fields_Enum) return Int32 is

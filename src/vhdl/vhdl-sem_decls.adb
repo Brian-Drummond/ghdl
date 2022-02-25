@@ -1,20 +1,18 @@
 --  Semantic analysis.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Errorout; use Errorout;
 with Types; use Types;
 with Std_Names;
@@ -96,6 +94,8 @@ package body Vhdl.Sem_Decls is
             --  Declarative region was completely analyzed.  Just append DECL
             --  at the end of declarations.
             Insert_Implicit_Signal (Current_Signals_Region.Last_Decl);
+            Current_Signals_Region.Last_Decl :=
+              Current_Signals_Region.Implicit_Decl;
          end if;
       else
          --  Append SIG.
@@ -130,22 +130,6 @@ package body Vhdl.Sem_Decls is
          Current_Signals_Region.Last_Attribute_Signal := Null_Iir;
       end if;
    end Insert_Pending_Implicit_Declarations;
-
-   procedure Add_Implicit_Declaration (Sig : Iir) is
-   begin
-      --  Only for anonymous signals, which appear in instantiations (so
-      --  once the declarations have been analyzed).
-      pragma Assert (Get_Kind (Sig) = Iir_Kind_Anonymous_Signal_Declaration);
-      pragma Assert (Current_Signals_Region.Decls_Analyzed);
-
-      if Current_Signals_Region.Last_Decl = Null_Iir then
-         Set_Declaration_Chain (Current_Signals_Region.Decls_Parent, Sig);
-      else
-         Set_Chain (Current_Signals_Region.Last_Decl, Sig);
-      end if;
-      Current_Signals_Region.Last_Decl := Sig;
-      Set_Parent (Sig, Current_Signals_Region.Decls_Parent);
-   end Add_Implicit_Declaration;
 
    --  Mark the end of declaration analysis.  New implicit declarations will
    --  simply be appended to the last declaration.
@@ -1183,6 +1167,9 @@ package body Vhdl.Sem_Decls is
             Atype := Create_Error_Type (Get_Type (Decl));
          end if;
       else
+         Set_Is_Ref (Decl, True);
+         Atype := Get_Subtype_Indication (Last_Decl);
+         Set_Subtype_Indication (Decl, Atype);
          Atype := Get_Type (Last_Decl);
       end if;
       Set_Type (Decl, Atype);
@@ -1855,6 +1842,16 @@ package body Vhdl.Sem_Decls is
             Name := Get_Signature_Prefix (Sig);
             Sem_Name (Name);
             Set_Signature_Prefix (Sig, Name);
+         when Iir_Kind_String_Literal8 =>
+            --  Try to have a good error message.
+            if Get_Subtype_Indication (Alias) = Null_Iir then
+               Error_Msg_Sem (+Name, "signature required for operature name");
+            else
+               Error_Msg_Sem (+Name, "object name required");
+            end if;
+            Name := Create_Error_Name (Name);
+            Set_Name (Alias, Name);
+            return Alias;
          when Iir_Kind_Error =>
             pragma Assert (Flags.Flag_Force_Analysis);
             return Alias;
@@ -2419,6 +2416,11 @@ package body Vhdl.Sem_Decls is
 
    procedure Check_Full_Declaration (Decls_Parent : Iir; Decl: Iir)
    is
+      procedure Warn_Unused (E : Iir) is
+      begin
+         Warning_Msg_Sem (Warnid_Unused, +E, "%n is never referenced", +E);
+      end Warn_Unused;
+
       El: Iir;
 
       --  If set, emit a warning if a declaration is not used.
@@ -2540,14 +2542,36 @@ package body Vhdl.Sem_Decls is
                     and then not Is_Implicit_Subprogram (El)
                     and then not Is_Second_Subprogram_Specification (El)
                   then
-                     Warning_Msg_Sem (Warnid_Unused, +El,
-                                      "%n is never referenced", +El);
+                     Warn_Unused (El);
                   end if;
                when Iir_Kind_Signal_Declaration
-                 | Iir_Kind_Variable_Declaration =>
+                 | Iir_Kind_Variable_Declaration
+                 | Iir_Kind_Component_Declaration
+                 | Iir_Kind_Subtype_Declaration =>
                   if not Get_Use_Flag (El) then
-                     Warning_Msg_Sem (Warnid_Unused, +El,
-                                      "%n is never referenced", +El);
+                     Warn_Unused (El);
+                  end if;
+               when Iir_Kind_Type_Declaration =>
+                  if not Get_Use_Flag (El) then
+                     Warn_Unused (El);
+                  else
+                     declare
+                        Def : constant Iir := Get_Type_Definition (El);
+                        Lits : Iir_Flist;
+                        Lit : Iir;
+                     begin
+                        if Get_Kind (Def)
+                          = Iir_Kind_Enumeration_Type_Definition
+                        then
+                           Lits := Get_Enumeration_Literal_List (Def);
+                           for I in Flist_First .. Flist_Last (Lits) loop
+                              Lit := Get_Nth_Element (Lits, I);
+                              if not Get_Use_Flag (Lit) then
+                                 Warn_Unused (Lit);
+                              end if;
+                           end loop;
+                        end if;
+                     end;
                   end if;
                when others =>
                   null;

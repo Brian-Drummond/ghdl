@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) std_logic_1664 subprograms.
 --  Copyright (C) 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -98,6 +96,8 @@ package Grt.Std_Logic_1164 is
    function Ghdl_Std_Ulogic_Match_Ne (L, R : Ghdl_E8) return Ghdl_E8;
    function Ghdl_Std_Ulogic_Match_Lt (L, R : Ghdl_E8) return Ghdl_E8;
    function Ghdl_Std_Ulogic_Match_Le (L, R : Ghdl_E8) return Ghdl_E8;
+   function Ghdl_Std_Ulogic_Match_Ge (L, R : Ghdl_E8) return Ghdl_E8;
+   function Ghdl_Std_Ulogic_Match_Gt (L, R : Ghdl_E8) return Ghdl_E8;
    --  For Gt and Ge, use Lt and Le with swapped parameters.
 
    function Ghdl_Std_Ulogic_Array_Match_Eq (L : Ghdl_Ptr;
@@ -116,6 +116,8 @@ private
    pragma Export (C, Ghdl_Std_Ulogic_Match_Ne, "__ghdl_std_ulogic_match_ne");
    pragma Export (C, Ghdl_Std_Ulogic_Match_Lt, "__ghdl_std_ulogic_match_lt");
    pragma Export (C, Ghdl_Std_Ulogic_Match_Le, "__ghdl_std_ulogic_match_le");
+   pragma Export (C, Ghdl_Std_Ulogic_Match_Ge, "__ghdl_std_ulogic_match_ge");
+   pragma Export (C, Ghdl_Std_Ulogic_Match_Gt, "__ghdl_std_ulogic_match_gt");
 
    pragma Export (C, Ghdl_Std_Ulogic_Array_Match_Eq,
                   "__ghdl_std_ulogic_array_match_eq");

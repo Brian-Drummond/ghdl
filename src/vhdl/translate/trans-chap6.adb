@@ -1,20 +1,18 @@
 --  Iir to ortho translator.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Files_Map;
 with Vhdl.Errors; use Vhdl.Errors;
@@ -304,6 +302,7 @@ package body Trans.Chap6 is
             Cond1, Cond2 : O_Enode;
             Cond         : O_Enode;
          begin
+            --  FIXME: not correct for enumerations
             Cond1 := New_Compare_Op
               (ON_Lt,
                New_Obj_Value (Off),
@@ -559,13 +558,13 @@ package body Trans.Chap6 is
       --  Type of the first (and only) index of the prefix array type.
       Index_Type : constant Iir := Get_Index_Type (Prefix_Type, 0);
 
-      --  Element type.
-      El_Type    : constant Iir := Get_Element_Subtype (Prefix_Type);
-      El_Tinfo   : constant Type_Info_Acc := Get_Info (El_Type);
-
       --  Type of the slice.
       Slice_Type : constant Iir := Get_Type (Expr);
       Slice_Info : Type_Info_Acc;
+
+      --  Element type.
+      El_Type    : Iir;
+      El_Tinfo   : Type_Info_Acc;
 
       --  Suffix of the slice (discrete range).
       Expr_Range : constant Iir := Get_Suffix (Expr);
@@ -597,9 +596,12 @@ package body Trans.Chap6 is
 
       Prefix_Var := Prefix;
 
+      El_Type := Chap3.Get_Element_Subtype_For_Info (Slice_Type);
+      El_Tinfo := Get_Info (El_Type);
+
       if Is_Unbounded_Type (El_Tinfo) then
          --  Copy layout of element before building the bounds
-         pragma Assert (Is_Unbounded_Type (Prefix_Info));
+--         pragma Assert (Is_Unbounded_Type (Prefix_Info));
          Stabilize (Prefix_Var);
          Gen_Memcpy
            (M2Addr (Chap3.Array_Bounds_To_Element_Layout
@@ -815,7 +817,8 @@ package body Trans.Chap6 is
       Slice_Type  : constant Iir := Get_Type (Expr);
       Slice_Tinfo : constant Type_Info_Acc := Get_Info (Slice_Type);
 
-      El_Type  : constant Iir := Get_Element_Subtype (Slice_Type);
+      El_Type  : constant Iir :=
+        Chap3.Get_Element_Subtype_For_Info (Slice_Type);
       El_Tinfo : constant Type_Info_Acc := Get_Info (El_Type);
 
       --  Object kind of the prefix.
@@ -1135,7 +1138,8 @@ package body Trans.Chap6 is
             begin
                pragma Assert (Mode <= Name_Info.Alias_Kind);
                case Type_Info.Type_Mode is
-                  when Type_Mode_Unbounded_Array =>
+                  when Type_Mode_Unbounded_Array
+                     | Type_Mode_Unbounded_Record =>
                      return Get_Var (Name_Info.Alias_Var (Mode), Type_Info,
                                      Mode);
                   when Type_Mode_Bounded_Arrays
@@ -1161,8 +1165,7 @@ package body Trans.Chap6 is
            | Iir_Kind_Quiet_Attribute
            | Iir_Kind_Delayed_Attribute
            | Iir_Kind_Transaction_Attribute
-           | Iir_Kind_Guard_Signal_Declaration
-           | Iir_Kind_Anonymous_Signal_Declaration =>
+           | Iir_Kind_Guard_Signal_Declaration =>
             if Mode = Mode_Signal then
                return Get_Var (Name_Info.Signal_Sig, Type_Info, Mode_Signal);
             else
@@ -1271,8 +1274,7 @@ package body Trans.Chap6 is
            | Iir_Kind_Delayed_Attribute
            | Iir_Kind_Transaction_Attribute
            | Iir_Kind_Guard_Signal_Declaration
-           | Iir_Kind_Object_Alias_Declaration
-           | Iir_Kind_Anonymous_Signal_Declaration =>
+           | Iir_Kind_Object_Alias_Declaration =>
             Translate_Signal_Base (Name, Sig, Drv);
          when Iir_Kind_Slice_Name =>
             declare
@@ -1324,8 +1326,7 @@ package body Trans.Chap6 is
    begin
       case Get_Kind (Name) is
          when Iir_Kind_Signal_Declaration
-           | Iir_Kind_Interface_Signal_Declaration
-           | Iir_Kind_Anonymous_Signal_Declaration =>
+           | Iir_Kind_Interface_Signal_Declaration =>
             declare
                Name_Type : constant Iir := Get_Type (Name);
                Name_Info : constant Ortho_Info_Acc := Get_Info (Name);
@@ -1384,8 +1385,7 @@ package body Trans.Chap6 is
            | Iir_Kind_Quiet_Attribute
            | Iir_Kind_Delayed_Attribute
            | Iir_Kind_Transaction_Attribute
-           | Iir_Kind_Guard_Signal_Declaration
-           | Iir_Kind_Anonymous_Signal_Declaration =>
+           | Iir_Kind_Guard_Signal_Declaration =>
             Sig := Get_Var (Name_Info.Signal_Sig, Type_Info, Mode_Signal);
             Val := Get_Var (Name_Info.Signal_Val, Type_Info, Mode_Value);
          when Iir_Kind_Interface_Signal_Declaration =>

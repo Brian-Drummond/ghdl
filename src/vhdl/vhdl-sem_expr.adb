@@ -1,20 +1,18 @@
 --  Semantic analysis.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Grt.Algos;
 with Errorout; use Errorout;
@@ -36,6 +34,7 @@ with Vhdl.Sem_Assocs; use Vhdl.Sem_Assocs;
 with Vhdl.Sem_Decls;
 with Vhdl.Sem_Psl;
 with Vhdl.Xrefs; use Vhdl.Xrefs;
+with Vhdl.Ieee.Std_Logic_1164;
 
 package body Vhdl.Sem_Expr is
 
@@ -150,6 +149,29 @@ package body Vhdl.Sem_Expr is
                   return Via_Conversion;
                end if;
             end if;
+         when Iir_Kind_Foreign_Vector_Type_Definition =>
+            declare
+               use Vhdl.Ieee.Std_Logic_1164;
+               El_Type : Iir;
+            begin
+               if Right = Bit_Type_Definition
+                 or else Right = Boolean_Type_Definition
+                 or else Right = Bit_Vector_Type_Definition
+                 or else Right = Std_Logic_Type
+                 or else Right = Std_Ulogic_Type
+               then
+                  return Fully_Compatible;
+               end if;
+               if Get_Kind (Right) = Iir_Kind_Array_Type_Definition then
+                  El_Type := Get_Base_Type (Get_Element_Subtype (Right));
+                  if El_Type = Std_Logic_Type
+                    or else El_Type = Std_Ulogic_Type
+                    or else El_Type = Bit_Type_Definition
+                  then
+                     return Fully_Compatible;
+                  end if;
+               end if;
+            end;
          when others =>
             null;
       end case;
@@ -419,7 +441,9 @@ package body Vhdl.Sem_Expr is
            | Iir_Kind_Psl_Prev
            | Iir_Kind_Psl_Stable
            | Iir_Kind_Psl_Rose
-           | Iir_Kind_Psl_Fell =>
+           | Iir_Kind_Psl_Fell
+           | Iir_Kind_Psl_Onehot
+           | Iir_Kind_Psl_Onehot0 =>
             return Expr;
          when Iir_Kind_Simple_Name
            | Iir_Kind_Parenthesis_Name
@@ -697,10 +721,7 @@ package body Vhdl.Sem_Expr is
       case Get_Kind (Expr) is
          when Iir_Kind_Range_Expression =>
             Res := Sem_Simple_Range_Expression (Expr, A_Type, Any_Dir);
-            if Res = Null_Iir then
-               return Null_Iir;
-            end if;
-            Res_Type := Get_Type (Res);
+            return Res;
 
          when Iir_Kinds_Denoting_Name
            | Iir_Kind_Attribute_Name
@@ -1603,7 +1624,7 @@ package body Vhdl.Sem_Expr is
                   case Get_Kind (Get_Object_Prefix (Prefix)) is
                      when Iir_Kind_Signal_Declaration
                        | Iir_Kind_Interface_Signal_Declaration =>
-                        Prefix := Get_Longuest_Static_Prefix (Prefix);
+                        Prefix := Get_Longest_Static_Prefix (Prefix);
                         Sem_Stmts.Sem_Add_Driver (Prefix, Stmt);
                      when others =>
                         null;
@@ -2807,6 +2828,10 @@ package body Vhdl.Sem_Expr is
       --  True if others choice is present.
       Has_Others : Boolean;
 
+      --  True if one association doesn't have the element_type flag (ie the
+      --  expression is of the same type as an aggregate).
+      Has_Array : Boolean;
+
       Has_Error : Boolean;
 
       Pos_Max : Int64;
@@ -2938,10 +2963,14 @@ package body Vhdl.Sem_Expr is
       Nbr_Named := 0;
       Has_Others := False;
       Has_Error := False;
+      Has_Array := False;
       Staticness := Locally;
       El := Choice_Chain;
       Prev_El := Null_Iir;
       while El /= Null_Iir loop
+         if not Get_Element_Type_Flag (El) then
+            Has_Array := True;
+         end if;
          case Get_Kind (El) is
             when Iir_Kind_Choice_By_None =>
                Nbr_Pos := Nbr_Pos + 1;
@@ -3004,7 +3033,7 @@ package body Vhdl.Sem_Expr is
          if (not Has_Others and not Is_Sub_Range)
            and then Nbr_Pos < Pos_Max
            --  For aggregates, a positional association can be a vector.
-           and then (Vhdl_Std < Vhdl_08 or Is_Case_Stmt)
+           and then (Vhdl_Std < Vhdl_08 or Is_Case_Stmt or not Has_Array)
          then
             Error_Msg_Sem (+Loc, "not enough elements associated");
          elsif Nbr_Pos > Pos_Max then
@@ -3024,7 +3053,7 @@ package body Vhdl.Sem_Expr is
          --  emitted for a case stmt.
          --  FIXME: what about individual associations?
          if not Is_Case_Stmt then
-            --  LRM93 §7.3.2.2
+            --  LRM93 7.3.2.2
             --  A named association of an array aggregate is allowed to have
             --  a choice that is not locally static, or likewise a choice that
             --  is a null range, only if the aggregate includes a single
@@ -3194,6 +3223,11 @@ package body Vhdl.Sem_Expr is
                      end if;
                   end loop;
                   if not Found then
+                     --  LRM08 9.3.3.2 Record aggregates
+                     --  If the choise OTHERS is given as a choice, it shall
+                     --  represent at least one element.
+                     --  GHDL: so that the type of the associated expression
+                     --   is known.
                      Error_Msg_Sem (+El, "no element for choice others");
                      Ok := False;
                   end if;
@@ -3209,7 +3243,8 @@ package body Vhdl.Sem_Expr is
                Expr := Sem_Expression_Wildcard
                  (Expr, El_Type, Constrained);
                if Expr /= Null_Iir then
-                  Set_Associated_Expr (El, Eval_Expr_If_Static (Expr));
+                  Set_Associated_Expr
+                    (El, Eval_Expr_Check_If_Static (Expr, El_Type));
                   Expr_Staticness := Min (Expr_Staticness,
                                           Get_Expr_Staticness (Expr));
                   if not Add_Constraints
@@ -3243,6 +3278,7 @@ package body Vhdl.Sem_Expr is
       Set_Expr_Staticness (Aggr, Min (Get_Expr_Staticness (Aggr),
                                       Expr_Staticness));
 
+      --  Create a constrained subtype for the aggregate type
       if Ok and Add_Constraints then
          declare
             Rec_Type : Iir;
@@ -3402,7 +3438,14 @@ package body Vhdl.Sem_Expr is
             --  it is ambiguous.  But there is no point in using aggregates
             --  to specify a range of choices.
             --  FIXME: fix LRM ?
+
+            --  LRM08 9.3.3.3 Array aggregates
+            --  If the type of the expression of an element association is the
+            --  type of the aggregate, then either the element association
+            --  shall be positional or the choice shall be a discrete range.
             if Elements_Types = Null_Iir
+              or else not Kind_In (El, Iir_Kind_Choice_By_None,
+                                   Iir_Kind_Choice_By_Range)
               or else Get_Kind (El_Expr) = Iir_Kind_Aggregate
             then
                Expr := Sem_Expression (El_Expr, Element_Type);
@@ -3528,6 +3571,134 @@ package body Vhdl.Sem_Expr is
       end case;
    end Sem_Array_Aggregate_Choice_Length;
 
+   procedure Sem_Array_Aggregate_Extract_Element_Subtype
+     (Aggr : Iir; Dim : Natural; Nbr_Dim : Natural; El_Subtype : in out Iir)
+   is
+      Assoc : Iir;
+      Sub_Aggr : Iir;
+      New_El_Subtype : Iir;
+   begin
+      Assoc := Get_Association_Choices_Chain (Aggr);
+      while Assoc /= Null_Iir loop
+         if not Get_Same_Alternative_Flag (Assoc) then
+            Sub_Aggr := Get_Associated_Expr (Assoc);
+            if Dim < Nbr_Dim then
+               case Get_Kind (Sub_Aggr) is
+                  when Iir_Kind_Aggregate =>
+                     Sem_Array_Aggregate_Extract_Element_Subtype
+                       (Sub_Aggr, Dim + 1, Nbr_Dim, El_Subtype);
+                     --  TODO: only if locally static ?
+                     if El_Subtype /= Null_Iir then
+                        return;
+                     end if;
+                  when Iir_Kind_String_Literal8 =>
+                     --  If a string is a proper subaggregate, then the element
+                     --  subtype must be fully bounded.
+                     raise Internal_Error;
+                  when others =>
+                     null;
+               end case;
+            else
+               New_El_Subtype := Get_Type (Sub_Aggr);
+               if not Get_Element_Type_Flag (Assoc) then
+                  New_El_Subtype := Get_Element_Subtype (New_El_Subtype);
+               end if;
+               --  TODO: try to extract the 'best' element subtype: with
+               --   static indexes, with constrained sub-elements.
+               --   Possibly create an hybrid subtype (for records).
+               if Get_Constraint_State (New_El_Subtype) = Fully_Constrained
+               then
+                  El_Subtype := New_El_Subtype;
+                  return;
+               end if;
+            end if;
+         end if;
+         Assoc := Get_Chain (Assoc);
+      end loop;
+   end Sem_Array_Aggregate_Extract_Element_Subtype;
+
+   procedure Check_Matching_Subtype (Expr : Iir; St : Iir)
+   is
+      Et : constant Iir := Get_Type (Expr);
+   begin
+      case Get_Kind (St) is
+         when Iir_Kind_Array_Subtype_Definition =>
+            if Get_Kind (Et) /= Iir_Kind_Array_Subtype_Definition then
+               return;
+            end if;
+            --  Fast check.
+            if Et = St then
+               return;
+            end if;
+
+            --  Check indexes.
+            if Get_Index_Constraint_Flag (St)
+              and then Get_Index_Constraint_Flag (Et)
+            then
+               declare
+                  Eil : constant Iir_Flist := Get_Index_Subtype_List (Et);
+                  Sil : constant Iir_Flist := Get_Index_Subtype_List (St);
+                  Ei, Si : Iir;
+               begin
+                  for I in Flist_First .. Flist_Last (Eil) loop
+                     Ei := Get_Nth_Element (Eil, I);
+                     Si := Get_Nth_Element (Sil, I);
+                     if Get_Type_Staticness (Ei) = Locally
+                       and then Get_Type_Staticness (Si) = Locally
+                       and then (Eval_Discrete_Type_Length (Si)
+                                   /= Eval_Discrete_Type_Length (Ei))
+                     then
+                        Warning_Msg_Sem
+                          (Warnid_Runtime_Error, +Expr,
+                           "expression subtype doesn't match "
+                             & "aggregate element subtype");
+                        return;
+                     end if;
+                  end loop;
+               end;
+            end if;
+
+            --  TODO: element array element ?
+         when Iir_Kind_Record_Subtype_Definition =>
+            --  TODO
+            null;
+         when others =>
+            null;
+      end case;
+   end Check_Matching_Subtype;
+
+   --  Check the subtype of all elements of AGGR match EL_SUBTYPE.
+   --  Used only if the aggregate element subtype is extracted from an
+   --  element of the aggregate.  In that case, we should check the match.
+   procedure Sem_Array_Aggregate_Check_Element_Subtype (El_Subtype : Iir;
+                                                        Aggr : Iir;
+                                                        Dim : Natural;
+                                                        Nbr_Dim : Natural)
+   is
+      Assoc : Iir;
+      Sub_Aggr : Iir;
+   begin
+      Assoc := Get_Association_Choices_Chain (Aggr);
+      while Assoc /= Null_Iir loop
+         if not Get_Same_Alternative_Flag (Assoc) then
+            Sub_Aggr := Get_Associated_Expr (Assoc);
+            if Dim < Nbr_Dim then
+               --  If a string is a proper subaggregate, then the element
+               --  subtype must be fully bounded.
+               pragma Assert (Get_Kind (Sub_Aggr) = Iir_Kind_Aggregate);
+               Sem_Array_Aggregate_Check_Element_Subtype
+                 (El_Subtype, Sub_Aggr, Dim + 1, Nbr_Dim);
+            else
+               if Get_Element_Type_Flag (Assoc) then
+                  --  TODO: only report the first error ?
+                  Check_Matching_Subtype (Sub_Aggr, El_Subtype);
+               end if;
+            end if;
+         end if;
+         Assoc := Get_Chain (Assoc);
+      end loop;
+   end Sem_Array_Aggregate_Check_Element_Subtype;
+
    --  Analyze an array aggregate AGGR of *base type* A_TYPE.
    --  The type of the array is computed into A_SUBTYPE.
    --  DIM is the dimension index in A_TYPE.
@@ -3561,6 +3732,31 @@ package body Vhdl.Sem_Expr is
 
       Info : Array_Aggr_Info renames Infos (Dim);
    begin
+      --  Analyze choices (for aggregate but not for strings).
+      if Get_Kind (Aggr) = Iir_Kind_Aggregate then
+         --  By default, consider the aggregate can be statically built.
+         Set_Aggregate_Expand_Flag (Aggr, True);
+
+         Assoc_Chain := Get_Association_Choices_Chain (Aggr);
+         Sem_Choices_Range (Assoc_Chain, Index_Type, Low, High,
+                            Get_Location (Aggr), not Constrained, False);
+         Set_Association_Choices_Chain (Aggr, Assoc_Chain);
+
+         --  Update infos.
+         if Low /= Null_Iir
+           and then (Info.Low = Null_Iir
+                       or else Eval_Pos (Low) < Eval_Pos (Info.Low))
+         then
+            Info.Low := Low;
+         end if;
+         if High /= Null_Iir
+           and then (Info.High = Null_Iir
+                       or else Eval_Pos (High) > Eval_Pos (Info.High))
+         then
+            Info.High := High;
+         end if;
+      end if;
+
       --  Analyze aggregate elements.
       if Constrained then
          Expr_Staticness := Get_Type_Staticness (Index_Type);
@@ -3628,29 +3824,10 @@ package body Vhdl.Sem_Expr is
       Set_Expr_Staticness
         (Aggr, Min (Expr_Staticness, Get_Expr_Staticness (Aggr)));
 
-      --  Analyze choices.
+      --  Compute length.
       Len_Staticness := Locally;
       case Get_Kind (Aggr) is
          when Iir_Kind_Aggregate =>
-            Assoc_Chain := Get_Association_Choices_Chain (Aggr);
-            Sem_Choices_Range (Assoc_Chain, Index_Type, Low, High,
-                               Get_Location (Aggr), not Constrained, False);
-            Set_Association_Choices_Chain (Aggr, Assoc_Chain);
-
-            --  Update infos.
-            if Low /= Null_Iir
-              and then (Info.Low = Null_Iir
-                        or else Eval_Pos (Low) < Eval_Pos (Info.Low))
-            then
-               Info.Low := Low;
-            end if;
-            if High /= Null_Iir
-              and then (Info.High = Null_Iir
-                        or else Eval_Pos (High) > Eval_Pos (Info.High))
-            then
-               Info.High := High;
-            end if;
-
             --  Determine if the aggregate is positionnal or named;
             --    and compute choice staticness.
             Is_Positional := Unknown;
@@ -3664,9 +3841,8 @@ package body Vhdl.Sem_Expr is
                   when Iir_Kind_Choice_By_Range
                     | Iir_Kind_Choice_By_Expression =>
                      Is_Positional := False;
-                     Choice_Staticness :=
-                       Nodes.Min (Choice_Staticness,
-                                  Get_Choice_Staticness (Choice));
+                     Choice_Staticness := Min (Choice_Staticness,
+                                               Get_Choice_Staticness (Choice));
                      --  FIXME: not true for range.
                      Len := Len + 1;
                   when Iir_Kind_Choice_By_None =>
@@ -3772,6 +3948,15 @@ package body Vhdl.Sem_Expr is
             then
                Info.Index_Subtype := Create_Range_Subtype_By_Length
                  (Index_Type, Int64 (Len), Get_Location (Aggr));
+
+               --  In vhdl08 and later, the number of elements may also depend
+               --  from associated expressions.
+               if Vhdl_Std >= Vhdl_08
+                 and then Get_Index_Constraint_Flag (A_Type)
+                 and then Eval_Discrete_Type_Length (Index_Type) /= Int64 (Len)
+               then
+                  Error_Msg_Sem (+Aggr, "incorrect number of elements");
+               end if;
             end if;
          else
             --  Create an index subtype.
@@ -3890,7 +4075,7 @@ package body Vhdl.Sem_Expr is
                if Eval_Pos (L) /= Eval_Pos (Low)
                  or else Eval_Pos (H) /= Eval_Pos (H)
                then
-                  Error_Msg_Sem (+Aggr, "subagregate bounds mismatch");
+                  Error_Msg_Sem (+Aggr, "subaggregate bounds mismatch");
                end if;
             end;
          end if;
@@ -3909,21 +4094,21 @@ package body Vhdl.Sem_Expr is
    function Sem_Array_Aggregate
      (Aggr : Iir; Aggr_Type : Iir; Constrained : Boolean) return Iir
    is
-      A_Subtype: Iir;
-      Base_Type : Iir;
       Index_List : constant Iir_Flist := Get_Index_Subtype_List (Aggr_Type);
       Nbr_Dim : constant Natural := Get_Nbr_Elements (Index_List);
+      El_Type : constant Iir := Get_Element_Subtype (Aggr_Type);
+      El_Subtype : Iir;
       Infos : Array_Aggr_Info_Arr (1 .. Nbr_Dim);
+      A_Subtype: Iir;
+      Base_Type : Iir;
       Aggr_Constrained : Boolean;
       Info, Prev_Info : Iir_Aggregate_Info;
       Type_Staticness : Iir_Staticness;
    begin
-      --  By default, consider the aggregate can be statically built.
-      Set_Aggregate_Expand_Flag (Aggr, True);
-
       --  Analyze the aggregate.
       Sem_Array_Aggregate_1 (Aggr, Aggr_Type, Infos, Constrained, 1);
 
+      --  The aggregate is constrained if all indexes are known.
       Aggr_Constrained := True;
       for I in Infos'Range loop
          --  Return now in case of error.
@@ -3936,6 +4121,23 @@ package body Vhdl.Sem_Expr is
          end if;
       end loop;
       Base_Type := Get_Base_Type (Aggr_Type);
+
+      --  Extract element subtype (if needed and if possible).
+      if not Is_Fully_Constrained_Type (El_Type) then
+         --  Need to extract the element subtype.
+         --  First, extract it - try to find the best one.
+         El_Subtype := Null_Iir;
+         Sem_Array_Aggregate_Extract_Element_Subtype
+           (Aggr, 1, Nbr_Dim, El_Subtype);
+         if El_Subtype = Null_Iir then
+            El_Subtype := El_Type;
+         else
+            --  TODO: check constraints of elements (if El_Subtype is static)
+            null;
+         end if;
+      else
+         El_Subtype := El_Type;
+      end if;
 
       --  Reuse AGGR_TYPE iff AGGR_TYPE is fully constrained
       --  and statically match the subtype of the aggregate.
@@ -3953,14 +4155,21 @@ package body Vhdl.Sem_Expr is
             Set_Type (Aggr, Aggr_Type);
          else
             A_Subtype := Create_Array_Subtype (Base_Type, Get_Location (Aggr));
-            --  FIXME: extract element subtype ?
-            Set_Element_Subtype (A_Subtype, Get_Element_Subtype (Aggr_Type));
+            Set_Element_Subtype (A_Subtype, El_Subtype);
+            if El_Subtype /= El_Type then
+               Sem_Array_Aggregate_Check_Element_Subtype
+                 (El_Subtype, Aggr, 1, Nbr_Dim);
+            end if;
             Type_Staticness := Min (Type_Staticness,
-                                    Get_Type_Staticness (A_Subtype));
-            for I in Infos'Range loop
-               Set_Nth_Element (Get_Index_Subtype_List (A_Subtype), I - 1,
-                                Infos (I).Index_Subtype);
-            end loop;
+                                    Get_Type_Staticness (El_Subtype));
+            declare
+               Idx_List : constant Iir_Flist :=
+                 Get_Index_Subtype_List (A_Subtype);
+            begin
+               for I in Infos'Range loop
+                  Set_Nth_Element (Idx_List, I - 1, Infos (I).Index_Subtype);
+               end loop;
+            end;
             Set_Type_Staticness (A_Subtype, Type_Staticness);
             Set_Index_Constraint_Flag (A_Subtype, True);
             --  FIXME: the element can be unconstrained.
@@ -4010,6 +4219,43 @@ package body Vhdl.Sem_Expr is
 
          --  If bounds are not known, the aggregate cannot be statically built.
          Set_Aggregate_Expand_Flag (Aggr, False);
+
+         if Get_Constraint_State (Aggr_Type) /= Fully_Constrained
+           and then El_Subtype /= El_Type
+         then
+            A_Subtype := Create_Array_Subtype (Base_Type, Get_Location (Aggr));
+            Set_Element_Subtype (A_Subtype, El_Subtype);
+            Sem_Array_Aggregate_Check_Element_Subtype
+              (El_Subtype, Aggr, 1, Nbr_Dim);
+            Type_Staticness := Get_Type_Staticness (El_Subtype);
+            if Get_Index_Constraint_Flag (Aggr_Type) then
+               declare
+                  Idx_Src_List : constant Iir_Flist :=
+                    Get_Index_Subtype_List (Aggr_Type);
+                  Idx_Dest_List : constant Iir_Flist :=
+                    Get_Index_Subtype_List (A_Subtype);
+                  Idx : Iir;
+               begin
+                  for I in 1 .. Nbr_Dim loop
+                     Idx := Get_Nth_Element (Idx_Src_List, I - 1);
+                     Type_Staticness := Min (Type_Staticness,
+                                             Get_Type_Staticness (Idx));
+                     Set_Nth_Element (Idx_Dest_List, I - 1, Idx);
+                  end loop;
+               end;
+               Set_Index_Constraint_Flag (A_Subtype, True);
+               Set_Constraint_State (A_Subtype,
+                                     Get_Constraint_State (El_Subtype));
+            else
+               Set_Constraint_State
+                 (A_Subtype,
+                  Iir_Constraint'Min (Partially_Constrained,
+                                      Get_Constraint_State (El_Subtype)));
+            end if;
+            Set_Type_Staticness (A_Subtype, Type_Staticness);
+            Set_Type (Aggr, A_Subtype);
+            Set_Literal_Subtype (Aggr, A_Subtype);
+         end if;
       end if;
 
       if Infos (Nbr_Dim).Has_Bound_Error then
@@ -4521,7 +4767,8 @@ package body Vhdl.Sem_Expr is
                Obj := Get_Named_Entity (Obj);
             when Iir_Kinds_Psl_Builtin =>
                return;
-            when Iir_Kind_Error =>
+            when Iir_Kind_Parenthesis_Name
+              | Iir_Kind_Error =>
                return;
             when others =>
                Error_Kind ("check_read", Obj);
@@ -4536,7 +4783,7 @@ package body Vhdl.Sem_Expr is
       Lib : Iir;
       Cur_Lib : Iir;
    begin
-      --  LRM93 §2.6
+      --  LRM93 2.6
       --  Within a package declaration that contains the declaration
       --  of a deferred constant, and within the body of that package,
       --  before the end of the corresponding full declaration, the
@@ -4761,11 +5008,16 @@ package body Vhdl.Sem_Expr is
                if E = Error_Mark then
                   return Null_Iir;
                end if;
-               if Get_Kind (E) = Iir_Kind_Constant_Declaration
-                 and then not Deferred_Constant_Allowed
-               then
-                  Check_Constant_Restriction (E, Expr);
-               end if;
+               case Get_Kind (E) is
+                  when Iir_Kind_Constant_Declaration =>
+                     if not Deferred_Constant_Allowed then
+                        Check_Constant_Restriction (E, Expr);
+                     end if;
+                  when Iir_Kind_Enumeration_Literal =>
+                     Set_Use_Flag (E, True);
+                  when others =>
+                     null;
+               end case;
                E := Name_To_Expression (Expr, A_Type);
                return E;
             end;
@@ -4899,9 +5151,10 @@ package body Vhdl.Sem_Expr is
             return Null_Iir;
 
          when Iir_Kind_Range_Expression =>
-            --  Can only happen in case of parse error, as a range is not an
-            --  expression.
-            pragma Assert (Flags.Flag_Force_Analysis);
+            --  That's an error.  Can happen for:
+            --    c (1 downto 0);
+            --  which is first parsed as a target of a concurrent assignment,
+            --  and then as a concurrent procedure call.
             declare
                Res : Iir;
             begin
@@ -4912,14 +5165,14 @@ package body Vhdl.Sem_Expr is
          when Iir_Kind_Psl_Prev =>
             return Sem_Psl.Sem_Prev_Builtin (Expr, A_Type);
 
-         when Iir_Kind_Psl_Stable =>
-            return Sem_Psl.Sem_Stable_Builtin (Expr);
+         when Iir_Kind_Psl_Stable
+            | Iir_Kind_Psl_Rose
+            | Iir_Kind_Psl_Fell =>
+            return Sem_Psl.Sem_Clock_Builtin (Expr);
 
-         when Iir_Kind_Psl_Rose =>
-            return Sem_Psl.Sem_Rose_Builtin (Expr);
-
-         when Iir_Kind_Psl_Fell =>
-            return Sem_Psl.Sem_Fell_Builtin (Expr);
+         when Iir_Kind_Psl_Onehot
+            | Iir_Kind_Psl_Onehot0 =>
+            return Sem_Psl.Sem_Onehot_Builtin (Expr);
 
          when Iir_Kind_Error =>
             --  Always ok.
@@ -5369,7 +5622,7 @@ package body Vhdl.Sem_Expr is
          --  with A_TYPE set to NULL_IIR and results in setting the type of
          --  EXPR.
          if A_Type /= Null_Iir
-           and then Are_Types_Compatible (Expr_Type, A_Type) = Not_Compatible
+           and then Are_Types_Compatible (A_Type, Expr_Type) = Not_Compatible
          then
             if not Is_Error (Expr_Type) then
                Error_Not_Match (Expr, A_Type);
@@ -5722,7 +5975,7 @@ package body Vhdl.Sem_Expr is
          --  context including the expression, then the condition operator is
          --  not applied.
 
-         Res := Sem_Expression_Ov (Cond, Null_Iir);
+         Res := Sem_Expression_Wildcard (Cond, Null_Iir);
 
          if Res = Null_Iir then
             --  Error occurred.

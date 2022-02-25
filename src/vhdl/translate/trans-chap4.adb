@@ -1,20 +1,18 @@
 --  Iir to ortho translator.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Vhdl.Errors; use Vhdl.Errors;
 with Files_Map;
@@ -195,9 +193,7 @@ package body Trans.Chap4 is
       Type_Info    : Type_Info_Acc;
       Info         : Signal_Info_Acc;
    begin
-      if Get_Kind (Decl) /= Iir_Kind_Anonymous_Signal_Declaration then
-         Chap3.Translate_Object_Subtype_Indication (Decl);
-      end if;
+      Chap3.Translate_Object_Subtype_Indication (Decl);
 
       Type_Info := Get_Info (Sig_Type_Def);
       Info := Add_Info (Decl, Kind_Signal);
@@ -229,8 +225,7 @@ package body Trans.Chap4 is
          when Iir_Kind_Signal_Declaration
             | Iir_Kind_Interface_Signal_Declaration =>
             Rtis.Generate_Signal_Rti (Decl);
-         when Iir_Kind_Guard_Signal_Declaration
-           | Iir_Kind_Anonymous_Signal_Declaration =>
+         when Iir_Kind_Guard_Signal_Declaration =>
             --  No name created for guard signal.
             null;
          when others =>
@@ -479,14 +474,9 @@ package body Trans.Chap4 is
    procedure Elab_Maybe_Subtype_Attribute
      (Decl : Iir; Name_Val : Mnode; Name_Sig : Mnode) is
    begin
-      case Get_Kind (Decl) is
-         when Iir_Kind_Anonymous_Signal_Declaration =>
-            return;
-         when others =>
-            if not Is_Object_Subtype_Attribute (Decl) then
-               return;
-            end if;
-      end case;
+      if not Is_Object_Subtype_Attribute (Decl) then
+         return;
+      end if;
 
       Elab_Subtype_Attribute (Decl, Name_Val, Name_Sig);
    end Elab_Maybe_Subtype_Attribute;
@@ -617,6 +607,7 @@ package body Trans.Chap4 is
                Aggr_Base_Type : constant Iir := Get_Base_Type (Aggr_Type);
             begin
                Name_Node := Stabilize (Name);
+               pragma Assert (Get_Object_Kind (Name_Node) = Mode_Value);
                if Get_Constraint_State (Aggr_Type) /= Fully_Constrained then
                   --  Allocate bounds
                   Chap3.Allocate_Unbounded_Composite_Bounds
@@ -624,7 +615,7 @@ package body Trans.Chap4 is
                   --  Translate bounds
                   Chap7.Translate_Aggregate_Bounds
                     (Stabilize (Chap3.Get_Composite_Bounds (Name_Node)),
-                     Value);
+                     Value, Mode_Value);
                   --  Allocate base
                   Chap3.Allocate_Unbounded_Composite_Base
                     (Alloc_Kind, Name_Node, Aggr_Base_Type);
@@ -1142,9 +1133,7 @@ package body Trans.Chap4 is
 
       Open_Temp;
 
-      if Get_Kind (Decl) /= Iir_Kind_Anonymous_Signal_Declaration then
-         Chap3.Elab_Object_Subtype_Indication (Decl);
-      end if;
+      Chap3.Elab_Object_Subtype_Indication (Decl);
 
       Type_Info := Get_Info (Sig_Type);
 
@@ -1255,6 +1244,7 @@ package body Trans.Chap4 is
       Decl      : constant Iir := Strip_Denoting_Name (Sig);
       Sig_Type  : constant Iir := Get_Type (Sig);
       Base_Decl : constant Iir := Get_Object_Prefix (Sig);
+      Val_Type  : Iir;
       Name_Sig  : Mnode;
       Name_Val  : Mnode;
       Value     : Iir;
@@ -1290,7 +1280,35 @@ package body Trans.Chap4 is
             Data.Has_Val := False;
          else
             Data.Has_Val := True;
-            Data.Init_Val := Chap7.Translate_Expression (Value, Sig_Type);
+            Val_Type := Get_Type (Value);
+
+            if Get_Kind (Value) = Iir_Kind_Aggregate
+              and then Get_Constraint_State (Sig_Type) /= Fully_Constrained
+              and then Get_Constraint_State (Val_Type) /= Fully_Constrained
+            then
+               --  Both the signal type and the value type are not fully
+               --  constrained.  This can happend when the signal subtype
+               --  indication is 'subtype and the default value is an
+               --  aggregate.  The signal was created with bounds, so use
+               --  those bounds.
+               declare
+                  Tinfo : constant Type_Info_Acc := Get_Info (Sig_Type);
+                  V : Mnode;
+               begin
+                  Stabilize (Data.Value);
+                  V := Create_Temp (Tinfo);
+                  New_Assign_Stmt
+                    (M2Lp (Chap3.Get_Composite_Bounds (V)),
+                     M2Addr (Chap3.Get_Composite_Bounds (Data.Value)));
+                  pragma Assert (Val_Type = Sig_Type);
+                  Chap3.Allocate_Unbounded_Composite_Base
+                    (Alloc_Stack, V, Sig_Type);
+                  Chap7.Translate_Aggregate (V, Val_Type, Value);
+                  Data.Init_Val := V;
+               end;
+            else
+               Data.Init_Val := Chap7.Translate_Expression (Value, Sig_Type);
+            end if;
          end if;
       else
          --  Sub signal.
@@ -1670,7 +1688,8 @@ package body Trans.Chap4 is
             when Type_Mode_Bounded_Arrays
               | Type_Mode_Bounded_Records
               | Type_Mode_Acc
-              | Type_Mode_Bounds_Acc =>
+              | Type_Mode_Bounds_Acc
+              | Type_Mode_Protected =>
                --  Create an object pointer.
                --  At elaboration: copy base from name.
                Atype := Tinfo.Ortho_Ptr_Type (Mode);
@@ -1764,7 +1783,8 @@ package body Trans.Chap4 is
                     (Decl_Type, T2M (Decl_Type, Mode),
                      Name_Type, N, Decl);
                when Type_Mode_Acc
-                 | Type_Mode_Bounds_Acc =>
+                 | Type_Mode_Bounds_Acc
+                 | Type_Mode_Protected =>
                   New_Assign_Stmt (Get_Var (A), M2Addr (N));
                when Type_Mode_Scalar =>
                   case Mode is
@@ -1894,8 +1914,7 @@ package body Trans.Chap4 is
             | Iir_Kind_Constant_Declaration =>
             Create_Object (Decl);
 
-         when Iir_Kind_Signal_Declaration
-           | Iir_Kind_Anonymous_Signal_Declaration =>
+         when Iir_Kind_Signal_Declaration =>
             Create_Signal (Decl);
 
          when Iir_Kind_Object_Alias_Declaration =>
@@ -2659,8 +2678,7 @@ package body Trans.Chap4 is
                   Need_Final := True;
                end if;
 
-            when Iir_Kind_Signal_Declaration
-              | Iir_Kind_Anonymous_Signal_Declaration =>
+            when Iir_Kind_Signal_Declaration =>
                Elab_Signal_Declaration (Decl, Parent, False);
 
             when Iir_Kind_Object_Alias_Declaration =>
@@ -2791,15 +2809,15 @@ package body Trans.Chap4 is
       Base_Block : Iir;
       Entity     : Iir)
    is
-      Formal : constant Iir := Get_Association_Formal (Assoc, Inter);
-      Actual : constant Iir := Get_Actual (Assoc);
+      Formal     : constant Iir := Get_Association_Formal (Assoc, Inter);
+      Actual     : constant Iir := Get_Actual (Assoc);
+      Block_Info : constant Block_Info_Acc := Get_Info (Base_Block);
 
       Mark2, Mark3      : Id_Mark_Type;
       Inter_List        : O_Inter_List;
       In_Type, Out_Type : Iir;
       In_Info, Out_Info : Type_Info_Acc;
       El_List           : O_Element_List;
-      Block_Info        : constant Block_Info_Acc := Get_Info (Base_Block);
       Stmt_Info         : Block_Info_Acc;
       Entity_Info       : Ortho_Info_Acc;
       Var_Data          : O_Dnode;
@@ -2835,10 +2853,8 @@ package body Trans.Chap4 is
             Imp := Get_Formal_Conversion (Assoc);
 
       end case;
-      --  FIXME: individual assoc -> overload.
-      Push_Identifier_Prefix
-        (Mark3, Get_Identifier (Get_Association_Interface (Assoc, Inter)),
-         Num);
+      --  Add interface name and a unique number in case of individual assoc.
+      Push_Identifier_Prefix (Mark3, Get_Identifier (Inter), Num);
 
       --  Handle anonymous subtypes.
       Chap3.Translate_Anonymous_Subtype_Definition (Out_Type, False);
@@ -2864,6 +2880,7 @@ package body Trans.Chap4 is
         (El_List, Conv_Info.Instance_Field, Wki_Instance,
          Block_Info.Block_Decls_Ptr_Type);
 
+      --  Add instance field for the entity in case of direct instantiation.
       if Entity /= Null_Iir then
          Conv_Info.Instantiated_Entity := Entity;
          Entity_Info := Get_Info (Entity);
@@ -2929,7 +2946,7 @@ package body Trans.Chap4 is
       V := Create_Temp_Init
         (Block_Info.Block_Decls_Ptr_Type,
          New_Value_Selected_Acc_Value (New_Obj (Var_Data),
-           Conv_Info.Instance_Field));
+                                       Conv_Info.Instance_Field));
       Set_Scope_Via_Param_Ptr (Block_Info.Block_Scope, V);
 
       --  Add an access to instantiated entity.
@@ -3096,11 +3113,114 @@ package body Trans.Chap4 is
       Pop_Identifier_Prefix (Mark2);
    end Translate_Association_Subprogram;
 
+   procedure Translate_Inertial_Subprogram
+     (Stmt       : Iir;
+      Block      : Iir;
+      Assoc      : Iir;
+      Inter      : Iir;
+      Num        : Iir_Int32;
+      Base_Block : Iir;
+      Entity     : Iir)
+   is
+      pragma Unreferenced (Num);
+      Formal     : constant Iir := Get_Association_Formal (Assoc, Inter);
+      Actual     : constant Iir := Get_Actual (Assoc);
+      Block_Info : constant Block_Info_Acc := Get_Info (Base_Block);
+      Assoc_Info  : Inertial_Info_Acc;
+      Inter_List  : O_Inter_List;
+      Entity_Info : Ortho_Info_Acc;
+      Targ : Mnode;
+      Val : Mnode;
+   begin
+      --  Declare the subprogram.
+      Assoc_Info := Add_Info (Assoc, Kind_Inertial_Assoc);
+      Start_Procedure_Decl
+        (Inter_List, Create_Identifier (Inter, "INERTIAL"),
+         O_Storage_Private);
+      New_Interface_Decl (Inter_List, Assoc_Info.Inertial_Inst,
+                          Wki_Instance, Block_Info.Block_Decls_Ptr_Type);
+      Finish_Subprogram_Decl (Inter_List, Assoc_Info.Inertial_Proc);
+
+      --  The body.
+      New_Debug_Line_Decl (Get_Line_Number (Assoc));
+      Start_Subprogram_Body (Assoc_Info.Inertial_Proc);
+      Push_Local_Factory;
+      --  Access for actual.
+      Assoc_Info.Inertial_Block := Base_Block;
+      Set_Scope_Via_Param_Ptr (Block_Info.Block_Scope,
+                               Assoc_Info.Inertial_Inst);
+
+      Open_Temp;
+
+      --  Access for formals.
+      if Entity /= Null_Iir then
+         Entity_Info := Get_Info (Entity);
+         declare
+            Inst_Info  : constant Block_Info_Acc := Get_Info (Stmt);
+            V : O_Dnode;
+         begin
+            if Entity_Info.Kind = Kind_Component then
+               Set_Scope_Via_Field (Entity_Info.Comp_Scope,
+                                    Inst_Info.Block_Link_Field,
+                                    Block_Info.Block_Scope'Access);
+            else
+               --  Get access to the directly instantiated entity through
+               --  the link.  The link is a __ghdl_component_link_type which
+               --  points to the __ghdl_entity_link_type of the entity.
+               V := Create_Temp_Init
+                 (Entity_Info.Block_Decls_Ptr_Type,
+                  New_Convert_Ov
+                    (New_Value
+                       (New_Selected_Element
+                          (New_Selected_Element
+                             (New_Access_Element (Get_Instance_Access (Block)),
+                              Inst_Info.Block_Link_Field),
+                           Rtis.Ghdl_Component_Link_Instance)),
+                     Entity_Info.Block_Decls_Ptr_Type));
+               Set_Scope_Via_Param_Ptr (Entity_Info.Block_Scope, V);
+            end if;
+
+         end;
+      end if;
+
+      --  Access for formal.
+      --  1. Translate target (translate_name)
+      Targ := Chap6.Translate_Name (Formal, Mode_Signal);
+
+      --  2. Translate expression
+      Val := Chap7.Translate_Expression (Actual, Get_Type (Formal));
+
+      --  3. Check bounds match
+      --  TODO
+
+      --  4. Call Gen_Simple_Signal_Assign
+      Chap8.Translate_Inertial_Assignment
+        (Targ, Get_Type (Formal), Val, Assoc);
+
+      --  Set_Map_Env (Formal_Env);
+
+      if Entity /= Null_Iir then
+         if Entity_Info.Kind = Kind_Component then
+            Clear_Scope (Entity_Info.Comp_Scope);
+         else
+            Clear_Scope (Entity_Info.Block_Scope);
+         end if;
+      end if;
+
+      Close_Temp;
+
+      Clear_Scope (Block_Info.Block_Scope);
+      Pop_Local_Factory;
+      Finish_Subprogram_Body;
+   end Translate_Inertial_Subprogram;
+
+   --  Create subprograms for associations: conversions and inertial assocs.
    --  ENTITY is null for block_statement.
    procedure Translate_Association_Subprograms
      (Stmt : Iir; Block : Iir; Base_Block : Iir; Entity : Iir)
    is
       Assoc : Iir;
+      Assoc_Inter : Iir;
       Inter : Iir;
       Info  : Assoc_Info_Acc;
       Num : Iir_Int32;
@@ -3108,35 +3228,49 @@ package body Trans.Chap4 is
       Assoc := Get_Port_Map_Aspect_Chain (Stmt);
       Num := 0;
       if Is_Null (Entity) then
-         Inter := Get_Port_Chain (Stmt);
+         Assoc_Inter := Get_Port_Chain (Stmt);
       else
-         Inter := Get_Port_Chain (Entity);
+         Assoc_Inter := Get_Port_Chain (Entity);
       end if;
       while Assoc /= Null_Iir loop
-         if Get_Kind (Assoc) = Iir_Kind_Association_Element_By_Expression
-         then
-            Info := null;
-            if Get_Actual_Conversion (Assoc) /= Null_Iir then
-               Info := Add_Info (Assoc, Kind_Assoc);
-               Translate_Association_Subprogram
-                 (Stmt, Block, Assoc, Inter, Conv_Mode_In, Info.Assoc_In,
-                  Num, Base_Block, Entity);
-               Num := Num + 1;
-            end if;
-            if Get_Formal_Conversion (Assoc) /= Null_Iir then
-               if Info = null then
+         Inter := Get_Association_Interface (Assoc, Assoc_Inter);
+         case Get_Kind (Assoc) is
+            when Iir_Kind_Association_Element_By_Name =>
+               Info := null;
+               if Get_Actual_Conversion (Assoc) /= Null_Iir then
                   Info := Add_Info (Assoc, Kind_Assoc);
+                  Translate_Association_Subprogram
+                    (Stmt, Block, Assoc, Inter, Conv_Mode_In, Info.Assoc_In,
+                     Num, Base_Block, Entity);
+                  Num := Num + 1;
                end if;
-               Translate_Association_Subprogram
-                 (Stmt, Block, Assoc, Inter, Conv_Mode_Out, Info.Assoc_Out,
-                  Num, Base_Block, Entity);
-               Num := Num + 1;
-            end if;
-         end if;
-         Next_Association_Interface (Assoc, Inter);
+               if Get_Formal_Conversion (Assoc) /= Null_Iir then
+                  if Info = null then
+                     Info := Add_Info (Assoc, Kind_Assoc);
+                  end if;
+                  Translate_Association_Subprogram
+                    (Stmt, Block, Assoc, Inter, Conv_Mode_Out, Info.Assoc_Out,
+                     Num, Base_Block, Entity);
+                  Num := Num + 1;
+               end if;
+            when Iir_Kind_Association_Element_By_Expression =>
+               if Get_Expr_Staticness (Get_Actual (Assoc)) = None then
+                  Translate_Inertial_Subprogram
+                    (Stmt, Block, Assoc, Inter, Num, Base_Block, Entity);
+               end if;
+            when Iir_Kind_Association_Element_By_Individual
+              | Iir_Kind_Association_Element_Open =>
+               null;
+            when others =>
+               Error_Kind ("translate_association_subprograms", Assoc);
+         end case;
+         Next_Association_Interface (Assoc, Assoc_Inter);
       end loop;
    end Translate_Association_Subprograms;
 
+   --  Register conversion CONV in association between SIG_IN and SIG_OUT.
+   --  This procedure allocates a record data (described by INFO), fill it
+   --   with addresses of signals and register it to REG_SUBPRG.
    procedure Elab_Conversion (Sig_In     : Iir;
                               Sig_Out    : Iir;
                               Conv       : Iir;

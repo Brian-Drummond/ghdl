@@ -1,20 +1,18 @@
 --  Meta description of nodes.
 --  Copyright (C) 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Types; use Types;
 with Vhdl.Nodes; use Vhdl.Nodes;
@@ -108,6 +106,7 @@ package Vhdl.Nodes_Meta is
       Field_Attribute_Designator,
       Field_Attribute_Specification_Chain,
       Field_Attribute_Specification,
+      Field_Static_Attribute_Flag,
       Field_Signal_List,
       Field_Quantity_List,
       Field_Designated_Entity,
@@ -146,7 +145,6 @@ package Vhdl.Nodes_Meta is
       Field_Macro_Expanded_Flag,
       Field_Need_Instance_Bodies,
       Field_Hierarchical_Name,
-      Field_Inherit_Spec_Chain,
       Field_Vunit_Item_Chain,
       Field_Bound_Vunit_Chain,
       Field_Verification_Block_Configuration,
@@ -194,6 +192,7 @@ package Vhdl.Nodes_Meta is
       Field_Element_Position,
       Field_Use_Clause_Chain,
       Field_Context_Reference_Chain,
+      Field_Inherit_Spec_Chain,
       Field_Selected_Name,
       Field_Type_Declarator,
       Field_Complete_Type_Definition,
@@ -242,6 +241,8 @@ package Vhdl.Nodes_Meta is
       Field_Element_Subnature,
       Field_Index_Constraint_List,
       Field_Array_Element_Constraint,
+      Field_Has_Array_Constraint_Flag,
+      Field_Has_Element_Constraint_Flag,
       Field_Elements_Declaration_List,
       Field_Owned_Elements_Chain,
       Field_Designated_Type,
@@ -332,7 +333,6 @@ package Vhdl.Nodes_Meta is
       Field_Default_Entity_Aspect,
       Field_Binding_Indication,
       Field_Named_Entity,
-      Field_Alias_Declaration,
       Field_Referenced_Name,
       Field_Expr_Staticness,
       Field_Scalar_Size,
@@ -375,6 +375,7 @@ package Vhdl.Nodes_Meta is
       Field_Aggregate_Expand_Flag,
       Field_Association_Choices_Chain,
       Field_Case_Statement_Alternative_Chain,
+      Field_Matching_Flag,
       Field_Choice_Staticness,
       Field_Procedure_Call,
       Field_Implementation,
@@ -427,9 +428,11 @@ package Vhdl.Nodes_Meta is
       Field_PSL_Nbr_States,
       Field_PSL_Clock_Sensitivity,
       Field_PSL_EOS_Flag,
+      Field_PSL_Abort_Flag,
       Field_Count_Expression,
       Field_Clock_Expression,
-      Field_Default_Clock
+      Field_Default_Clock,
+      Field_Foreign_Node
      );
    pragma Discard_Names (Fields_Enum);
 
@@ -687,6 +690,7 @@ package Vhdl.Nodes_Meta is
    function Has_Attribute_Specification_Chain (K : Iir_Kind)
       return Boolean;
    function Has_Attribute_Specification (K : Iir_Kind) return Boolean;
+   function Has_Static_Attribute_Flag (K : Iir_Kind) return Boolean;
    function Has_Signal_List (K : Iir_Kind) return Boolean;
    function Has_Quantity_List (K : Iir_Kind) return Boolean;
    function Has_Designated_Entity (K : Iir_Kind) return Boolean;
@@ -725,7 +729,6 @@ package Vhdl.Nodes_Meta is
    function Has_Macro_Expanded_Flag (K : Iir_Kind) return Boolean;
    function Has_Need_Instance_Bodies (K : Iir_Kind) return Boolean;
    function Has_Hierarchical_Name (K : Iir_Kind) return Boolean;
-   function Has_Inherit_Spec_Chain (K : Iir_Kind) return Boolean;
    function Has_Vunit_Item_Chain (K : Iir_Kind) return Boolean;
    function Has_Bound_Vunit_Chain (K : Iir_Kind) return Boolean;
    function Has_Verification_Block_Configuration (K : Iir_Kind)
@@ -775,6 +778,7 @@ package Vhdl.Nodes_Meta is
    function Has_Element_Position (K : Iir_Kind) return Boolean;
    function Has_Use_Clause_Chain (K : Iir_Kind) return Boolean;
    function Has_Context_Reference_Chain (K : Iir_Kind) return Boolean;
+   function Has_Inherit_Spec_Chain (K : Iir_Kind) return Boolean;
    function Has_Selected_Name (K : Iir_Kind) return Boolean;
    function Has_Type_Declarator (K : Iir_Kind) return Boolean;
    function Has_Complete_Type_Definition (K : Iir_Kind) return Boolean;
@@ -825,6 +829,8 @@ package Vhdl.Nodes_Meta is
    function Has_Element_Subnature (K : Iir_Kind) return Boolean;
    function Has_Index_Constraint_List (K : Iir_Kind) return Boolean;
    function Has_Array_Element_Constraint (K : Iir_Kind) return Boolean;
+   function Has_Has_Array_Constraint_Flag (K : Iir_Kind) return Boolean;
+   function Has_Has_Element_Constraint_Flag (K : Iir_Kind) return Boolean;
    function Has_Elements_Declaration_List (K : Iir_Kind) return Boolean;
    function Has_Owned_Elements_Chain (K : Iir_Kind) return Boolean;
    function Has_Designated_Type (K : Iir_Kind) return Boolean;
@@ -917,7 +923,6 @@ package Vhdl.Nodes_Meta is
    function Has_Default_Entity_Aspect (K : Iir_Kind) return Boolean;
    function Has_Binding_Indication (K : Iir_Kind) return Boolean;
    function Has_Named_Entity (K : Iir_Kind) return Boolean;
-   function Has_Alias_Declaration (K : Iir_Kind) return Boolean;
    function Has_Referenced_Name (K : Iir_Kind) return Boolean;
    function Has_Expr_Staticness (K : Iir_Kind) return Boolean;
    function Has_Scalar_Size (K : Iir_Kind) return Boolean;
@@ -961,6 +966,7 @@ package Vhdl.Nodes_Meta is
    function Has_Association_Choices_Chain (K : Iir_Kind) return Boolean;
    function Has_Case_Statement_Alternative_Chain (K : Iir_Kind)
       return Boolean;
+   function Has_Matching_Flag (K : Iir_Kind) return Boolean;
    function Has_Choice_Staticness (K : Iir_Kind) return Boolean;
    function Has_Procedure_Call (K : Iir_Kind) return Boolean;
    function Has_Implementation (K : Iir_Kind) return Boolean;
@@ -1013,7 +1019,9 @@ package Vhdl.Nodes_Meta is
    function Has_PSL_Nbr_States (K : Iir_Kind) return Boolean;
    function Has_PSL_Clock_Sensitivity (K : Iir_Kind) return Boolean;
    function Has_PSL_EOS_Flag (K : Iir_Kind) return Boolean;
+   function Has_PSL_Abort_Flag (K : Iir_Kind) return Boolean;
    function Has_Count_Expression (K : Iir_Kind) return Boolean;
    function Has_Clock_Expression (K : Iir_Kind) return Boolean;
    function Has_Default_Clock (K : Iir_Kind) return Boolean;
+   function Has_Foreign_Node (K : Iir_Kind) return Boolean;
 end Vhdl.Nodes_Meta;

@@ -1,20 +1,18 @@
 --  Output errors on the console.
 --  Copyright (C) 2018 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with GNAT.OS_Lib;
 with Simple_IO;
@@ -31,6 +29,8 @@ package body Errorout.Console is
    --  Set Flag_Color_Diagnostics to On or Off if is was Auto.
    procedure Detect_Terminal
    is
+      use GNAT.OS_Lib;
+
       --  Import isatty.
       function isatty (Fd : Integer) return Integer;
       pragma Import (C, isatty);
@@ -38,22 +38,36 @@ package body Errorout.Console is
       --  Awful way to detect if the host is Windows.  Should be replaced by
       --  a host-specific package.
       Is_Windows : constant Boolean := GNAT.OS_Lib.Directory_Separator = '\';
+
+      V : String_Access;
    begin
-      if Flag_Color_Diagnostics = Auto then
-         if Is_Windows then
-            --  Off by default on Windows, as the consoles may not support
-            --  ANSI control sequences.  Should be replaced by calls to the
-            --  Win32 API.
-            Flag_Color_Diagnostics := Off;
-         else
-            --  On Linux/Unix/Mac OS X: use color only when the output is to a
-            --  tty.
-            if isatty (2) /= 0 then
-               Flag_Color_Diagnostics := On;
-            else
-               Flag_Color_Diagnostics := Off;
-            end if;
+      if Flag_Color_Diagnostics /= Auto then
+         return;
+      end if;
+
+      --  Default is off.
+      Flag_Color_Diagnostics := Off;
+
+      if Is_Windows then
+         --  Off by default on Windows, as the consoles may not support
+         --  ANSI control sequences.  Should be replaced by calls to the
+         --  Win32 API.
+         return;
+      else
+         --  On Linux/Unix/Mac OS X: use color only when the output is to a
+         --  tty.
+         if isatty (2) = 0 then
+            return;
          end if;
+
+         V := GNAT.OS_Lib.Getenv ("TERM");
+         if V = null or else V.all = "dumb" then
+            --  No color if TERM=dumb
+            --  Should we use a black list, or a white list or terminfo ?
+            return;
+         end if;
+
+         Flag_Color_Diagnostics := On;
       end if;
    end Detect_Terminal;
 
@@ -242,6 +256,7 @@ package body Errorout.Console is
         and then Flag_Caret_Diagnostics
         and then (Current_Error.File /= No_Source_File_Entry
                     and Current_Error.Line /= 0)
+        and then Get_File_Length (Current_Error.File) > 0
       then
          Put_Line (Extract_Expanded_Line (Current_Error.File,
                                           Current_Error.Line));

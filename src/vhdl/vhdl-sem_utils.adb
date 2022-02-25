@@ -1,20 +1,18 @@
 --  Semantic utilities.
 --  Copyright (C) 2018 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Ada.Unchecked_Conversion;
 with Types; use Types;
 with Flags; use Flags;
@@ -901,6 +899,7 @@ package body Vhdl.Sem_Utils is
             Add_Unary (Name_Op_Minus, Iir_Predefined_Physical_Negation);
             Add_Unary (Name_Op_Plus, Iir_Predefined_Physical_Identity);
 
+            --  Physical OP integer, with OP is multiplication and division.
             declare
                Inter_Chain : Iir;
             begin
@@ -914,6 +913,7 @@ package body Vhdl.Sem_Utils is
                               Inter_Chain, Type_Definition);
             end;
 
+            --  Integer * physical
             declare
                Inter_Chain : Iir;
             begin
@@ -924,6 +924,7 @@ package body Vhdl.Sem_Utils is
                               Inter_Chain, Type_Definition);
             end;
 
+            --  Physical OP real, wher OP is multiplication and division.
             declare
                Inter_Chain : Iir;
             begin
@@ -936,6 +937,7 @@ package body Vhdl.Sem_Utils is
                               Inter_Chain, Type_Definition);
             end;
 
+            --  Real * physical
             declare
                Inter_Chain : Iir;
             begin
@@ -945,6 +947,8 @@ package body Vhdl.Sem_Utils is
                Add_Operation (Name_Op_Mul, Iir_Predefined_Real_Physical_Mul,
                               Inter_Chain, Type_Definition);
             end;
+
+            --  Physical / physical -> integer.
             Add_Operation (Name_Op_Div, Iir_Predefined_Physical_Physical_Div,
                            Binary_Chain,
                            Std_Package.Convertible_Integer_Type_Definition);
@@ -952,6 +956,9 @@ package body Vhdl.Sem_Utils is
             Add_Unary (Name_Abs, Iir_Predefined_Physical_Absolute);
 
             if Vhdl_Std >= Vhdl_08 then
+               Add_Binary (Name_Mod, Iir_Predefined_Physical_Mod);
+               Add_Binary (Name_Rem, Iir_Predefined_Physical_Rem);
+
                --  LRM08 5.2.6 Predefined operations on scalar types
                --  Given a type declaration that declares a scalar type T, the
                --  following operations are implicitely declared immediately

@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,9 +14,7 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Types; use Types;
 with Types_Utils; use Types_Utils;
@@ -26,16 +24,18 @@ with Grt.Types; use Grt.Types;
 with Vhdl.Utils; use Vhdl.Utils;
 with Vhdl.Ieee.Std_Logic_1164; use Vhdl.Ieee.Std_Logic_1164;
 
+with Elab.Vhdl_Values; use Elab.Vhdl_Values;
+with Elab.Memtype; use Elab.Memtype;
+with Elab.Vhdl_Files;
+
 with Netlists; use Netlists;
 
 with Synth.Errors; use Synth.Errors;
 with Synth.Source; use Synth.Source;
-with Synth.Expr; use Synth.Expr;
-with Synth.Oper;
+with Synth.Vhdl_Expr; use Synth.Vhdl_Expr;
+with Synth.Vhdl_Oper;
 with Synth.Ieee.Std_Logic_1164; use Synth.Ieee.Std_Logic_1164;
 with Synth.Ieee.Numeric_Std; use Synth.Ieee.Numeric_Std;
-with Synth.Files_Operations;
-with Synth.Values; use Synth.Values;
 
 package body Synth.Static_Oper is
    --  As log2(3m) is directly referenced, the program must be linked with -lm
@@ -119,7 +119,8 @@ package body Synth.Static_Oper is
          when Iir_Predefined_Error =>
             return Null_Memtyp;
 
-         when Iir_Predefined_Boolean_Xor =>
+         when Iir_Predefined_Boolean_Xor
+            | Iir_Predefined_Bit_Xor =>
             return Create_Memory_U8
               (Boolean'Pos (Boolean'Val (Read_Discrete (Left))
                               xor Boolean'Val (Read_Discrete (Right))),
@@ -300,7 +301,7 @@ package body Synth.Static_Oper is
                Res_St : Type_Acc;
                Res : Memtyp;
             begin
-               Bnd := Oper.Create_Bounds_From_Length
+               Bnd := Synth.Vhdl_Oper.Create_Bounds_From_Length
                  (Syn_Inst, Get_Index_Type (Get_Type (Expr), 0),
                   L_Len + R_Len);
                Res_St := Create_Onedimensional_Array_Subtype (Res_Typ, Bnd);
@@ -321,7 +322,7 @@ package body Synth.Static_Oper is
                Res_St : Type_Acc;
                Res : Memtyp;
             begin
-               Bnd := Oper.Create_Bounds_From_Length
+               Bnd := Synth.Vhdl_Oper.Create_Bounds_From_Length
                  (Syn_Inst, Get_Index_Type (Get_Type (Expr), 0), 1 + Rlen);
                Res_St := Create_Onedimensional_Array_Subtype (Res_Typ, Bnd);
                Res := Create_Memory (Res_St);
@@ -337,7 +338,7 @@ package body Synth.Static_Oper is
                Res_St : Type_Acc;
                Res : Memtyp;
             begin
-               Bnd := Oper.Create_Bounds_From_Length
+               Bnd := Synth.Vhdl_Oper.Create_Bounds_From_Length
                  (Syn_Inst, Get_Index_Type (Get_Type (Expr), 0), Llen + 1);
                Res_St := Create_Onedimensional_Array_Subtype (Res_Typ, Bnd);
                Res := Create_Memory (Res_St);
@@ -364,6 +365,25 @@ package body Synth.Static_Oper is
             return Create_Memory_U8
               (Boolean'Pos (Read_Access (Left) /= Read_Access (Right)),
                Boolean_Type);
+
+         when Iir_Predefined_TF_Array_Xor =>
+            if Left.Typ.Sz /= Right.Typ.Sz then
+               Error_Msg_Synth (+Expr, "length mismatch");
+               return Left;
+            else
+               declare
+                  Res : Memtyp;
+                  L, R : Boolean;
+               begin
+                  Res := Create_Memory (Left.Typ);
+                  for I in 1 .. Left.Typ.Sz loop
+                     L := Boolean'Val (Read_U8 (Left.Mem + (I - 1)));
+                     R := Boolean'Val (Read_U8 (Right.Mem + (I - 1)));
+                     Write_U8 (Res.Mem + (I - 1), Boolean'Pos (L xor R));
+                  end loop;
+                  return Res;
+               end;
+            end if;
 
          when Iir_Predefined_Ieee_1164_Vector_And
            | Iir_Predefined_Ieee_Numeric_Std_And_Uns_Uns
@@ -592,6 +612,15 @@ package body Synth.Static_Oper is
                end if;
             end;
 
+         when Iir_Predefined_Ieee_Math_Real_Pow =>
+            declare
+               function Pow (L, R : Fp64) return Fp64;
+               pragma Import (C, Pow);
+            begin
+               return Create_Memory_Fp64
+                 (Pow (Read_Fp64 (Left), Read_Fp64 (Right)), Res_Typ);
+            end;
+
          when others =>
             Error_Msg_Synth
               (+Expr, "synth_static_dyadic_predefined: unhandled "
@@ -693,8 +722,14 @@ package body Synth.Static_Oper is
               (Std_Ulogic'Pos (Not_Table (Read_Std_Logic (Operand.Mem, 0))),
                Oper_Typ);
 
-         when Iir_Predefined_Ieee_1164_Or_Suv =>
+         when Iir_Predefined_Ieee_Numeric_Std_And_Uns =>
+            return Synth_Vector_Reduce ('1', Operand, And_Table);
+
+         when Iir_Predefined_Ieee_1164_Or_Suv
+           | Iir_Predefined_Ieee_Numeric_Std_Or_Uns =>
             return Synth_Vector_Reduce ('0', Operand, Or_Table);
+         when Iir_Predefined_Ieee_1164_Xor_Suv =>
+            return Synth_Vector_Reduce ('0', Operand, Xor_Table);
 
          when others =>
             Error_Msg_Synth
@@ -818,23 +853,24 @@ package body Synth.Static_Oper is
             declare
                Res : Boolean;
             begin
-               Res := Synth.Files_Operations.Endfile (Param1.Val.File, Expr);
+               Res := Elab.Vhdl_Files.Endfile (Param1.Val.File, Expr);
                return Create_Memory_U8 (Boolean'Pos (Res), Boolean_Type);
             end;
 
          when Iir_Predefined_Ieee_Numeric_Std_Touns_Nat_Nat_Uns
-           | Iir_Predefined_Ieee_Std_Logic_Arith_Conv_Unsigned_Int =>
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Conv_Unsigned_Int
+            | Iir_Predefined_Ieee_Numeric_Std_Unsigned_To_Slv_Nat_Nat_Slv =>
             return Eval_To_Vector
               (Uns64 (Read_Discrete (Param1)), Read_Discrete (Param2),
                Res_Typ);
          when Iir_Predefined_Ieee_Numeric_Std_Tosgn_Int_Nat_Sgn
-           | Iir_Predefined_Ieee_Std_Logic_Arith_Conv_Vector_Int =>
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Conv_Vector_Int =>
             return Eval_To_Vector
               (To_Uns64 (Read_Discrete (Param1)), Read_Discrete (Param2),
                Res_Typ);
          when Iir_Predefined_Ieee_Numeric_Std_Toint_Uns_Nat
-           | Iir_Predefined_Ieee_Std_Logic_Arith_Conv_Integer_Uns
-           | Iir_Predefined_Ieee_Std_Logic_Unsigned_Conv_Integer =>
+            | Iir_Predefined_Ieee_Std_Logic_Arith_Conv_Integer_Uns
+            | Iir_Predefined_Ieee_Std_Logic_Unsigned_Conv_Integer =>
             --  UNSIGNED to Natural.
             return Create_Memory_Discrete
               (Eval_Unsigned_To_Integer (Get_Memtyp (Param1), Expr), Res_Typ);
@@ -861,8 +897,27 @@ package body Synth.Static_Oper is
          when Iir_Predefined_Ieee_Numeric_Std_Resize_Sgn_Nat =>
             return Resize_Vec
               (Get_Memtyp (Param1), Uns32 (Read_Discrete (Param2)), True);
+         when Iir_Predefined_Ieee_Numeric_Std_Resize_Uns_Nat =>
+            return Resize_Vec
+              (Get_Memtyp (Param1), Uns32 (Read_Discrete (Param2)), False);
 
-         when Iir_Predefined_Ieee_1164_To_Stdlogicvector_Bv =>
+         when Iir_Predefined_Ieee_1164_To_Stdulogic =>
+            declare
+               B : Std_Ulogic;
+            begin
+               B := Read_Bit_To_Std_Logic (Param1.Val.Mem, 0);
+               return Create_Memory_U8 (Std_Ulogic'Pos (B), Res_Typ);
+            end;
+
+         when Iir_Predefined_Ieee_1164_To_X01_Log =>
+            declare
+               B : Std_Ulogic;
+            begin
+               B := Read_Std_Logic (Param1.Val.Mem, 0);
+               B := To_X01 (B);
+               return Create_Memory_U8 (Std_Ulogic'Pos (B), Res_Typ);
+            end;
+         when Iir_Predefined_Ieee_1164_To_X01_Slv =>
             declare
                El_Type : constant Type_Acc := Get_Array_Element (Res_Typ);
                Res : Memtyp;
@@ -872,16 +927,64 @@ package body Synth.Static_Oper is
                Bnd := Create_Vec_Type_By_Length
                  (Uns32 (Vec_Length (Param1.Typ)), El_Type);
                Res := Create_Memory (Bnd);
-               for I in 1 .. Vec_Length (Param1.Typ) loop
-                  if Read_U8 (Param1.Val.Mem + Size_Type (I - 1)) = 0 then
-                     B := '0';
-                  else
-                     B := '1';
-                  end if;
-                  Write_Std_Logic (Res.Mem, Uns32 (I - 1), B);
+               for I in 1 .. Uns32 (Vec_Length (Param1.Typ)) loop
+                  B := Read_Std_Logic (Param1.Val.Mem, I - 1);
+                  B := To_X01 (B);
+                  Write_Std_Logic (Res.Mem, I - 1, B);
                end loop;
                return Res;
             end;
+
+         when Iir_Predefined_Ieee_1164_To_Stdlogicvector_Bv
+            | Iir_Predefined_Ieee_1164_To_Stdulogicvector_Bv =>
+            declare
+               El_Type : constant Type_Acc := Get_Array_Element (Res_Typ);
+               Res : Memtyp;
+               Bnd : Type_Acc;
+               B : Std_Ulogic;
+            begin
+               Bnd := Create_Vec_Type_By_Length
+                 (Uns32 (Vec_Length (Param1.Typ)), El_Type);
+               Res := Create_Memory (Bnd);
+               for I in 1 .. Uns32 (Vec_Length (Param1.Typ)) loop
+                  B := Read_Bit_To_Std_Logic (Param1.Val.Mem, I - 1);
+                  Write_Std_Logic (Res.Mem, I - 1, B);
+               end loop;
+               return Res;
+            end;
+
+         when Iir_Predefined_Ieee_1164_To_Bit =>
+            declare
+               V : Std_Ulogic;
+               X : Bit;
+               R : Bit;
+            begin
+               V := Read_Std_Logic (Param1.Val.Mem, 0);
+               X := Read_Bit (Param2.Val.Mem, 0);
+               R := To_Bit (V, X);
+               return Create_Memory_U8 (Bit'Pos(R), Res_Typ);
+            end;
+         when Iir_Predefined_Ieee_1164_To_Bitvector =>
+            declare
+               El_Type : constant Type_Acc := Get_Array_Element (Res_Typ);
+               Res     : Memtyp;
+               Bnd     : Type_Acc;
+               S       : Std_Ulogic;
+               X       : Bit;
+               R       : Bit;
+            begin
+               X := Read_Bit (Param2.Val.Mem, 0);
+               Bnd := Create_Vec_Type_By_Length
+                 (Uns32 (Vec_Length (Param1.Typ)), El_Type);
+               Res := Create_Memory (Bnd);
+               for I in 1 .. Uns32 (Vec_Length (Param1.Typ)) loop
+                  S := Read_Std_Logic (Param1.Val.Mem, I - 1);
+                  R := To_Bit (S, X);
+                  Write_Bit (Res.Mem, I - 1, R);
+               end loop;
+               return Res;
+            end;
+
          when Iir_Predefined_Ieee_Math_Real_Log2 =>
             declare
                function Log2 (Arg : Fp64) return Fp64;
@@ -923,6 +1026,13 @@ package body Synth.Static_Oper is
                pragma Import (C, Cos);
             begin
                return Create_Memory_Fp64 (Cos (Read_Fp64 (Param1)), Res_Typ);
+            end;
+         when Iir_Predefined_Ieee_Math_Real_Arctan =>
+            declare
+               function Atan (Arg : Fp64) return Fp64;
+               pragma Import (C, Atan);
+            begin
+               return Create_Memory_Fp64 (Atan (Read_Fp64 (Param1)), Res_Typ);
             end;
          when others =>
             Error_Msg_Synth

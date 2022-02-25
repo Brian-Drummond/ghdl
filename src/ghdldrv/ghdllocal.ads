@@ -1,20 +1,18 @@
 --  GHDL driver - local commands.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with GNAT.OS_Lib; use GNAT.OS_Lib;
 with Types; use Types;
@@ -116,7 +114,8 @@ package Ghdllocal is
    procedure Disp_Config_Prefixes;
 
    --  Setup standard libaries path.  If LOAD is true, then load them now.
-   procedure Setup_Libraries (Load : Boolean);
+   --  Return TRUE in case of success, FALSE in case of failure.
+   function Setup_Libraries (Load : Boolean) return Boolean;
 
    --  Set Exec_Prefix from program name.  Called by Setup_Libraries.
    procedure Set_Exec_Prefix_From_Program_Name;
@@ -131,7 +130,8 @@ package Ghdllocal is
    --  Raise errorout.compilation_error in case of error (parse error).
    procedure Load_All_Libraries_And_Files;
 
-   function Build_Dependence (Prim : Name_Id; Sec : Name_Id) return Iir_List;
+   function Build_Dependence (Lib : Name_Id; Prim : Name_Id; Sec : Name_Id)
+                             return Iir_List;
 
    --  Return True iff file FILE has been modified (the file time stamp does
    --  no correspond to what was recorded in the library).
@@ -142,9 +142,13 @@ package Ghdllocal is
    function Is_File_Outdated (File : Iir_Design_File) return Boolean;
 
    --  Extract PRIM_ID and SEC_ID from ARGS.
+   --  If AUTO is true, the top unit is deduced from the existing one,
+   --   otherwise it must be present.
    procedure Extract_Elab_Unit (Cmd_Name : String;
+                                Auto : Boolean;
                                 Args : Argument_List;
                                 Next_Arg : out Natural;
+                                Lib_Id : out Name_Id;
                                 Prim_Id : out Name_Id;
                                 Sec_Id : out Name_Id);
 

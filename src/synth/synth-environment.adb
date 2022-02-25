@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,9 +14,7 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Netlists.Builders; use Netlists.Builders;
 with Netlists.Concats;
@@ -27,16 +25,7 @@ with Netlists.Utils; use Netlists.Utils;
 with Netlists.Folds; use Netlists.Folds;
 with Netlists.Inference;
 
-with Errorout; use Errorout;
-with Name_Table;
-
 with Synth.Flags;
-with Synth.Errors; use Synth.Errors;
-with Synth.Source; use Synth.Source;
-with Synth.Context;
-
-with Vhdl.Nodes;
-with Vhdl.Utils;
 
 package body Synth.Environment is
    procedure Phi_Assign
@@ -52,15 +41,13 @@ package body Synth.Environment is
       return Wire_Id_Table.Table (Wid).Mark_Flag;
    end Get_Wire_Mark;
 
-   function Alloc_Wire (Kind : Wire_Kind; Typ : Type_Acc; Obj : Source.Syn_Src)
-                       return Wire_Id
+   function Alloc_Wire (Kind : Wire_Kind; Decl : Decl_Type) return Wire_Id
    is
       Res : Wire_Id;
    begin
       Wire_Id_Table.Append ((Kind => Kind,
                              Mark_Flag => False,
-                             Decl => Obj,
-                             Typ => Typ,
+                             Decl => Decl,
                              Gate => No_Net,
                              Cur_Assign => No_Seq_Assign,
                              Final_Assign => No_Conc_Assign,
@@ -76,9 +63,27 @@ package body Synth.Environment is
       --  Check the wire was not already free.
       pragma Assert (Wire_Rec.Kind /= Wire_None);
 
+      --  All the assignments have been handled.
       pragma Assert (Wire_Rec.Cur_Assign = No_Seq_Assign);
+
       Wire_Rec.Kind := Wire_None;
    end Free_Wire;
+
+   procedure Set_Kind (Wid : Wire_Id; Kind : Wire_Kind)
+   is
+      Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
+   begin
+      pragma Assert (Kind = Wire_Unset or Wire_Rec.Kind = Wire_Unset);
+      Wire_Rec.Kind := Kind;
+   end Set_Kind;
+
+   function Get_Kind (Wid : Wire_Id) return Wire_Kind
+   is
+      Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
+   begin
+      pragma Assert (Wire_Rec.Kind /= Wire_None);
+      return Wire_Rec.Kind;
+   end Get_Kind;
 
    procedure Set_Wire_Gate (Wid : Wire_Id; Gate : Net) is
    begin
@@ -87,6 +92,18 @@ package body Synth.Environment is
 
       Wire_Id_Table.Table (Wid).Gate := Gate;
    end Set_Wire_Gate;
+
+   procedure Replace_Wire_Gate (Wid : Wire_Id; Gate : Net)
+   is
+      Old : constant Net := Wire_Id_Table.Table (Wid).Gate;
+      Inst : constant Instance := Get_Net_Parent (Old);
+   begin
+      Redirect_Inputs (Old, Gate);
+      Remove_Instance (Inst);
+      Set_Location (Get_Net_Parent (Gate), Get_Location (Inst));
+      --  FIXME: attributes ?
+      Wire_Id_Table.Table (Wid).Gate := Gate;
+   end Replace_Wire_Gate;
 
    function Get_Wire_Gate (Wid : Wire_Id) return Net is
    begin
@@ -118,7 +135,7 @@ package body Synth.Environment is
       return Assign_Table.Table (Asgn).Val.Is_Static = True;
    end Get_Assign_Is_Static;
 
-   function Get_Assign_Static_Val (Asgn : Seq_Assign) return Memtyp is
+   function Get_Assign_Static_Val (Asgn : Seq_Assign) return Static_Type is
    begin
       return Assign_Table.Table (Asgn).Val.Val;
    end Get_Assign_Static_Val;
@@ -363,23 +380,21 @@ package body Synth.Environment is
       Conc_Assign_Table.Table (Asgn).Next := Chain;
    end Set_Conc_Chain;
 
-   procedure Add_Conc_Assign
-     (Wid : Wire_Id; Val : Net; Off : Uns32; Stmt : Source.Syn_Src)
+   procedure Add_Conc_Assign (Wid : Wire_Id; Val : Net; Off : Uns32)
    is
       Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
    begin
       pragma Assert (Wire_Rec.Kind /= Wire_None);
       Conc_Assign_Table.Append ((Next => Wire_Rec.Final_Assign,
                                  Value => Val,
-                                 Offset => Off,
-                                 Stmt => Stmt));
+                                 Offset => Off));
       Wire_Rec.Final_Assign := Conc_Assign_Table.Last;
       Wire_Rec.Nbr_Final_Assign := Wire_Rec.Nbr_Final_Assign + 1;
    end Add_Conc_Assign;
 
    procedure Pop_And_Merge_Phi_Wire (Ctxt : Builders.Context_Acc;
                                      Asgn_Rec : Seq_Assign_Record;
-                                     Stmt : Source.Syn_Src)
+                                     Loc : Location_Type)
    is
       Wid : constant Wire_Id := Asgn_Rec.Id;
       Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
@@ -397,8 +412,12 @@ package body Synth.Environment is
             raise Internal_Error;
          when True =>
             --  Create a net.  No inference to do.
-            Res := Synth.Context.Get_Memtyp_Net (Ctxt, Asgn_Rec.Val.Val);
-            Add_Conc_Assign (Wid, Res, 0, Stmt);
+            Res := Static_To_Net (Ctxt, Asgn_Rec.Val.Val);
+            if Wire_Rec.Kind = Wire_Enable then
+               Connect (Get_Input (Get_Net_Parent (Outport), 0), Res);
+            else
+               Add_Conc_Assign (Wid, Res, 0);
+            end if;
          when False =>
             P := Asgn_Rec.Val.Asgns;
             pragma Assert (P /= No_Partial_Assign);
@@ -408,22 +427,23 @@ package body Synth.Environment is
                     Partial_Assign_Table.Table (P);
                begin
                   if Synth.Flags.Flag_Debug_Noinference then
-                     Res := Pa.Value;
+                     Add_Conc_Assign (Wid, Pa.Value, Pa.Offset);
                   elsif Wire_Rec.Kind = Wire_Enable then
                      --  Possibly infere a idff/iadff.
                      pragma Assert (Pa.Offset = 0);
+                     pragma Assert (Pa.Next = No_Partial_Assign);
                      Res := Inference.Infere_Assert
-                       (Ctxt, Pa.Value, Outport, Stmt);
+                       (Ctxt, Pa.Value, Outport, Loc);
+                     Connect (Get_Input (Get_Net_Parent (Outport), 0), Res);
                   else
                      --  Note: lifetime is currently based on the kind of the
                      --   wire (variable -> not reused beyond this process).
                      --   This is OK for vhdl but not general.
                      Res := Inference.Infere
-                       (Ctxt, Pa.Value, Pa.Offset, Outport, Stmt,
+                       (Ctxt, Pa.Value, Pa.Offset, Outport, Loc,
                         Wire_Rec.Kind = Wire_Variable);
+                     Add_Conc_Assign (Wid, Res, Pa.Offset);
                   end if;
-
-                  Add_Conc_Assign (Wid, Res, Pa.Offset, Stmt);
                   P := Pa.Next;
                end;
             end loop;
@@ -433,12 +453,13 @@ package body Synth.Environment is
    --  This procedure is called after each concurrent statement to assign
    --  values to signals.
    procedure Pop_And_Merge_Phi (Ctxt : Builders.Context_Acc;
-                                Stmt : Source.Syn_Src)
+                                Loc : Location_Type)
    is
       Phi : Phi_Type;
       Asgn : Seq_Assign;
    begin
       Pop_Phi (Phi);
+      --  Must be the last phi.
       pragma Assert (Phis_Table.Last = No_Phi_Id);
 
       --  It is possible that the same value is assigned to different targets.
@@ -518,7 +539,7 @@ package body Synth.Environment is
          declare
             Asgn_Rec : Seq_Assign_Record renames Assign_Table.Table (Asgn);
          begin
-            Pop_And_Merge_Phi_Wire (Ctxt, Asgn_Rec, Stmt);
+            Pop_And_Merge_Phi_Wire (Ctxt, Asgn_Rec, Loc);
             Asgn := Asgn_Rec.Chain;
          end;
       end loop;
@@ -561,6 +582,80 @@ package body Synth.Environment is
          end;
       end loop;
    end Propagate_Phi_Until_Mark;
+
+   --  Adjust connections to NEW_OUTPORT, the new output of a wire gate.
+   --  OUTPORT is the old outport.
+   --  Used just below when an initialization is found.
+   procedure Add_Init_Input (Outport : Net; New_Outport : Net)
+   is
+      Gate : constant Instance := Get_Net_Parent (Outport);
+      Inp : constant Input := Get_Input (Gate, 0);
+      New_Gate : constant Instance := Get_Net_Parent (New_Outport);
+      Drv : Net;
+   begin
+      Set_Location (New_Gate, Get_Location (Gate));
+      Redirect_Inputs (Outport, New_Outport);
+      Drv := Get_Driver (Inp);
+      if Drv /= No_Net then
+         Disconnect (Inp);
+         Connect (Get_Input (New_Gate, 0), Drv);
+      end if;
+   end Add_Init_Input;
+
+   procedure Pop_And_Merge_Initial_Phi (Ctxt : Builders.Context_Acc;
+                                        Loc : Location_Type)
+   is
+      pragma Unreferenced (Loc);
+      Phi : Phi_Type;
+      Asgn : Seq_Assign;
+   begin
+      Pop_Phi (Phi);
+      --  Must be the last phi.
+      pragma Assert (Phis_Table.Last = No_Phi_Id);
+
+      Asgn := Phi.First;
+      while Asgn /= No_Seq_Assign loop
+         declare
+            use Netlists.Gates;
+            Asgn_Rec : Seq_Assign_Record renames Assign_Table.Table (Asgn);
+            pragma Assert (Asgn_Rec.Val.Is_Static = True);
+
+            Wid : constant Wire_Id := Asgn_Rec.Id;
+            Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
+            Outport : constant Net := Wire_Rec.Gate;
+            --  Must be connected to an Id_Output or Id_Signal
+            pragma Assert (Outport /= No_Net);
+            Gate : constant Instance := Get_Net_Parent (Outport);
+            New_Outport : Net;
+            Val : Net;
+         begin
+            Val := Static_To_Net (Ctxt, Asgn_Rec.Val.Val);
+            case Get_Id (Gate) is
+               when Id_Output =>
+                  --  Transform to Id_Ioutput.
+                  New_Outport := Build_Ioutput (Ctxt, Val);
+                  Add_Init_Input (Outport, New_Outport);
+                  Wire_Rec.Gate := New_Outport;
+
+                  --  Unset kind so that it can be set in normal processes.
+                  Wire_Rec.Kind := Wire_Unset;
+               when Id_Signal =>
+                  --  Transform to Id_Isignal
+                  New_Outport := Build_Isignal
+                    (Ctxt, Get_Instance_Name (Gate), Val);
+                  Add_Init_Input (Outport, New_Outport);
+                  Wire_Rec.Gate := New_Outport;
+
+                  --  Unset kind so that it can be set in normal processes.
+                  Wire_Rec.Kind := Wire_Unset;
+
+               when others =>
+                  raise Internal_Error;
+            end case;
+            Asgn := Asgn_Rec.Chain;
+         end;
+      end loop;
+   end Pop_And_Merge_Initial_Phi;
 
    --  Merge sort of conc_assign by offset.
    function Le_Conc_Assign (Left, Right : Conc_Assign) return Boolean is
@@ -695,149 +790,6 @@ package body Synth.Environment is
         and then Is_Tribuf_Net (N_Val);
    end Is_Tribuf_Assignment;
 
-   function Info_Subrange_Vhdl (Off : Width; Wd : Width; Bnd: Bound_Type)
-                               return String
-   is
-      function Image (V : Int32) return String
-      is
-         Res : constant String := Int32'Image (V);
-      begin
-         if V >= 0 then
-            return Res (2 .. Res'Last);
-         else
-            return Res;
-         end if;
-      end Image;
-   begin
-      case Bnd.Dir is
-         when Dir_To =>
-            if Wd = 1 then
-               return Image (Bnd.Right - Int32 (Off));
-            else
-               return Image (Bnd.Left + Int32 (Bnd.Len - (Off + Wd)))
-                 & " to "
-                 & Image (Bnd.Right - Int32 (Off));
-            end if;
-         when Dir_Downto =>
-            if Wd = 1 then
-               return Image (Bnd.Right + Int32 (Off));
-            else
-               return Image (Bnd.Left - Int32 (Bnd.Len - (Off + Wd)))
-                 & " downto "
-                 & Image (Bnd.Right + Int32 (Off));
-            end if;
-      end case;
-   end Info_Subrange_Vhdl;
-
-   procedure Info_Subnet_Vhdl (Loc    : Location_Type;
-                               Prefix : String;
-                               Otype  : Vhdl.Nodes.Node;
-                               Typ    : Type_Acc;
-                               Off    : Width;
-                               Wd     : Width) is
-   begin
-      case Typ.Kind is
-         when Type_Bit
-            | Type_Logic
-            | Type_Discrete
-            | Type_Float =>
-            pragma Assert (Wd = Typ.W);
-            pragma Assert (Off = 0);
-            Info_Msg_Synth (+Loc, "  " & Prefix);
-         when Type_File
-            | Type_Protected
-            | Type_Access
-            | Type_Unbounded_Array
-            | Type_Unbounded_Record
-            | Type_Unbounded_Vector =>
-            raise Internal_Error;
-         when Type_Vector =>
-            pragma Assert (Wd <= Typ.W);
-            if Off = 0 and Wd = Typ.W then
-               Info_Msg_Synth (+Loc, "  " & Prefix);
-            else
-               Info_Msg_Synth
-                 (+Loc,
-                  "  " & Prefix
-                    & "(" & Info_Subrange_Vhdl (Off, Wd, Typ.Vbound) & ")");
-            end if;
-         when Type_Slice
-            | Type_Array =>
-            Info_Msg_Synth (+Loc, "  " & Prefix & "(??)");
-         when Type_Record =>
-            declare
-               use Vhdl.Nodes;
-               Els : constant Iir_Flist :=
-                 Get_Elements_Declaration_List (Otype);
-            begin
-               for I in Typ.Rec.E'Range loop
-                  declare
-                     El : Rec_El_Type renames Typ.Rec.E (I);
-                     Field : constant Vhdl.Nodes.Node :=
-                       Get_Nth_Element (Els, Natural (I - 1));
-                     Sub_Off : Uns32;
-                     Sub_Wd : Width;
-                  begin
-                     if Off + Wd <= El.Boff then
-                        --  Not covered anymore.
-                        exit;
-                     elsif Off >= El.Boff + El.Typ.W then
-                        --  Not yet covered.
-                        null;
-                     elsif Off <= El.Boff
-                       and then Off + Wd >= El.Boff + El.Typ.W
-                     then
-                        --  Fully covered.
-                        Info_Msg_Synth
-                          (+Loc,
-                           "  " & Prefix & '.'
-                             & Vhdl.Utils.Image_Identifier (Field));
-                     else
-                        --  Partially covered.
-                        if Off < El.Boff then
-                           Sub_Off := 0;
-                           Sub_Wd := Wd - (El.Boff - Off);
-                           Sub_Wd := Width'Min (Sub_Wd, El.Typ.W);
-                        else
-                           Sub_Off := Off - El.Boff;
-                           Sub_Wd := El.Typ.W - (Off - El.Boff);
-                           Sub_Wd := Width'Min (Sub_Wd, Wd);
-                        end if;
-                        Info_Subnet_Vhdl
-                          (+Loc,
-                           Prefix & '.' & Vhdl.Utils.Image_Identifier (Field),
-                           Get_Type (Field), El.Typ, Sub_Off, Sub_Wd);
-                     end if;
-                  end;
-               end loop;
-            end;
-      end case;
-   end Info_Subnet_Vhdl;
-
-   procedure Info_Subnet
-     (Decl : Vhdl.Nodes.Node; Typ : Type_Acc; Off : Width; Wd : Width)
-   is
-      Loc : Location_Type;
-   begin
-      if Typ = null then
-         --  Type is unknown, cannot display more infos.
-         return;
-      end if;
-
-      if Off = 0 and Wd = Typ.W then
-         --  Whole object, no need to give details.
-         --  TODO: just say it ?
-         return;
-      end if;
-
-      Loc := Vhdl.Nodes.Get_Location (Decl);
-      Info_Msg_Synth (+Loc, " this concerns these parts of the signal:");
-      Info_Subnet_Vhdl (Loc,
-                        Name_Table.Image (Vhdl.Nodes.Get_Identifier (Decl)),
-                        Vhdl.Nodes.Get_Type (Decl),
-                        Typ, Off, Wd);
-   end Info_Subnet;
-
    --  Compute the VALUE to be assigned to WIRE_REC.  Handle partial
    --  assignment, multiple assignments and error cases.
    procedure Finalize_Complex_Assignment (Ctxt : Builders.Context_Acc;
@@ -880,23 +832,14 @@ package body Synth.Environment is
             Asgn := Get_Conc_Chain (Asgn);
          elsif Next_Off > Expected_Off then
             --  There is an hole.
-            if Next_Off = Expected_Off + 1 then
-               Warning_Msg_Synth
-                 (+Wire_Rec.Decl, "no assignment for offset %v of %n",
-                  (1 => +Expected_Off, 2 => +Wire_Rec.Decl));
-            else
-               Warning_Msg_Synth
-                 (+Wire_Rec.Decl, "no assignment for offsets %v:%v of %n",
-                  (+Expected_Off, +(Next_Off - 1), +Wire_Rec.Decl));
-            end if;
+            Warning_No_Assignment (Wire_Rec.Decl, Expected_Off, Next_Off - 1);
 
             --  Insert conc_assign with initial value.
             --  FIXME: handle initial values.
             Conc_Assign_Table.Append
               ((Next => Asgn,
                 Value => Build_Const_Z (Ctxt, Next_Off - Expected_Off),
-                Offset => Expected_Off,
-                Stmt => Source.No_Syn_Src));
+                Offset => Expected_Off));
             New_Asgn := Conc_Assign_Table.Last;
             if Last_Asgn = No_Conc_Assign then
                First_Assign := New_Asgn;
@@ -951,13 +894,8 @@ package body Synth.Environment is
                      Overlap_Wd := Expected_Off - Next_Off;
                   end if;
 
-                  Error_Msg_Synth
-                    (+Wire_Rec.Decl,
-                     "multiple assignments for %i offsets %v:%v",
-                     (+Wire_Rec.Decl,
-                      +Next_Off, +(Next_Off + Overlap_Wd - 1)));
-                  Info_Subnet (Wire_Rec.Decl, Wire_Rec.Typ,
-                               Next_Off, Overlap_Wd);
+                  Error_Multiple_Assignments
+                    (Wire_Rec.Decl, Next_Off, Next_Off + Overlap_Wd - 1);
 
                   if Next_Off + Asgn_Wd < Expected_Off then
                      --  Remove this assignment
@@ -996,9 +934,9 @@ package body Synth.Environment is
    end Finalize_Complex_Assignment;
 
    procedure Finalize_Assignment
-     (Ctxt : Builders.Context_Acc; Wire_Rec : Wire_Id_Record)
+     (Ctxt : Builders.Context_Acc; Wid : Wire_Id)
    is
-      use Vhdl.Nodes;
+      Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
       Gate_Inst : constant Instance := Get_Net_Parent (Wire_Rec.Gate);
       Inp : constant Input := Get_Input (Gate_Inst, 0);
       Value : Net;
@@ -1007,11 +945,8 @@ package body Synth.Environment is
          when 0 =>
             --  TODO: use initial value ?
             --  TODO: fix that in synth-decls.finalize_object.
-            if Wire_Rec.Decl /= Null_Node
-              and then Wire_Rec.Kind = Wire_Output
-            then
-               Warning_Msg_Synth
-                 (+Wire_Rec.Decl, "no assignment for %n", +Wire_Rec.Decl);
+            if Wire_Rec.Kind = Wire_Output then
+               Warning_No_Assignment (Wire_Rec.Decl, 1, 0);
                if Get_Id (Gate_Inst) = Gates.Id_Iinout then
                   Value := Get_Input_Net (Gate_Inst, 1);
                else
@@ -1036,15 +971,17 @@ package body Synth.Environment is
                   Finalize_Complex_Assignment (Ctxt, Wire_Rec, Value);
                end if;
             end;
+            Wire_Rec.Final_Assign := No_Conc_Assign;
          when others =>
             --  Multiple assignments.
             Finalize_Complex_Assignment (Ctxt, Wire_Rec, Value);
+            Wire_Rec.Final_Assign := No_Conc_Assign;
       end case;
 
       Connect (Inp, Value);
    end Finalize_Assignment;
 
-   procedure Finalize_Assignments (Ctxt : Builders.Context_Acc) is
+   procedure Finalize_Wires is
    begin
       pragma Assert (Phis_Table.Last = No_Phi_Id);
       --  pragma Assert (Assign_Table.Last = No_Seq_Assign);
@@ -1053,14 +990,15 @@ package body Synth.Environment is
          declare
             Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
          begin
-            pragma Assert (Wire_Rec.Kind /= Wire_None);
-            pragma Assert (Wire_Rec.Cur_Assign = No_Seq_Assign);
-            Finalize_Assignment (Ctxt, Wire_Rec);
+            pragma Assert (Wire_Rec.Kind = Wire_None
+                             or Wire_Rec.Kind = Wire_Enable);
+            pragma Assert (Wire_Rec.Final_Assign = No_Conc_Assign);
+            null;
          end;
       end loop;
 
       Wire_Id_Table.Set_Last (No_Wire_Id);
-   end Finalize_Assignments;
+   end Finalize_Wires;
 
    --  Sort the LEN first wires of chain W (linked by Chain) in Id increasing
    --  values.  The result is assigned to FIRST and the first non-sorted wire
@@ -1138,14 +1076,14 @@ package body Synth.Environment is
    begin
       case Wid_Rec.Kind is
          when Wire_Signal | Wire_Output | Wire_Inout
-           | Wire_Variable =>
+           | Wire_Variable | Wire_Unset =>
             null;
          when Wire_Input | Wire_Enable | Wire_None =>
             raise Internal_Error;
       end case;
 
       if Asgn_Rec.Val.Is_Static = True then
-         return Synth.Context.Get_Memtyp_Net (Ctxt, Asgn_Rec.Val.Val);
+         return Static_To_Net (Ctxt, Asgn_Rec.Val.Val);
       end if;
 
       --  Cannot be empty.
@@ -1163,6 +1101,30 @@ package body Synth.Environment is
 
       return Get_Current_Assign_Value (Ctxt, Asgn_Rec.Id, 0, W);
    end Get_Assign_Value;
+
+   function Get_Gate_Value (Wid : Wire_Id) return Net
+   is
+      Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
+      pragma Assert (Wire_Rec.Kind /= Wire_None);
+   begin
+      return Wire_Rec.Gate;
+   end Get_Gate_Value;
+
+   function Get_Assigned_Value (Ctxt : Builders.Context_Acc; Wid : Wire_Id)
+                               return Net
+   is
+      Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
+      pragma Assert (Wire_Rec.Kind /= Wire_None);
+   begin
+      if Wire_Rec.Cur_Assign = No_Seq_Assign then
+         --  The variable was never assigned, so the variable value is
+         --  the initial value.
+         --  FIXME: use initial value directly ?
+         return Wire_Rec.Gate;
+      else
+         return Get_Assign_Value (Ctxt, Wire_Rec.Cur_Assign);
+      end if;
+   end Get_Assigned_Value;
 
    function Get_Current_Value (Ctxt : Builders.Context_Acc; Wid : Wire_Id)
                               return Net
@@ -1183,6 +1145,9 @@ package body Synth.Environment is
          when Wire_Signal | Wire_Output | Wire_Inout | Wire_Input
            | Wire_Enable =>
             --  For signals, always read the previous value.
+            return Wire_Rec.Gate;
+         when Wire_Unset =>
+            pragma Assert (Wire_Rec.Cur_Assign = No_Seq_Assign);
             return Wire_Rec.Gate;
          when Wire_None =>
             raise Internal_Error;
@@ -1208,7 +1173,7 @@ package body Synth.Environment is
 
       --  If the current value is static, just return it.
       if Get_Assign_Is_Static (First_Seq) then
-         return Context.Get_Partial_Memtyp_Net
+         return Partial_Static_To_Net
            (Ctxt, Get_Assign_Static_Val (First_Seq), Off, Wd);
       end if;
 
@@ -1296,7 +1261,7 @@ package body Synth.Environment is
                      end if;
                      if Get_Assign_Is_Static (Seq) then
                         --  Extract from static value.
-                        Append (Vec, Context.Get_Partial_Memtyp_Net
+                        Append (Vec, Partial_Static_To_Net
                                   (Ctxt, Get_Assign_Static_Val (Seq),
                                    Cur_Off, Cur_Wd));
                         exit;
@@ -1344,7 +1309,7 @@ package body Synth.Environment is
                null;
             when True =>
                declare
-                  P_Wd : constant Width := P (I).Val.Typ.W;
+                  P_Wd : constant Width := Get_Width (P (I).Val); --.Typ.W;
                begin
                   if Min_Off >= P_Wd then
                      --  No net can be beyond the width.
@@ -1409,8 +1374,7 @@ package body Synth.Environment is
             when Unknown =>
                null;
             when True =>
-               N (I) := Context.Get_Partial_Memtyp_Net
-                 (Ctxt, P (I).Val, Off, Wd);
+               N (I) := Partial_Static_To_Net (Ctxt, P (I).Val, Off, Wd);
             when False =>
                if Get_Partial_Offset (P (I).Asgns) <= Off then
                   declare
@@ -1438,51 +1402,6 @@ package body Synth.Environment is
          end case;
       end loop;
    end Extract_Merge_Partial_Assigns;
-
-   function Is_Assign_Value_Array_Static
-     (Wid : Wire_Id; Arr : Seq_Assign_Value_Array) return Memtyp
-   is
-      Res : Memtyp;
-      Prev_Val : Memtyp;
-   begin
-      Prev_Val := Null_Memtyp;
-      for I in Arr'Range loop
-         case Arr (I).Is_Static is
-            when False =>
-               --  A value is not static.
-               return Null_Memtyp;
-            when Unknown =>
-               if Prev_Val = Null_Memtyp then
-                  --  First use of previous value.
-                  if not Is_Static_Wire (Wid) then
-                     --  The previous value is not static.
-                     return Null_Memtyp;
-                  end if;
-                  Prev_Val := Get_Static_Wire (Wid);
-                  if Res /= Null_Memtyp then
-                     --  There is already a result.
-                     if not Is_Equal (Res, Prev_Val) then
-                        --  The previous value is different from the result.
-                        return Null_Memtyp;
-                     end if;
-                  else
-                     Res := Prev_Val;
-                  end if;
-               end if;
-            when True =>
-               if Res = Null_Memtyp then
-                  --  First value.  Keep it.
-                  Res := Arr (I).Val;
-               else
-                  if not Is_Equal (Res, Arr (I).Val) then
-                     --  Value is different.
-                     return  Null_Memtyp;
-                  end if;
-               end if;
-         end case;
-      end loop;
-      return Res;
-   end Is_Assign_Value_Array_Static;
 
    procedure Partial_Assign_Init (List : out Partial_Assign_List) is
    begin
@@ -1514,12 +1433,34 @@ package body Synth.Environment is
       end loop;
    end Merge_Partial_Assigns;
 
+   --  Sub-routine of Merge_Assigns when the net is a dyn_insert
+   --  Try to transform it to a dyn_insert_en
+   function Merge_Dyn_Insert (Ctxt : Builders.Context_Acc;
+                              Sel : Net;
+                              N1_Inst : Instance;
+                              N0 : Net) return Net
+   is
+      V : Net;
+      New_Inst : Instance;
+   begin
+      --  TODO: handle a serie of dyn_insert
+      --  TODO: also handle dyn_insert_en
+      --  TODO: negative SEL ?
+      V := Get_Input_Net (N1_Inst, 0);
+      if Same_Net (V, N0) then
+         New_Inst := Add_Enable_To_Dyn_Insert (Ctxt, N1_Inst, Sel);
+         return Get_Output (New_Inst, 0);
+      else
+         return Build_Mux2 (Ctxt, Sel, N0, Get_Output (N1_Inst, 0));
+      end if;
+   end Merge_Dyn_Insert;
+
    procedure Merge_Assigns (Ctxt : Builders.Context_Acc;
                             Wid : Wire_Id;
                             Sel : Net;
                             F_Asgns : Seq_Assign_Value;
                             T_Asgns : Seq_Assign_Value;
-                            Stmt : Source.Syn_Src)
+                            Loc : Location_Type)
    is
       use Netlists.Gates;
       use Netlists.Gates_Ports;
@@ -1552,18 +1493,25 @@ package body Synth.Environment is
          end loop;
 
          --  Possible optimizations:
-         --  if C1 then            _          _                 _
-         --    if C2 then      R0-|0\     R0-|0\           R0 -|0\
-         --      R := V;   ==>    |  |--+    |  |- R   ==>     |  |- R
-         --    end if;          V-|_/   +----|_/             V-|_/
-         --  end if;               C1        C2                C1.C2
+         --  if C1 then            _               _                 _
+         --    if C2 then      R0-|0\          R0-|0\           R0 -|0\
+         --      R := V;   ==>    |  |-- T --+    |  |- R   ==>     |  |- R
+         --    end if;          V-|_/        +----|_/             V-|_/
+         --  end if;               C2              C1                C1.C2
+         --
+         --  Note:  N (0) ~ R0,  N (1) ~ T = first mux input
          --
          --  This really helps inference as the net R0 doesn't have to be
          --  walked twice (in absence of memoization).
+         --  This optimization is not performed if T is used.  This check is
+         --  not really necessary as if T is assigned it will also be handled
+         --  in this procedure and will be muxed by C1.  But this simplifies
+         --  memory handling.
 
          --  Build mux.
          N1_Inst := Get_Net_Parent (N (1));
          if Get_Id (N1_Inst) = Id_Mux2
+           and then not Is_Connected (N (1))
            and then Same_Net (Get_Driver (Get_Mux2_I0 (N1_Inst)), N (0))
          then
             declare
@@ -1579,15 +1527,20 @@ package body Synth.Environment is
                   Res := N1_Net;
                   Disconnect (N1_Sel);
                   N1_Sel_Net := Build_Dyadic (Ctxt, Id_And, Sel, N1_Sel_Net);
-                  Set_Location (N1_Sel_Net, Stmt);
+                  Set_Location (N1_Sel_Net, Loc);
                   Connect (N1_Sel, N1_Sel_Net);
                else
                   Res := Build_Dyadic (Ctxt, Id_And, Sel, N1_Sel_Net);
-                  Set_Location (Res, Stmt);
+                  Set_Location (Res, Loc);
                   Res := Build_Mux2
                     (Ctxt, Res, N (0), Get_Driver (Get_Mux2_I1 (N1_Inst)));
                end if;
             end;
+         elsif not Flags.Flag_Debug_Nomemory1
+           and then Get_Id (N1_Inst) = Id_Dyn_Insert
+           and then not Is_Connected (N (1))
+         then
+            Res := Merge_Dyn_Insert (Ctxt, Sel, N1_Inst, N (0));
          elsif N (0) = N (1) then
             --  Minor optimization: no need to add a mux if both sides are
             --  equal.  But this is important for the control wires.
@@ -1595,7 +1548,7 @@ package body Synth.Environment is
          else
             Res := Build_Mux2 (Ctxt, Sel, N (0), N (1));
          end if;
-         Set_Location (Res, Stmt);
+         Set_Location (Res, Loc);
 
          --  Keep the result in a list.
          Pasgn := New_Partial_Assign (Res, Off);
@@ -1613,7 +1566,7 @@ package body Synth.Environment is
    function Merge_Static_Assigns (Wid : Wire_Id; Tv, Fv : Seq_Assign_Value)
                                  return Boolean
    is
-      Prev : Memtyp;
+      Prev : Static_Type;
    begin
       --  First case: both TV and FV are static.
       if Tv.Is_Static = True and then Fv.Is_Static = True then
@@ -1664,7 +1617,7 @@ package body Synth.Environment is
    procedure Merge_Phis (Ctxt : Builders.Context_Acc;
                          Sel : Net;
                          T, F : Phi_Type;
-                         Stmt : Source.Syn_Src)
+                         Loc : Location_Type)
    is
       T_Asgns : Seq_Assign;
       F_Asgns : Seq_Assign;
@@ -1708,7 +1661,7 @@ package body Synth.Environment is
          Merge_Partial_Assignments (Ctxt, Fv);
          Merge_Partial_Assignments (Ctxt, Tv);
          if not Merge_Static_Assigns (W, Tv, Fv) then
-            Merge_Assigns (Ctxt, W, Sel, Fv, Tv, Stmt);
+            Merge_Assigns (Ctxt, W, Sel, Fv, Tv, Loc);
          end if;
 
       end loop;
@@ -1736,8 +1689,11 @@ package body Synth.Environment is
       Phi_Append_Assign (Phis_Table.Table (Phis_Table.Last), Asgn);
    end Phi_Append_Assign;
 
-   function Phi_Enable (Ctxt : Builders.Context_Acc; Loc : Source.Syn_Src)
-                       return Net
+   function Phi_Enable (Ctxt : Builders.Context_Acc;
+                        Decl : Decl_Type;
+                        Val_0 : Static_Type;
+                        Val_1 : Static_Type;
+                        Loc : Location_Type) return Net
    is
       Last : constant Phi_Id := Phis_Table.Last;
       Wid : Wire_Id;
@@ -1756,7 +1712,7 @@ package body Synth.Environment is
       --  Cached value.
       Wid := Phis_Table.Table (Last).En;
       if Wid = No_Wire_Id then
-         Wid := Alloc_Wire (Wire_Enable, Bit_Type, Loc);
+         Wid := Alloc_Wire (Wire_Enable, Decl);
          Phis_Table.Table (Last).En := Wid;
 
          --  Create the Enable gate.
@@ -1771,13 +1727,13 @@ package body Synth.Environment is
                                Id => Wid,
                                Prev => No_Seq_Assign,
                                Chain => No_Seq_Assign,
-                               Val => (Is_Static => True, Val => Bit0)));
+                               Val => (Is_Static => True, Val => Val_0)));
          Asgn := Assign_Table.Last;
          Wire_Id_Table.Table (Wid).Cur_Assign := Asgn;
          Phi_Append_Assign (Phis_Table.Table (No_Phi_Id + 1), Asgn);
 
          --  Assign to '1'.
-         Phi_Assign_Static (Wid, Bit1);
+         Phi_Assign_Static (Wid, Val_1);
          return N;
       else
          return Get_Current_Value (Ctxt, Wid);
@@ -1986,7 +1942,7 @@ package body Synth.Environment is
                N : Net;
                Pa : Partial_Assign;
             begin
-               N := Synth.Context.Get_Memtyp_Net (Ctxt, Asgn_Rec.Val.Val);
+               N := Static_To_Net (Ctxt, Asgn_Rec.Val.Val);
                Pa := New_Partial_Assign (N, 0);
                Asgn_Rec.Val := (Is_Static => False, Asgns => Pa);
             end;
@@ -2006,7 +1962,7 @@ package body Synth.Environment is
       Phi_Assign (Ctxt, Dest, Pasgn);
    end Phi_Assign_Net;
 
-   procedure Phi_Assign_Static (Dest : Wire_Id; Val : Memtyp)
+   procedure Phi_Assign_Static (Dest : Wire_Id; Val : Static_Type)
    is
       Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Dest);
       pragma Assert (Wire_Rec.Kind /= Wire_None);
@@ -2028,22 +1984,17 @@ package body Synth.Environment is
       end if;
    end Phi_Assign_Static;
 
-   --  Return the net driving WID when it is known to be possibly constant.
-   --  Return No_Net is not constant.
    function Is_Static_Wire (Wid : Wire_Id) return Boolean
    is
       Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
    begin
-      if Wire_Rec.Kind /= Wire_Variable then
-         return False;
-      end if;
       if Wire_Rec.Cur_Assign = No_Seq_Assign then
          return False;
       end if;
       return Get_Assign_Is_Static (Wire_Rec.Cur_Assign);
    end Is_Static_Wire;
 
-   function Get_Static_Wire (Wid : Wire_Id) return Memtyp
+   function Get_Static_Wire (Wid : Wire_Id) return Static_Type
    is
       Wire_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Wid);
    begin
@@ -2052,8 +2003,7 @@ package body Synth.Environment is
 begin
    Wire_Id_Table.Append ((Kind => Wire_None,
                           Mark_Flag => False,
-                          Decl => Source.No_Syn_Src,
-                          Typ => null,
+                          Decl => <>,
                           Gate => No_Net,
                           Cur_Assign => No_Seq_Assign,
                           Final_Assign => No_Conc_Assign,
@@ -2081,7 +2031,6 @@ begin
 
    Conc_Assign_Table.Append ((Next => No_Conc_Assign,
                               Value => No_Net,
-                              Offset => 0,
-                              Stmt => Source.No_Syn_Src));
+                              Offset => 0));
    pragma Assert (Conc_Assign_Table.Last = No_Conc_Assign);
 end Synth.Environment;

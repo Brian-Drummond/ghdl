@@ -1,20 +1,18 @@
 --  Mcode back-end for ortho - mcode to X86 instructions.
 --  Copyright (C) 2006 - 2015 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 --  Instruction pass for mcode x86.
 --
@@ -1769,6 +1767,13 @@ package body Ortho_Code.X86.Insns is
                           | R_Any64
                           | Regs_R64 =>
                            Set_Expr_Reg (Stmt, R_Sib);
+                        when R_I =>
+                           Num := Get_Insn_Num;
+                           Free_Insn_Regs (Right);
+                           Set_Expr_Reg
+                             (Right, Alloc_Reg (R_Any32, Right, Num));
+                           Link_Stmt (Right);
+                           Set_Expr_Reg (Stmt, R_Sib);
                         when others =>
                            Error_Gen_Insn (Stmt, R_R);
                      end case;
@@ -2389,7 +2394,7 @@ package body Ortho_Code.X86.Insns is
       case Kind is
          when OE_Beg
            | OE_End =>
-            --  Stack offset has been explicitely changed for local variables.
+            --  Stack offset has been explicitly changed for local variables.
             null;
          when others =>
             Stack_Offset := Prev_Stack_Offset;

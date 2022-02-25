@@ -145,7 +145,7 @@ Shell
 =====
 
 Ubuntu uses `dash` instead of `bash` when a shell script is run. As a result, some functionalities, such as arrays like
-``array[1]``, are not supported. Therefore, build scripts in `dist/linux` should not use those functionalities unless
+``array[1]``, are not supported. Therefore, build scripts should not use those functionalities unless
 they are sourced in a `bash` shell. The same applies to the scripts in `testsuite`.
 
 Guidelines to edit the documentation
@@ -199,7 +199,7 @@ Guidelines to edit the documentation
             ToC entry <file1>
             file2
 
-   7) Documentation should not use “you”, “we”, …, because it’s not an interactive conversation or informal letter. It’s like a thesis, everything is structured and formal. However, to make it more friendly to newcomers, we agree to allow informal language in the section :ref:`USING:QuickStart`.
+   7) Documentation should not use “you”, “we”, …, because it’s not an interactive conversation or informal letter. It’s like a thesis, everything is structured and formal. However, to make it more friendly to newcomers, we agree to allow informal language in the Quick Start Guide.
 
    8) Please keep errors to a minimum.
 
@@ -227,7 +227,7 @@ Documentation configuration
 * Create "parts" (LaTeX terminology / chapter headlines) in navigation bar. [:ghdlsharp:`200`]
 
 * Intersphinx files [:ghdlsharp:`200`]
-	* To decompress the inventory file: `curl -s http://ghdl.readthedocs.io/en/latest/objects.inv | tail -n+5 | openssl zlib -d`. From `how-to-uncompress-zlib-data-in-unix <http://unix.stackexchange.com/questions/22834/how-to-uncompress-zlib-data-in-unix>`_.
+	* To decompress the inventory file: ``curl -s http://ghdl.github.io/ghdl/objects.inv | tail -n+5 | openssl zlib -d``. From `how-to-uncompress-zlib-data-in-unix <http://unix.stackexchange.com/questions/22834/how-to-uncompress-zlib-data-in-unix>`_.
 	* External ref and link to section::
 
 		:ref:`GHDL Roadmap <ghdl:CHANGE:Roadmap>`

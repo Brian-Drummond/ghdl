@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,12 +14,15 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
+
+with Std_Names;
 
 with Netlists.Utils; use Netlists.Utils;
 with Netlists.Gates;
+with Netlists.Locations; use Netlists.Locations;
+
+with Synth.Errors; use Synth.Errors;
 
 package body Netlists.Cleanup is
    --  Return False iff INST has no outputs (and INST is not Id_Free).
@@ -114,6 +117,35 @@ package body Netlists.Cleanup is
       end loop;
    end Remove_Unconnected_Instances;
 
+   procedure Remove_Output_Gate (Inst : Instance)
+   is
+      use Netlists.Gates;
+      Inp : constant Input := Get_Input (Inst, 0);
+      In_Drv : constant Net := Get_Driver (Inp);
+      O : constant Net := Get_Output (Inst, 0);
+   begin
+      if In_Drv = O then
+         --  Connected to itself.
+         --  TODO: convert to initial value or to X.
+         return;
+      end if;
+
+      if In_Drv /= No_Net then
+         --  Only when the output is driven.
+         Disconnect (Inp);
+         Redirect_Inputs (O, In_Drv);
+      else
+         Disconnect (Get_First_Sink (O));
+      end if;
+
+      if Get_Id (Inst) = Id_Ioutput then
+         --  Disconnect the initial value.
+         Disconnect (Get_Input (Inst, 1));
+      end if;
+
+      Remove_Instance (Inst);
+   end Remove_Output_Gate;
+
    procedure Remove_Output_Gates (M : Module)
    is
       use Netlists.Gates;
@@ -130,29 +162,10 @@ package body Netlists.Cleanup is
               |  Id_Port
               |  Id_Enable
               |  Id_Nop =>
-               declare
-                  Inp : Input;
-                  In_Drv : Net;
-                  O : Net;
-               begin
-                  Inp := Get_Input (Inst, 0);
-                  In_Drv := Get_Driver (Inp);
-                  O := Get_Output (Inst, 0);
-                  if In_Drv /= No_Net then
-                     --  Only when the output is driven.
-                     Disconnect (Inp);
-                     Redirect_Inputs (O, In_Drv);
-                  else
-                     Disconnect (Get_First_Sink (O));
-                  end if;
-
-                  if Get_Id (Inst) = Id_Ioutput then
-                     --  Disconnect the initial value.
-                     Disconnect (Get_Input (Inst, 1));
-                  end if;
-
-                  Remove_Instance (Inst);
-               end;
+               --  Keep gates with an attribute.
+               if not Has_Instance_Attribute (Inst) then
+                  Remove_Output_Gate (Inst);
+               end if;
             when others =>
                null;
          end case;
@@ -160,6 +173,62 @@ package body Netlists.Cleanup is
          Inst := Next_Inst;
       end loop;
    end Remove_Output_Gates;
+
+   function Has_Keep (Inst : Instance) return Boolean
+   is
+      Attr : Attribute;
+      Val : Pval;
+      V, V1 : Logic_32;
+   begin
+      if not Has_Instance_Attribute (Inst) then
+         return False;
+      end if;
+
+      Attr := Get_Instance_First_Attribute (Inst);
+      while Attr /= No_Attribute loop
+         if Get_Attribute_Name (Attr) = Std_Names.Name_Keep then
+            Val := Get_Attribute_Pval (Attr);
+            case Get_Attribute_Type (Attr) is
+               when Param_Pval_Boolean
+                  | Param_Pval_Vector =>
+                  pragma Assert (Get_Pval_Length (Val) = 1);
+                  return Read_Pval (Val, 0) = (1, 0);
+               when Param_Pval_String =>
+                  if Get_Pval_Length (Val) = 4 * 8 then
+                     --  Compare with "true" (case insensitive).
+                     V := Read_Pval (Val, 0);
+                     V.Val := V.Val and 16#df_df_df_df#;
+                     if V = (16#54_52_55_45#, 0) then
+                        return True;
+                     end if;
+                  elsif Get_Pval_Length (Val) = 5 * 8 then
+                     --  Compare with "false" (case insensitive).
+                     V := Read_Pval (Val, 0);
+                     V.Val := V.Val and 16#df_df_df_df#;
+                     V1 := Read_Pval (Val, 1);
+                     V1.Val := V1.Val and 16#df#;
+                     if V = (16#41_4c_53_45#, 0) and then V1 = (16#46#, 0) then
+                        return False;
+                     end if;
+                  end if;
+                  Warning_Msg_Synth
+                    (Get_Location (Inst),
+                     "keep attribute must be 'true' or 'false'");
+                  return False;
+               when Param_Invalid =>
+                  raise Internal_Error;
+               when Param_Uns32
+                  | Param_Pval_Integer
+                  | Param_Pval_Real
+                  | Param_Pval_Time_Ps =>
+                  raise Internal_Error;
+            end case;
+         end if;
+         Attr := Get_Attribute_Next (Attr);
+      end loop;
+
+      return False;
+   end Has_Keep;
 
    procedure Insert_Mark_And_Sweep (Inspect : in out Instance_Tables.Instance;
                                     Inst : Instance) is
@@ -197,6 +266,11 @@ package body Netlists.Cleanup is
                | Id_User_Parameters =>
                --  Always keep user modules.
                Insert_Mark_And_Sweep (Inspect, Inst);
+            when Id_Signal
+              | Id_Isignal =>
+               if Has_Keep (Inst) then
+                  Insert_Mark_And_Sweep (Inspect, Inst);
+               end if;
             when others =>
                null;
          end case;
@@ -272,7 +346,7 @@ package body Netlists.Cleanup is
          while Inst /= No_Instance loop
             Next_Inst := Get_Next_Instance (Inst);
             if Get_Mark_Flag (Inst) then
-               --  Instance was marked, keept it.
+               --  Instance was marked, keep it.
                Set_Mark_Flag (Inst, False);
                Append_Instance (M, Inst);
             else

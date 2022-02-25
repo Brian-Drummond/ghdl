@@ -1,50 +1,72 @@
 --  Command line options.
 --  Copyright (C) 2008 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Simple_IO;
 with Errorout; use Errorout;
 with Types; use Types;
-with Libraries;
 with Std_Names;
+with Name_Table;
+with Str_Table;
+with Libraries;
 with PSL.Nodes;
 with PSL.Dump_Tree;
+with Flags; use Flags;
+with Files_Map;
+
+with Vhdl.Nodes;
+with Vhdl.Lists;
 with Vhdl.Disp_Tree;
 with Vhdl.Scanner;
 with Vhdl.Parse;
 with Vhdl.Errors;
 with Vhdl.Back_End; use Vhdl.Back_End;
-with Flags; use Flags;
-with Files_Map;
 
 package body Options is
    procedure Initialize is
    begin
+      Name_Table.Initialize;
       Std_Names.Std_Names_Initialize;
-      Libraries.Init_Paths;
+      Str_Table.Initialize;
+      Vhdl.Lists.Initialize;
+      Vhdl.Nodes.Initialize;
+      Files_Map.Initialize;
+      Libraries.Initialize;
       PSL.Nodes.Init (Libraries.Library_Location);
       PSL.Dump_Tree.Dump_Hdl_Node := Vhdl.Disp_Tree.Disp_Tree_For_Psl'Access;
       Vhdl.Errors.Initialize;
    end Initialize;
 
+   procedure Finalize is
+   begin
+      Name_Table.Finalize;
+      Str_Table.Finalize;
+      Vhdl.Lists.Finalize;
+      Vhdl.Nodes.Finalize;
+      Files_Map.Finalize;
+      Libraries.Finalize;
+      --  TODO: finalize errors (reset counters, handlers...)
+      --  TODO: PSL
+      --  TODO: backend
+   end Finalize;
+
    function Option_Warning (Opt: String; Val : Boolean) return Option_State is
    begin
       --  Handle -Werror.
       if Opt = "error" then
+         Warning_Error (Msgid_Warning, Val);
          for I in Msgid_Warnings loop
             Warning_Error (I, Val);
          end loop;
@@ -61,7 +83,7 @@ package body Options is
                return Option_Ok;
             end if;
          end loop;
-         Error_Msg_Option ("unknown warning identifier");
+         Error_Msg_Option ("unknown warning identifier: " & Opt);
          return Option_Err;
       end if;
 
@@ -80,7 +102,7 @@ package body Options is
       end if;
 
       --  Unknown warning.
-      Error_Msg_Option ("unknown warning identifier");
+      Error_Msg_Option ("unknown warning identifier: " & Opt);
       return Option_Err;
    end Option_Warning;
 
@@ -103,7 +125,8 @@ package body Options is
             elsif Opt (7 .. 8) = "08" then
                Vhdl_Std := Vhdl_08;
             else
-               Error_Msg_Option ("unknown language standard");
+               Error_Msg_Option ("unknown language standard: " & Opt (7 ..8) &
+                                 ". Should be one of: 87, 93, 02, 08");
                return Option_Err;
             end if;
          elsif Opt'Length = 9 and then Opt (7 .. 9) = "93c" then
@@ -111,7 +134,8 @@ package body Options is
             Flag_Relaxed_Rules := True;
             Flag_Relaxed_Files87 := True;
          else
-            Error_Msg_Option ("unknown language standard");
+            Error_Msg_Option ("unknown language standard. " &
+                              "Should be one of: 87, 93, 02, 08");
             return Option_Err;
          end if;
       elsif Opt'Length = 5 and then Opt (1 .. 5) = "--ams" then

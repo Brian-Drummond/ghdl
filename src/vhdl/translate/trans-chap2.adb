@@ -1,20 +1,18 @@
 --  Iir to ortho translator.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Std_Names;
 with Vhdl.Std_Package; use Vhdl.Std_Package;
@@ -347,7 +345,7 @@ package body Trans.Chap2 is
       return True;
    end Is_Subprogram_Ortho_Function;
 
-   --  Return TRUE iif SUBPRG_BODY declares explicitely or implicitely
+   --  Return TRUE iif SUBPRG_BODY declares explicitly or implicitely
    --  (or even implicitely by translation) a subprogram.
    function Has_Nested_Subprograms (Subprg_Body : Iir) return Boolean
    is
@@ -1318,7 +1316,14 @@ package body Trans.Chap2 is
                          Mark => False,
                          Field_Node => Src.Field_Node,
                          Field_Bound => Src.Field_Bound);
-
+         when Kind_Component =>
+            Dest.all :=
+              (Kind => Kind_Component,
+               Mark => False,
+               Comp_Scope => Instantiate_Var_Scope (Src.Comp_Scope),
+               Comp_Ptr_Type => Src.Comp_Ptr_Type,
+               Comp_Link => Src.Comp_Link,
+               Comp_Rti_Const => Src.Comp_Rti_Const);
          when Kind_Package =>
             Dest.all :=
               (Kind => Kind_Package,
@@ -1565,6 +1570,12 @@ package body Trans.Chap2 is
             begin
                if Is_Valid (Bod) then
                   Translate_Package_Body (Bod);
+               else
+                  --  As an elaboration subprogram for the body is always
+                  --  needed, generate it.
+                  if not Is_Nested_Package (Inst) then
+                     Elab_Package_Body (Inst, Null_Iir);
+                  end if;
                end if;
             end;
          end if;

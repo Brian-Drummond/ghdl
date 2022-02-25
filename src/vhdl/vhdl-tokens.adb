@@ -1,20 +1,18 @@
 --  Scanner token definitions.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 package body Vhdl.Tokens is
    -- Return the name of the token.
@@ -52,13 +50,18 @@ package body Vhdl.Tokens is
          when Tok_Dot =>
             return ".";
 
+         when Tok_Block_Comment_Start =>
+            return "/*";
+         when Tok_Block_Comment_End =>
+            return "*/";
+
          when Tok_Eof =>
             return "<EOF>";
          when Tok_Newline =>
             return "<newline>";
          when Tok_Line_Comment =>
             return "<line-comment>";
-         when Tok_Block_Comment =>
+         when Tok_Block_Comment_Text =>
             return "<block-comment>";
          when Tok_Character =>
             return "<character>";
@@ -112,6 +115,9 @@ package body Vhdl.Tokens is
          -- and adding_operator
          when Tok_Ampersand =>
             return "&";
+
+         when Tok_Question_Mark =>
+            return "?";
 
          when Tok_Condition =>
             return "??";
@@ -374,6 +380,8 @@ package body Vhdl.Tokens is
             return "restrict_guarantee";
          when Tok_Sequence =>
             return "sequence";
+         when Tok_Inherit =>
+            return "inherit";
          when Tok_Vmode =>
             return "vmode";
          when Tok_Vprop =>
@@ -442,6 +450,10 @@ package body Vhdl.Tokens is
          --  PSL keywords
          when Tok_Psl_Clock =>
             return "clock";
+         when Tok_Onehot0 =>
+            return "onehot0";
+         when Tok_Onehot =>
+            return "onehot";
          when Tok_Fell =>
             return "fell";
          when Tok_Rose =>
@@ -462,6 +474,10 @@ package body Vhdl.Tokens is
             return "within";
          when Tok_Abort =>
             return "abort";
+         when Tok_Async_Abort =>
+            return "async_abort";
+         when Tok_Sync_Abort =>
+            return "sync_abort";
          when Tok_Before =>
             return "before";
          when Tok_Before_Em =>

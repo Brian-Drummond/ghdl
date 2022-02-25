@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) -  to_string subprograms.
 --  Copyright (C) 2002 - 2019 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -65,4 +63,46 @@ package Grt.To_Strings is
                         First : out Natural;
                         Value : Ghdl_I64;
                         Unit : Ghdl_I64);
+
+   type Value_Status is
+     (
+      Value_Ok,
+      Value_Err_No_Digit,  -- After sign, at start, after exponent...
+      Value_Err_Bad_Digit,
+      Value_Err_Underscore,
+      Value_Err_Bad_Base,
+      Value_Err_Bad_End_Sign,  --  Missing or mismatch
+      Value_Err_Bad_Exponent,
+      Value_Err_Trailing_Chars
+     );
+   subtype Value_Status_Error is Value_Status range
+     Value_Status'Succ (Value_Ok) .. Value_Status'Last;
+
+   type Value_I64_Result (Status : Value_Status := Value_Ok) is record
+      case Status is
+         when Value_Ok =>
+            Val : Ghdl_I64;
+         when others =>
+            Pos : Ghdl_Index_Type;
+      end case;
+   end record;
+
+   --  Convert S (INIT_POS .. LEN) to a signed integer.
+   function Value_I64 (S : Std_String_Basep;
+                       Len : Ghdl_Index_Type;
+                       Init_Pos : Ghdl_Index_Type) return Value_I64_Result;
+
+   type Value_F64_Result (Status : Value_Status := Value_Ok) is record
+      case Status is
+         when Value_Ok =>
+            Val : Ghdl_F64;
+         when others =>
+            Pos : Ghdl_Index_Type;
+      end case;
+   end record;
+
+   --  Convert S (INIT_POS .. LEN) to a floating point number.
+   function Value_F64 (S : Std_String_Basep;
+                       Len : Ghdl_Index_Type;
+                       Init_Pos : Ghdl_Index_Type) return Value_F64_Result;
 end Grt.To_Strings;

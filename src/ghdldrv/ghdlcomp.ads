@@ -1,20 +1,18 @@
 --  GHDL driver - compile commands.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with GNAT.OS_Lib; use GNAT.OS_Lib;
 with Vhdl.Nodes; use Vhdl.Nodes;
 
@@ -99,11 +97,18 @@ package Ghdlcomp is
 
    --  Load and parse FILE, put library units in the work library (without
    --  analyzing them).
-   procedure Compile_Load_File (File : String);
+   procedure Compile_Load_Vhdl_File (File : String);
 
    --  Load, parse and analyze FILE.
    function Compile_Analyze_File (File : String) return Iir;
 
    procedure Compile_Elaborate (Unit_Name : String_Access);
    procedure Compile_Run;
+
+   --  Load and parse file (without analysis).  Put units in the work library.
+   type Load_File_Acc is access procedure (File : String);
+
+   --  Hook for verilog.
+   Init_Verilog_Options : Compile_Init_Acc;
+   Load_Verilog_File : Load_File_Acc;
 end Ghdlcomp;

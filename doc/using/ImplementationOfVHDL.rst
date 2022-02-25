@@ -60,7 +60,8 @@ Shared variables were replaced by protected types in the 2000 revision of
 the VHDL standard. This modification is also known as 1076a. Note that this
 standard is not fully backward compatible with VHDL-93, since the type of a
 shared variable must now be a protected type (there was no such restriction
-before).
+before).  This incompatibility can be bypassed with the
+:option:`-frelaxed` option.
 
 Minor corrections were added by the 2002 revision of the VHDL standard. This
 revision is not fully backward compatible with VHDL-00 since, for example,
@@ -128,21 +129,21 @@ You can either use a default clock like this:
 
 .. code-block:: VHDL
 
-    default clock is rising_edge (CLK);
-    assert always
-      a -> eventually! b;
+   default clock is rising_edge (CLK);
+   assert always
+     a -> eventually! b;
 
 or use a clocked expression (note the use of parentheses):
 
-.. code-block:: VHDL
+.. code-block::
 
-    assert (always a -> next[3](b)) @rising_edge(clk);
+   assert (always a -> next[3](b)) @rising_edge(clk);
 
 
 Of course only the simple subset of PSL is allowed.
 
-Currently the built-in functions are not implemented, see `issue #662 <https://github.com/ghdl/ghdl/issues/662>`_.
-PSL functions `prev()`, `stable()`, `rose()` and `fell()` are supported with GHDL synthesis.
+Currently the built-in functions are not implemented, see :ghdlsharp:`662`.
+PSL functions `prev()`, `stable()`, `rose()`, `fell()`, `onehot()` and `onehot0()` are supported with GHDL synthesis.
 
 PSL usage
 ---------
@@ -201,7 +202,7 @@ PSL vunit files (VHDL-2008 / Synthesis only)
 
 GHDL supports vunit (Verification Unit) files.
 
-.. code-block:: VHDL
+.. code-block::
 
     vunit vunit_name (entity_name(architecture_name))
     {

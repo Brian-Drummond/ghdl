@@ -1,27 +1,26 @@
 --  PSL - Simple subset
 --  Copyright (C) 2002-2016 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
+
+with Types; use Types;
 
 with PSL.Types; use PSL.Types;
 with PSL.Errors; use PSL.Errors;
 
 package body PSL.Subsets is
-   procedure Check_Simple (N : Node)
-   is
+   procedure Check_Simple (N : Node) is
    begin
       case Get_Kind (N) is
          when N_Not_Bool =>
@@ -131,8 +130,7 @@ package body PSL.Subsets is
          when N_Name =>
             null;
          when N_Star_Repeat_Seq
-            | N_Goto_Repeat_Seq
-            | N_Equal_Repeat_Seq =>
+            | N_Plus_Repeat_Seq =>
             declare
                N2 : constant Node := Get_Sequence (N);
             begin
@@ -140,8 +138,9 @@ package body PSL.Subsets is
                   Check_Simple (N2);
                end if;
             end;
-         when N_Plus_Repeat_Seq =>
-            Check_Simple (Get_Sequence (N));
+         when N_Goto_Repeat_Seq
+            | N_Equal_Repeat_Seq =>
+            null;
          when N_Match_And_Seq
             | N_And_Seq
             | N_Or_Seq =>
@@ -171,7 +170,9 @@ package body PSL.Subsets is
          when N_Next_Event
            | N_Next_Event_A
            | N_Next_Event_E
-           | N_Abort =>
+           | N_Abort
+           | N_Async_Abort
+           | N_Sync_Abort =>
             Check_Simple (Get_Boolean (N));
             Check_Simple (Get_Property (N));
          when N_Not_Bool
@@ -191,10 +192,25 @@ package body PSL.Subsets is
          when N_True
            | N_False
            | N_Number
+           | N_Inf
            | N_EOS
            | N_HDL_Expr
            | N_HDL_Bool =>
             null;
       end case;
    end Check_Simple;
+
+   function Is_Async_Abort (N : Node) return Boolean is
+   begin
+      case Get_Kind (N) is
+         when N_Async_Abort
+            | N_Abort =>
+            return True;
+         when N_Sync_Abort =>
+            return False;
+         when others =>
+            raise Internal_Error;
+      end case;
+   end Is_Async_Abort;
+
 end PSL.Subsets;

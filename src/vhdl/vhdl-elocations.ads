@@ -1,20 +1,18 @@
 --  Extended locations for iir nodes
 --  Copyright (C) 2017 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Types; use Types;
 with Vhdl.Nodes; use Vhdl.Nodes;
@@ -53,6 +51,7 @@ package Vhdl.Elocations is
    -------------
 
    -- Iir_Kind_Association_Element_By_Expression (L1)
+   -- Iir_Kind_Association_Element_By_Name (L1)
    -- Iir_Kind_Association_Element_Open (L1)
    -- Iir_Kind_Association_Element_By_Individual (L1)
    -- Iir_Kind_Association_Element_Package (L1)
@@ -115,6 +114,8 @@ package Vhdl.Elocations is
    -- Iir_Kind_Psl_Stable (None)
    -- Iir_Kind_Psl_Rose (None)
    -- Iir_Kind_Psl_Fell (None)
+   -- Iir_Kind_Psl_Onehot (None)
+   -- Iir_Kind_Psl_Onehot0 (None)
 
    -- Iir_Kind_Signature (None)
 
@@ -123,6 +124,8 @@ package Vhdl.Elocations is
    -------------------
    --  Declarations --
    -------------------
+
+   -- Iir_Kind_Foreign_Module (None)
 
    -- Iir_Kind_Entity_Declaration (L6)
    --
@@ -276,8 +279,6 @@ package Vhdl.Elocations is
 
    -- Iir_Kind_Guard_Signal_Declaration (None)
 
-   -- Iir_Kind_Anonymous_Signal_Declaration (None)
-
    -- Iir_Kind_Signal_Attribute_Declaration (None)
 
    -- Iir_Kind_Constant_Declaration (L1)
@@ -326,6 +327,8 @@ package Vhdl.Elocations is
 
    -- Iir_Kind_Context_Reference (None)
 
+   -- Iir_Kind_PSL_Inherit_Spec (None)
+
    -----------------------
    --  type definitions --
    -----------------------
@@ -370,6 +373,8 @@ package Vhdl.Elocations is
    --   Get/Set_End_Location (Field2)
 
    -- Iir_Kind_Wildcard_Type_Definition (None)
+
+   -- Iir_Kind_Foreign_Vector_Type_Definition (None)
 
    --------------------------
    --  subtype definitions --

@@ -1,26 +1,26 @@
 --  Canonicalization pass
 --  Copyright (C) 2002, 2003, 2004, 2005, 2008 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
-with Vhdl.Errors; use Vhdl.Errors;
-with Vhdl.Utils; use Vhdl.Utils;
 with Types; use Types;
 with Flags; use Flags;
 with Name_Table;
+with Errorout; use Errorout;
+
+with Vhdl.Errors; use Vhdl.Errors;
+with Vhdl.Utils; use Vhdl.Utils;
 with Vhdl.Sem;
 with Vhdl.Sem_Inst;
 with Vhdl.Sem_Specs;
@@ -182,6 +182,8 @@ package body Vhdl.Canon is
                        (Get_Actual (El), Sensitivity_List, False);
                   when Iir_Kind_Association_Element_Open =>
                      null;
+                  when Iir_Kind_Association_Element_By_Individual =>
+                     null;
                   when others =>
                      Error_Kind ("canon_extract_sensitivity(call)", El);
                end case;
@@ -234,16 +236,15 @@ package body Vhdl.Canon is
          when Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Signal_Declaration
            | Iir_Kind_Guard_Signal_Declaration
-           | Iir_Kind_Anonymous_Signal_Declaration
            | Iir_Kinds_Signal_Attribute
            | Iir_Kind_Above_Attribute
            | Iir_Kind_External_Signal_Name =>
             --  LRM 8.1
-            --  A simple name that denotes a signal, add the longuest static
+            --  A simple name that denotes a signal, add the longest static
             --  prefix of the name to the sensitivity set;
             --
             --  An attribute name: if the designator denotes a signal
-            --  attribute, add the longuest static prefix of the name of the
+            --  attribute, add the longest static prefix of the name of the
             --  implicit signal denoted by the attribute name to the
             --  sensitivity set; [...]
             if not Is_Target then
@@ -930,10 +931,11 @@ package body Vhdl.Canon is
                Set_Chain (Assoc_El, Null_Iir);
                Chain_Append (N_Chain, Last, Assoc_El);
 
-               case Get_Kind (Assoc_El) is
+               case Iir_Kinds_Association_Element (Get_Kind (Assoc_El)) is
                   when Iir_Kind_Association_Element_Open =>
                      goto Done;
-                  when Iir_Kind_Association_Element_By_Expression =>
+                  when Iir_Kind_Association_Element_By_Expression
+                     | Iir_Kind_Association_Element_By_Name =>
                      if Get_Whole_Association_Flag (Assoc_El) then
                         goto Done;
                      end if;
@@ -944,8 +946,6 @@ package body Vhdl.Canon is
                     | Iir_Kind_Association_Element_Subprogram
                     | Iir_Kind_Association_Element_Terminal =>
                      goto Done;
-                  when others =>
-                     Error_Kind ("canon_association_chain", Assoc_El);
                end case;
             elsif Found then
                --  No more associations.
@@ -1730,16 +1730,34 @@ package body Vhdl.Canon is
 
    procedure Canon_Psl_Property_Directive (Stmt : Iir)
    is
+      use PSL.Nodes;
+      use PSL.NFAs;
       Prop : PSL_Node;
       Fa : PSL_NFA;
+      Final : NFA_State;
    begin
+      --  Rewrite (simplify) the property.
       Prop := Get_Psl_Property (Stmt);
       Prop := PSL.Rewrites.Rewrite_Property (Prop);
       Set_Psl_Property (Stmt, Prop);
 
       --  Generate the NFA.
+      case Get_Kind (Prop) is
+         when N_Async_Abort
+            | N_Sync_Abort
+            | N_Abort =>
+            Prop := Get_Property (Prop);
+            Set_PSL_Abort_Flag (Stmt, True);
+         when others =>
+            null;
+      end case;
       Fa := PSL.Build.Build_FA (Prop);
       Set_PSL_NFA (Stmt, Fa);
+
+      Final := Get_Final_State (Fa);
+      if Get_First_Dest_Edge (Final) = No_Edge then
+         Warning_Msg_Sem (Warnid_Useless, +Stmt, "property cannot fail");
+      end if;
 
       Canon_Psl_Clocked_NFA (Stmt);
       if Canon_Flag_Expressions then
@@ -1926,6 +1944,7 @@ package body Vhdl.Canon is
       if Canon_Flag_Add_Labels then
          case Get_Kind (Stmt) is
             when Iir_Kind_Psl_Declaration
+              | Iir_Kind_Psl_Default_Clock
               | Iir_Kind_Psl_Endpoint_Declaration =>
                null;
             when others =>
@@ -2335,6 +2354,7 @@ package body Vhdl.Canon is
                                                 Binding : Iir)
    is
       Aspect : Iir;
+      Ent : Iir;
    begin
       if Binding = Null_Iir then
          return;
@@ -2348,7 +2368,12 @@ package body Vhdl.Canon is
             if Get_Architecture (Aspect) /= Null_Iir then
                Add_Dependence (Top, Aspect);
             else
-               Add_Dependence (Top, Get_Design_Unit (Get_Entity (Aspect)));
+               Ent := Get_Entity (Aspect);
+               pragma Assert (Ent /= Null_Iir);
+               if Get_Kind (Ent) = Iir_Kind_Entity_Declaration then
+                  Ent := Get_Design_Unit (Ent);
+               end if;
+               Add_Dependence (Top, Ent);
             end if;
          when Iir_Kind_Entity_Aspect_Configuration =>
             Add_Dependence (Top, Get_Design_Unit (Get_Configuration (Aspect)));
@@ -2396,11 +2421,18 @@ package body Vhdl.Canon is
          if Is_Config then
             Entity_Aspect := Get_Entity_Aspect (Bind);
             Entity := Get_Entity_From_Entity_Aspect (Entity_Aspect);
-            Sem_Specs.Sem_Check_Missing_Generic_Association
-              (Get_Generic_Chain (Entity),
-               Get_Generic_Map_Aspect_Chain (Bind),
-               Null_Iir,
-               Cfg);
+            case Get_Kind (Entity) is
+               when Iir_Kind_Entity_Declaration =>
+                  Sem_Specs.Sem_Check_Missing_Generic_Association
+                    (Get_Generic_Chain (Entity),
+                     Get_Generic_Map_Aspect_Chain (Bind),
+                     Null_Iir,
+                     Cfg);
+               when Iir_Kind_Foreign_Module =>
+                  null;
+               when others =>
+                  raise Internal_Error;
+            end case;
          end if;
          return;
       else
@@ -2420,6 +2452,9 @@ package body Vhdl.Canon is
                if Is_Config and then Is_Valid (Entity) then
                   Map_Chain := Sem_Specs.Create_Default_Map_Aspect
                     (Comp, Entity, Sem_Specs.Map_Generic, Bind);
+                  --  Check all non-associated generics have a default value.
+                  Sem_Specs.Sem_Check_Missing_Generic_Association
+                    (Get_Generic_Chain (Entity), Map_Chain, Null_Iir, Bind);
                end if;
             else
                Map_Chain := Canon_Association_Chain
@@ -2513,7 +2548,8 @@ package body Vhdl.Canon is
                case Get_Kind (Assoc) is
                   when Iir_Kind_Association_Element_Open =>
                      null;
-                  when Iir_Kind_Association_Element_By_Expression =>
+                  when Iir_Kind_Association_Element_By_Expression
+                    | Iir_Kind_Association_Element_By_Name =>
                      Set_Actual (El, Sem_Inst.Copy_Tree (Get_Actual (Assoc)));
                      Set_Actual_Conversion
                        (El,
@@ -2958,46 +2994,6 @@ package body Vhdl.Canon is
                Canon_Expression (Get_Default_Value (Decl));
             end if;
 
-         when Iir_Kind_Anonymous_Signal_Declaration =>
-            if Canon_Flag_Expressions then
-               Canon_Expression (Get_Expression (Decl));
-            end if;
-            --  Create a signal assignment.
-            if Canon_Flag_Inertial_Associations then
-               declare
-                  Parent : constant Node := Get_Parent (Decl);
-                  Asgn : Iir;
-                  We : Iir;
-                  Name : Iir;
-               begin
-                  Asgn := Create_Iir
-                    (Iir_Kind_Concurrent_Simple_Signal_Assignment);
-                  Location_Copy (Asgn, Decl);
-                  Set_Parent (Asgn, Parent);
-
-                  Name := Create_Iir (Iir_Kind_Reference_Name);
-                  Location_Copy (Name, Decl);
-                  Set_Referenced_Name (Name, Decl);
-                  Set_Named_Entity (Name, Decl);
-                  Set_Type (Name, Get_Type (Decl));
-                  Set_Expr_Staticness (Name, None);
-
-                  Set_Target (Asgn, Name);
-                  Set_Delay_Mechanism (Asgn, Iir_Inertial_Delay);
-
-                  We := Create_Iir (Iir_Kind_Waveform_Element);
-                  Location_Copy (We, Decl);
-                  Set_We_Value (We, Get_Expression (Decl));
-                  Set_Expression (Decl, Null_Iir);
-
-                  Set_Waveform_Chain (Asgn, We);
-
-                  --  Prepend.
-                  Set_Chain (Asgn, Get_Concurrent_Statement_Chain (Parent));
-                  Set_Concurrent_Statement_Chain (Parent, Asgn);
-               end;
-            end if;
-
          when Iir_Kind_Iterator_Declaration =>
             null;
 
@@ -3073,33 +3069,14 @@ package body Vhdl.Canon is
       Decl : Iir;
       Prev_Decl : Iir;
       New_Decl : Iir;
-      Anon_Label : Natural;
    begin
       if Parent /= Null_Iir then
          Clear_Instantiation_Configuration (Parent);
       end if;
 
-      Anon_Label := 0;
-
       Decl := Get_Declaration_Chain (Decl_Parent);
       Prev_Decl := Null_Iir;
       while Decl /= Null_Iir loop
-         --  Give a name to anonymous signals.
-         --  Ideally it should be done in Canon_Declaration, but we need
-         --  a counter for all the declarations.
-         if Get_Kind (Decl) = Iir_Kind_Anonymous_Signal_Declaration then
-            declare
-               Str : String := "ANONYMOUS" & Natural'Image (Anon_Label);
-            begin
-               --  Note: the label starts with a capitalized
-               --  letter, to avoid any clash with user's
-               --  identifiers.
-               Str (10) := '_';
-               Set_Identifier (Decl, Name_Table.Get_Identifier (Str));
-               Anon_Label := Anon_Label + 1;
-            end;
-         end if;
-
          New_Decl := Canon_Declaration (Top, Decl, Parent);
 
          if New_Decl /= Decl then
@@ -3292,6 +3269,27 @@ package body Vhdl.Canon is
       end case;
    end Canon_Block_Configuration_Statement;
 
+   --  Recursion for Canon_Block_Configuration: canonicalize each item of a
+   --  block configuration (starting with FIRST_ITEM).
+   procedure Canon_Block_Configuration_Recurse (Top : Iir_Design_Unit;
+                                                First_Item : Iir)
+   is
+      El : Iir;
+   begin
+      El := First_Item;
+      while El /= Null_Iir loop
+         case Get_Kind (El) is
+            when Iir_Kind_Block_Configuration =>
+               Canon_Block_Configuration (Top, El);
+            when Iir_Kind_Component_Configuration =>
+               Canon_Component_Configuration (Top, El);
+            when others =>
+               Error_Kind ("canon_block_configuration_recurse", El);
+         end case;
+         El := Get_Chain (El);
+      end loop;
+   end Canon_Block_Configuration_Recurse;
+
    procedure Canon_Block_Configuration (Top : Iir_Design_Unit;
                                         Conf : Iir_Block_Configuration)
    is
@@ -3374,18 +3372,7 @@ package body Vhdl.Canon is
       Set_Configuration_Item_Chain (Conf, First_Item);
 
       --  4) Canon component configuration and block configuration (recursion).
-      El := First_Item;
-      while El /= Null_Iir loop
-         case Get_Kind (El) is
-            when Iir_Kind_Block_Configuration =>
-               Canon_Block_Configuration (Top, El);
-            when Iir_Kind_Component_Configuration =>
-               Canon_Component_Configuration (Top, El);
-            when others =>
-               Error_Kind ("canon_block_configuration", El);
-         end case;
-         El := Get_Chain (El);
-      end loop;
+      Canon_Block_Configuration_Recurse (Top, First_Item);
    end Canon_Block_Configuration;
 
    procedure Canon_Interface_List (Chain : Iir)
@@ -3425,7 +3412,8 @@ package body Vhdl.Canon is
       Item := Get_Vunit_Item_Chain (Decl);
       while Item /= Null_Iir loop
          case Get_Kind (Item) is
-            when Iir_Kind_Psl_Default_Clock =>
+            when Iir_Kind_Psl_Default_Clock
+               | Iir_Kind_PSL_Inherit_Spec =>
                null;
             when Iir_Kind_Psl_Assert_Directive =>
                Canon_Psl_Assert_Directive (Item);
@@ -3435,13 +3423,20 @@ package body Vhdl.Canon is
                Canon_Psl_Sequence_Directive (Item);
             when Iir_Kind_Psl_Cover_Directive =>
                Canon_Psl_Cover_Directive (Item);
+            when Iir_Kind_Psl_Declaration =>
+               Canon_Concurrent_Statement (Item, Unit);
             when Iir_Kind_Signal_Declaration
+               | Iir_Kind_Constant_Declaration
+               | Iir_Kind_Type_Declaration
+               | Iir_Kind_Subtype_Declaration
                | Iir_Kind_Function_Declaration
                | Iir_Kind_Procedure_Declaration
                | Iir_Kind_Function_Body
                | Iir_Kind_Procedure_Body
                | Iir_Kind_Attribute_Declaration
-               | Iir_Kind_Attribute_Specification =>
+               | Iir_Kind_Attribute_Specification
+               | Iir_Kind_Object_Alias_Declaration
+               | Iir_Kind_Non_Object_Alias_Declaration =>
                Item := Canon_Declaration (Unit, Item, Null_Iir);
             when Iir_Kinds_Concurrent_Signal_Assignment
                | Iir_Kinds_Process_Statement
@@ -3467,6 +3462,7 @@ package body Vhdl.Canon is
       end loop;
 
       Set_Configuration_Item_Chain (Blk_Cfg, First_Conf);
+      Canon_Block_Configuration_Recurse (Unit, First_Conf);
    end Canon_Psl_Verification_Unit;
 
    procedure Canonicalize (Unit: Iir_Design_Unit)
@@ -3520,6 +3516,8 @@ package body Vhdl.Canon is
          when Iir_Kind_Vmode_Declaration
            | Iir_Kind_Vprop_Declaration =>
             null;
+         when Iir_Kind_Foreign_Module =>
+            raise Internal_Error;
       end case;
    end Canonicalize;
 

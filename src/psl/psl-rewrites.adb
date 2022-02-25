@@ -161,14 +161,20 @@ package body PSL.Rewrites is
       Cnt_Lo : Uns32;
       Cnt_Hi : Uns32;
    begin
-      if Lo = Null_Node then
-         --  r[*]
-         raise Program_Error;
-      end if;
+      --  r[*]  must have been handled.
+      pragma Assert (Lo /= Null_Node);
 
       Cnt_Lo := Get_Value (Lo);
       if Hi = Null_Node then
          Cnt_Hi := Cnt_Lo;
+      elsif Get_Kind (Hi) = N_Inf then
+         --  r[*N to inf]  -->  r[*N] ; r[*]
+         if Cnt_Lo = 0 then
+            return Build_Star (Seq);
+         else
+            return Build_Concat (Rewrite_Star_Repeat_Seq (Seq, Cnt_Lo, Cnt_Lo),
+                                 Build_Star (Seq));
+         end if;
       else
          Cnt_Hi := Get_Value (Hi);
       end if;
@@ -188,12 +194,12 @@ package body PSL.Rewrites is
       end if;
    end Rewrite_Star_Repeat_Seq;
 
-   function Rewrite_Goto_Repeat_Seq (Seq : Node;
-                                     Lo, Hi : Node) return Node is
+   function Rewrite_Goto_Repeat_Seq (B : Node; Lo, Hi : Node) return Node
+   is
       Res : Node;
    begin
       --  b[->]  -->  {(~b)[*];b}
-      Res := Build_Concat (Build_Star (Build_Bool_Not (Seq)), Seq);
+      Res := Build_Concat (Build_Star (Build_Bool_Not (B)), B);
 
       if Lo = Null_Node then
          return Res;
@@ -203,12 +209,12 @@ package body PSL.Rewrites is
       return Rewrite_Star_Repeat_Seq (Res, Lo, Hi);
    end Rewrite_Goto_Repeat_Seq;
 
-   function Rewrite_Goto_Repeat_Seq (Seq : Node;
-                                     Lo, Hi : Uns32) return Node is
+   function Rewrite_Goto_Repeat_Seq (B : Node; Lo, Hi : Uns32) return Node
+   is
       Res : Node;
    begin
       --  b[->]  -->  {(~b)[*];b}
-      Res := Build_Concat (Build_Star (Build_Bool_Not (Seq)), Seq);
+      Res := Build_Concat (Build_Star (Build_Bool_Not (B)), B);
 
       --  b[->l:h]  -->  {b[->]}[*l:h]
       return Rewrite_Star_Repeat_Seq (Res, Lo, Hi);
@@ -216,13 +222,13 @@ package body PSL.Rewrites is
 
    function Rewrite_Equal_Repeat_Seq (N : Node) return Node
    is
-      Seq : constant Node := Get_Sequence (N);
+      B : constant Node := Get_Boolean (N);
       Lo : constant Node := Get_Low_Bound (N);
       Hi : constant Node := Get_High_Bound (N);
    begin
       --  b[=l:h]  -->  {b[->l:h]};(~b)[*]
-      return Build_Concat (Rewrite_Goto_Repeat_Seq (Seq, Lo, Hi),
-                           Build_Star (Build_Bool_Not (Seq)));
+      return Build_Concat (Rewrite_Goto_Repeat_Seq (B, Lo, Hi),
+                           Build_Star (Build_Bool_Not (B)));
    end Rewrite_Equal_Repeat_Seq;
 
    function Rewrite_Within (N : Node) return Node is
@@ -291,10 +297,10 @@ package body PSL.Rewrites is
             return N;
          when N_Goto_Repeat_Seq =>
             return Rewrite_Goto_Repeat_Seq
-              (Rewrite_SERE (Get_Sequence (N)),
+              (Rewrite_SERE (Get_Boolean (N)),
                Get_Low_Bound (N), Get_High_Bound (N));
          when N_Equal_Repeat_Seq =>
-            Set_Sequence (N, Rewrite_SERE (Get_Sequence (N)));
+            Set_Boolean (N, Rewrite_SERE (Get_Boolean (N)));
             return Rewrite_Equal_Repeat_Seq (N);
          when N_Braced_SERE =>
             return Rewrite_SERE (Get_SERE (N));
@@ -502,6 +508,7 @@ package body PSL.Rewrites is
       case Get_Kind (N) is
          when N_Star_Repeat_Seq
            | N_Plus_Repeat_Seq
+           | N_Equal_Repeat_Seq
            | N_Goto_Repeat_Seq
            | N_Sequence_Instance
            | N_Endpoint_Instance
@@ -582,7 +589,9 @@ package body PSL.Rewrites is
          when N_Or_Prop =>
             return Rewrite_Or (Rewrite_Property (Get_Left (N)),
                                Rewrite_Property (Get_Right (N)));
-         when N_Abort =>
+         when N_Abort
+            | N_Async_Abort
+            | N_Sync_Abort =>
             Set_Boolean (N, Rewrite_Boolean (Get_Boolean (N)));
             Set_Property (N, Rewrite_Property (Get_Property (N)));
             return N;

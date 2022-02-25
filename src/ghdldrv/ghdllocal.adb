@@ -1,20 +1,18 @@
 --  GHDL driver - local commands.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Ada.Command_Line;
 with GNAT.Directory_Operations;
@@ -35,6 +33,7 @@ with Vhdl.Scanner;
 with Vhdl.Configuration;
 with Vhdl.Utils; use Vhdl.Utils;
 with Vhdl.Prints;
+with Vhdl.Errors;
 
 package body Ghdllocal is
    --  Version of the IEEE library to use.  This just change paths.
@@ -44,18 +43,23 @@ package body Ghdllocal is
    --  If TRUE, generate 32bits code on 64bits machines.
    Flag_32bit : Boolean := False;
 
+   procedure Initialize_Flags is
+   begin
+      Flag_Ieee := Lib_Standard;
+      Flag_Verbose := False;
+   end Initialize_Flags;
+
    procedure Compile_Init is
    begin
       Options.Initialize;
-      Flag_Ieee := Lib_Standard;
-      Flag_Verbose := False;
+      Initialize_Flags;
    end Compile_Init;
 
    procedure Init (Cmd : in out Command_Lib)
    is
       pragma Unreferenced (Cmd);
    begin
-      Compile_Init;
+      Initialize_Flags;
    end Init;
 
    function Is_Generic_Override_Option (Opt : String) return Boolean
@@ -82,7 +86,6 @@ package body Ghdllocal is
       pragma Assert (Opt'First = 1);
       pragma Assert (Opt'Last >= 5);
       Eq_Pos : Natural;
-      Id : Name_Id;
    begin
       Eq_Pos := 0;
       for I in 3 .. Opt'Last loop
@@ -102,21 +105,9 @@ package body Ghdllocal is
          return Option_Err;
       end if;
 
-      declare
-         Res : String (1 .. Eq_Pos - 3) := Opt (3 .. Eq_Pos - 1);
-         Err : Boolean;
-      begin
-         Vhdl.Scanner.Convert_Identifier (Res, Err);
-         if Err then
-            Error_Msg_Option
-              ("incorrect generic name in generic override option");
-            return Option_Err;
-         end if;
-         Id := Name_Table.Get_Identifier (Res);
-      end;
-
       Vhdl.Configuration.Add_Generic_Override
-        (Id, Opt (Eq_Pos + 1 .. Opt'Last));
+        (Opt (3 .. Eq_Pos - 1), Opt (Eq_Pos + 1 .. Opt'Last));
+
       return Option_Ok;
    end Decode_Generic_Override_Option;
 
@@ -399,7 +390,7 @@ package body Ghdllocal is
       Libraries.Add_Library_Path (Path);
    end Add_Library_Name;
 
-   procedure Setup_Libraries (Load : Boolean)
+   function Setup_Libraries (Load : Boolean) return Boolean
    is
       use Flags;
    begin
@@ -410,7 +401,10 @@ package body Ghdllocal is
       end if;
 
       --  Compute Exec_Prefix.
-      Set_Exec_Prefix_From_Program_Name;
+      if Exec_Prefix = null then
+         --  Only if not already set.
+         Set_Exec_Prefix_From_Program_Name;
+      end if;
 
       --  Set prefix path.
       --  If not set by command line, try environment variable.
@@ -462,9 +456,12 @@ package body Ghdllocal is
            (Get_Machine_Path_Prefix & Directory_Separator);
       end if;
       if Load then
-         Libraries.Load_Std_Library;
+         if not Libraries.Load_Std_Library then
+            return False;
+         end if;
          Libraries.Load_Work_Library;
       end if;
+      return True;
    end Setup_Libraries;
 
    procedure Disp_Config_Prefixes is
@@ -476,7 +473,9 @@ package body Ghdllocal is
          Put_Line (Switch_Prefix_Path.all);
       end if;
 
-      Setup_Libraries (False);
+      if not Setup_Libraries (False) then
+         Put_Line ("(error while loading libraries)");
+      end if;
 
       Put ("environment prefix (GHDL_PREFIX): ");
       if Prefix_Env = null then
@@ -637,7 +636,9 @@ package body Ghdllocal is
    is
       pragma Unreferenced (Cmd);
    begin
-      Setup_Libraries (True);
+      if not Setup_Libraries (True) then
+         return;
+      end if;
 
       if Args'Length = 0 then
          Disp_Library (Std_Names.Name_Work);
@@ -701,7 +702,9 @@ package body Ghdllocal is
       Flag_Add : constant Boolean := False;
    begin
       Flags.Bootstrap := True;
-      Libraries.Load_Std_Library;
+      if not Libraries.Load_Std_Library then
+         raise Option_Error;
+      end if;
       Libraries.Load_Work_Library;
 
       for I in Args'Range loop
@@ -765,7 +768,9 @@ package body Ghdllocal is
       Next_Unit : Iir;
       Lib : Iir;
    begin
-      Setup_Libraries (True);
+      if not Setup_Libraries (True) then
+         return;
+      end if;
 
       --  Parse all files.
       for I in Args'Range loop
@@ -916,7 +921,10 @@ package body Ghdllocal is
    is
       Error_1 : Boolean;
    begin
-      Setup_Libraries (True);
+      if not Setup_Libraries (True) then
+         Error := True;
+         return;
+      end if;
 
       --  Parse all files.
       Error := False;
@@ -1015,7 +1023,9 @@ package body Ghdllocal is
 
       Flags.Bootstrap := True;
       --  Load libraries.
-      Libraries.Load_Std_Library;
+      if not Libraries.Load_Std_Library then
+         raise Option_Error;
+      end if;
       Libraries.Load_Work_Library;
 
       File := Get_Design_File_Chain (Libraries.Work_Library);
@@ -1123,8 +1133,11 @@ package body Ghdllocal is
          raise Option_Error;
       end if;
 
-      Setup_Libraries (False);
-      Libraries.Load_Std_Library;
+      if not Setup_Libraries (False)
+        or else not Libraries.Load_Std_Library
+      then
+         return;
+      end if;
       Dir := Work_Directory;
       Work_Directory := Null_Identifier;
       Libraries.Load_Work_Library;
@@ -1200,7 +1213,9 @@ package body Ghdllocal is
          raise Option_Error;
       end if;
       Flags.Bootstrap := True;
-      Libraries.Load_Std_Library;
+      if not Libraries.Load_Std_Library then
+         raise Option_Error;
+      end if;
       Vhdl.Prints.Disp_Vhdl (Vhdl.Std_Package.Std_Standard_Unit);
    end Perform_Action;
 
@@ -1238,7 +1253,9 @@ package body Ghdllocal is
       From : Iir;
       Top : Iir;
    begin
-      Setup_Libraries (True);
+      if not Setup_Libraries (True) then
+         return;
+      end if;
 
       if Args'Length = 0 then
          From := Work_Library;
@@ -1411,7 +1428,8 @@ package body Ghdllocal is
       end loop;
    end Check_No_Elab_Flag;
 
-   function Build_Dependence (Prim : Name_Id; Sec : Name_Id) return Iir_List
+   function Build_Dependence (Lib : Name_Id; Prim : Name_Id; Sec : Name_Id)
+                             return Iir_List
    is
       procedure Build_Dependence_List (File : Iir_Design_File; List : Iir_List)
       is
@@ -1489,7 +1507,7 @@ package body Ghdllocal is
       Flag_Load_All_Design_Units := True;
       Flag_Build_File_Dependence := True;
 
-      Top := Configure (Prim, Sec);
+      Top := Configure (Lib, Prim, Sec);
       if Top = Null_Iir then
          --  Error during configuration (primary unit not found).
          raise Option_Error;
@@ -1714,20 +1732,82 @@ package body Ghdllocal is
    end Convert_Name;
 
    procedure Extract_Elab_Unit (Cmd_Name : String;
+                                Auto : Boolean;
                                 Args : Argument_List;
                                 Next_Arg : out Natural;
+                                Lib_Id : out Name_Id;
                                 Prim_Id : out Name_Id;
                                 Sec_Id : out Name_Id) is
    begin
+      Next_Arg := Args'First;
+      Lib_Id := Null_Identifier;
+      Prim_Id := Null_Identifier;
+      Sec_Id := Null_Identifier;
+
       if Args'Length = 0 then
-         Error ("command '" & Cmd_Name & "' requires an unit name");
-         raise Option_Error;
+         --  No unit on the command line.
+         if not Auto then
+            Error ("command '" & Cmd_Name & "' requires an unit name");
+            raise Option_Error;
+         end if;
+
+         --  Find the top-level unit.
+         declare
+            use Errorout;
+            use Vhdl.Errors;
+            Top : Iir;
+         begin
+            Top := Vhdl.Configuration.Find_Top_Entity
+              (Libraries.Work_Library, Libraries.Command_Line_Location);
+            if Top = Null_Node then
+               Ghdlmain.Error ("no top unit found");
+               return;
+            end if;
+            Errorout.Report_Msg (Msgid_Note, Option, No_Source_Coord,
+                                 "top entity is %i", (1 => +Top));
+            if Nbr_Errors > 0 then
+               --  No need to configure if there are missing units.
+               return;
+            end if;
+            Prim_Id := Get_Identifier (Top);
+         end;
+         return;
       end if;
 
-      Prim_Id := Convert_Name (Args (Args'First).all);
-      if Prim_Id = Null_Identifier then
-         raise Option_Error;
-      end if;
+      declare
+         S : constant String_Access := Args (Args'First);
+         Dot : Natural;
+      begin
+         Lib_Id := Null_Identifier;
+
+         Dot := S'First - 1;
+         if S (S'First) /= '\' then
+            for I in S'Range loop
+               if S (I) = '.' then
+                  if I = S'First then
+                     Error ("missing library name before '.'");
+                     raise Option_Error;
+                  end if;
+                  if I = S'Last then
+                     Error ("missing primary name after '.'");
+                     raise Option_Error;
+                  end if;
+                  Dot := I;
+                  Lib_Id := Convert_Name (S (S'First .. Dot - 1));
+                  if Lib_Id = Null_Identifier then
+                     raise Option_Error;
+                  end if;
+                  exit;
+               end if;
+            end loop;
+         end if;
+
+         Prim_Id := Convert_Name (S (Dot + 1 .. S'Last));
+         if Prim_Id = Null_Identifier then
+            raise Option_Error;
+         end if;
+      end;
+
       Next_Arg := Args'First + 1;
       Sec_Id := Null_Identifier;
 
@@ -1735,7 +1815,9 @@ package body Ghdllocal is
          declare
             Sec : constant String_Access := Args (Next_Arg);
          begin
-            if Sec (Sec'First) /= '-' then
+            if Sec (Sec'First) /= '-'
+              and then Sec (Sec'First) /= '+'
+            then
                Sec_Id := Convert_Name (Sec.all);
                Next_Arg := Args'First + 2;
                if Sec_Id = Null_Identifier then
@@ -1761,9 +1843,15 @@ package body Ghdllocal is
    end Expect_Filenames;
 
    --  Command Elab_Order.
-   type Command_Elab_Order is new Command_Lib with null record;
+   type Command_Elab_Order is new Command_Lib with record
+      Flag_Libraries : Boolean := False;
+   end record;
    function Decode_Command (Cmd : Command_Elab_Order; Name : String)
                            return Boolean;
+   procedure Decode_Option (Cmd : in out Command_Elab_Order;
+                            Option : String;
+                            Arg : String;
+                            Res : out Option_State);
    function Get_Short_Help (Cmd : Command_Elab_Order) return String;
    procedure Perform_Action (Cmd : in out Command_Elab_Order;
                              Args : Argument_List);
@@ -1781,10 +1869,25 @@ package body Ghdllocal is
    is
       pragma Unreferenced (Cmd);
    begin
-      return "elab-order [OPTS] UNIT [ARCH]"
+      return "elab-order [--libraries] [OPTS] UNIT [ARCH]"
         & ASCII.LF & "  Display ordered source files"
         & ASCII.LF & "  alias: --elab-order";
    end Get_Short_Help;
+
+   procedure Decode_Option (Cmd : in out Command_Elab_Order;
+                            Option : String;
+                            Arg : String;
+                            Res : out Option_State)
+   is
+      pragma Assert (Option'First = 1);
+   begin
+      if Option = "--libraries" then
+         Cmd.Flag_Libraries := True;
+         Res := Option_Ok;
+      else
+         Decode_Option (Command_Lib (Cmd), Option, Arg, Res);
+      end if;
+   end Decode_Option;
 
    function Is_Makeable_File (File : Iir_Design_File) return Boolean is
    begin
@@ -1797,9 +1900,9 @@ package body Ghdllocal is
    procedure Perform_Action (Cmd : in out Command_Elab_Order;
                              Args : Argument_List)
    is
-      pragma Unreferenced (Cmd);
       use Name_Table;
 
+      Lib_Id : Name_Id;
       Prim_Id : Name_Id;
       Sec_Id : Name_Id;
       Files_List : Iir_List;
@@ -1810,9 +1913,14 @@ package body Ghdllocal is
 
       Next_Arg : Natural;
    begin
-      Extract_Elab_Unit ("--elab-order", Args, Next_Arg, Prim_Id, Sec_Id);
-      Setup_Libraries (True);
-      Files_List := Build_Dependence (Prim_Id, Sec_Id);
+      Extract_Elab_Unit
+        ("--elab-order", True, Args, Next_Arg, Lib_Id, Prim_Id, Sec_Id);
+      if Prim_Id = Null_Identifier
+        or else not Setup_Libraries (True)
+      then
+         return;
+      end if;
+      Files_List := Build_Dependence (Lib_Id, Prim_Id, Sec_Id);
 
       Files_It := List_Iterate (Files_List);
       while Is_Valid (Files_It) loop
@@ -1824,7 +1932,10 @@ package body Ghdllocal is
             --  Builtin file.
             null;
          else
-            --  Lib := Get_Library (File);
+            if Cmd.Flag_Libraries then
+               Put (Image (Get_Identifier (Get_Library (File))));
+               Put (' ');
+            end if;
             Put (Image (Get_Design_File_Filename (File)));
             New_Line;
          end if;

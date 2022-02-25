@@ -1,25 +1,25 @@
 --  Common operations on nodes.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Name_Table;
 with Str_Table;
 with Std_Names; use Std_Names;
 with Flags;
+with Files_Map;
+
 with Vhdl.Std_Package;
 with Vhdl.Errors; use Vhdl.Errors;
 with PSL.Nodes;
@@ -191,7 +191,7 @@ package body Vhdl.Utils is
       end case;
    end Get_Operator_Name;
 
-   function Get_Longuest_Static_Prefix (Expr: Iir) return Iir
+   function Get_Longest_Static_Prefix (Expr: Iir) return Iir
    is
       Adecl: Iir;
    begin
@@ -206,7 +206,6 @@ package body Vhdl.Utils is
                return Adecl;
             when Iir_Kind_Signal_Declaration
               | Iir_Kind_Guard_Signal_Declaration
-              | Iir_Kind_Anonymous_Signal_Declaration
               | Iir_Kind_Interface_Signal_Declaration =>
                return Adecl;
             when Iir_Kind_Object_Alias_Declaration =>
@@ -227,10 +226,10 @@ package body Vhdl.Utils is
             when Iir_Kind_Type_Conversion =>
                return Null_Iir;
             when others =>
-               Error_Kind ("get_longuest_static_prefix", Adecl);
+               Error_Kind ("get_longest_static_prefix", Adecl);
          end case;
       end loop;
-   end Get_Longuest_Static_Prefix;
+   end Get_Longest_Static_Prefix;
 
    function Get_Object_Prefix (Name: Iir; With_Alias : Boolean := True)
                               return Iir
@@ -303,6 +302,7 @@ package body Vhdl.Utils is
                | Iir_Kind_Library_Clause
                | Iir_Kind_Use_Clause
                | Iir_Kind_Context_Reference
+               | Iir_Kind_PSL_Inherit_Spec
                | Iir_Kind_Library_Declaration
                | Iir_Kinds_Library_Unit
                | Iir_Kind_Component_Declaration
@@ -315,13 +315,13 @@ package body Vhdl.Utils is
                | Iir_Kind_Subnature_Declaration
                | Iir_Kinds_Type_Declaration
                | Iir_Kinds_Type_And_Subtype_Definition
+               | Iir_Kind_Foreign_Vector_Type_Definition
                | Iir_Kinds_Nature_Definition
                | Iir_Kinds_Subnature_Definition
                | Iir_Kind_Wildcard_Type_Definition
                | Iir_Kind_Subtype_Definition
                | Iir_Kind_Group_Template_Declaration
                | Iir_Kind_Group_Declaration
-               | Iir_Kind_Anonymous_Signal_Declaration
                | Iir_Kind_Signal_Attribute_Declaration
                | Iir_Kind_Unaffected_Waveform
                | Iir_Kind_Waveform_Element
@@ -350,6 +350,8 @@ package body Vhdl.Utils is
                | Iir_Kind_Psl_Stable
                | Iir_Kind_Psl_Rose
                | Iir_Kind_Psl_Fell
+               | Iir_Kind_Psl_Onehot
+               | Iir_Kind_Psl_Onehot0
                | Iir_Kind_If_Generate_Else_Clause
                | Iir_Kind_Elsif
                | Iir_Kind_Simultaneous_Elsif
@@ -361,6 +363,7 @@ package body Vhdl.Utils is
                | Iir_Kind_Nature_Element_Declaration
                | Iir_Kind_Psl_Endpoint_Declaration
                | Iir_Kind_Psl_Declaration
+               | Iir_Kind_Psl_Default_Clock
                | Iir_Kind_Package_Pathname
                | Iir_Kind_Absolute_Pathname
                | Iir_Kind_Relative_Pathname
@@ -390,7 +393,6 @@ package body Vhdl.Utils is
            | Iir_Kind_Variable_Declaration
            | Iir_Kind_File_Declaration
            | Iir_Kind_Constant_Declaration
-           | Iir_Kind_Anonymous_Signal_Declaration
            | Iir_Kind_Free_Quantity_Declaration
            | Iir_Kind_Across_Quantity_Declaration
            | Iir_Kind_Through_Quantity_Declaration =>
@@ -516,7 +518,6 @@ package body Vhdl.Utils is
          when Iir_Kind_Signal_Declaration
            | Iir_Kind_Interface_Signal_Declaration
            | Iir_Kind_Guard_Signal_Declaration
-           | Iir_Kind_Anonymous_Signal_Declaration
            | Iir_Kinds_Signal_Attribute =>
             return True;
          when Iir_Kind_Object_Alias_Declaration =>
@@ -711,6 +712,7 @@ package body Vhdl.Utils is
       end if;
 
       pragma Assert (Kind_In (Unit, Iir_Kind_Design_Unit,
+                              Iir_Kind_Foreign_Module,
                               Iir_Kind_Entity_Aspect_Entity));
 
       Add_Element (Get_Dependence_List (Target), Unit);
@@ -943,7 +945,7 @@ package body Vhdl.Utils is
             Free_Recursive_Flist (Get_Index_List (N));
             Free_Recursive (Get_Base_Type (N));
          when Iir_Kind_Entity_Aspect_Entity =>
-            Free_Recursive (Get_Entity (N));
+            Free_Recursive (Get_Entity_Name (N));
             Free_Recursive (Get_Architecture (N));
          when others =>
             Error_Kind ("free_recursive", Node);
@@ -1013,6 +1015,7 @@ package body Vhdl.Utils is
                | Iir_Kind_Incomplete_Type_Definition
                | Iir_Kind_Interface_Type_Definition
                | Iir_Kind_Wildcard_Type_Definition
+               | Iir_Kind_Foreign_Vector_Type_Definition
                | Iir_Kind_Error =>
                return Res;
             when Iir_Kind_Access_Subtype_Definition
@@ -1038,6 +1041,11 @@ package body Vhdl.Utils is
    begin
       return Get_Nature_Declarator (Def) = Null_Iir;
    end Is_Anonymous_Nature_Definition;
+
+   function Is_Array_Type (Def : Iir) return Boolean is
+   begin
+      return Get_Kind (Def) in Iir_Kinds_Array_Type_Definition;
+   end Is_Array_Type;
 
    function Is_Fully_Constrained_Type (Def : Iir) return Boolean is
    begin
@@ -1081,11 +1089,16 @@ package body Vhdl.Utils is
             | Iir_Kind_Interface_Variable_Declaration
             | Iir_Kind_Interface_Signal_Declaration
             | Iir_Kind_Object_Alias_Declaration =>
-            if (Get_Kind (Get_Subtype_Indication (Base))
-                = Iir_Kind_Subtype_Attribute)
-            then
-               return True;
-            end if;
+            declare
+               Ind : constant Iir := Get_Subtype_Indication (Base);
+            begin
+               --  Note: an object alias may not have subtype indication.
+               if Ind /= Null_Iir
+                 and then Get_Kind (Ind) = Iir_Kind_Subtype_Attribute
+               then
+                  return True;
+               end if;
+            end;
          when Iir_Kind_Dereference
             | Iir_Kind_Implicit_Dereference =>
             null;
@@ -1174,7 +1187,8 @@ package body Vhdl.Utils is
                   return Get_Type_Definition (Ent);
                when Iir_Kind_Subtype_Declaration
                  | Iir_Kind_Base_Attribute
-                 | Iir_Kind_Subtype_Attribute =>
+                 | Iir_Kind_Subtype_Attribute
+                 | Iir_Kind_Element_Attribute =>
                   return Get_Type (Ent);
                when others =>
                   return Null_Iir;
@@ -1194,6 +1208,7 @@ package body Vhdl.Utils is
          when Iir_Kinds_Subtype_Definition =>
             return Ind;
          when Iir_Kind_Subtype_Attribute
+           | Iir_Kind_Element_Attribute
            | Iir_Kind_Across_Attribute
            | Iir_Kind_Through_Attribute =>
             return Get_Type (Ind);
@@ -1496,12 +1511,12 @@ package body Vhdl.Utils is
       Name : constant Iir := Get_Entity_Name (Decl);
       Res : constant Iir := Get_Named_Entity (Name);
    begin
-      if Res = Vhdl.Std_Package.Error_Mark then
+      if Res = Null_Iir or else Res = Vhdl.Std_Package.Error_Mark then
          return Null_Iir;
       end if;
 
-      pragma Assert (Res = Null_Iir
-                       or else Get_Kind (Res) = Iir_Kind_Entity_Declaration);
+      pragma Assert (Kind_In (Res, Iir_Kind_Entity_Declaration,
+                              Iir_Kind_Foreign_Module));
       return Res;
    end Get_Entity;
 
@@ -1835,6 +1850,13 @@ package body Vhdl.Utils is
       return K = K1 or K = K2;
    end Kind_In;
 
+   function Kind_In (N : Iir; K1, K2, K3 : Iir_Kind) return Boolean
+   is
+      K : constant Iir_Kind := Get_Kind (N);
+   begin
+      return K = K1 or K = K2 or K = K3;
+   end Kind_In;
+
    procedure Set_Attribute_Parameter
      (Attr : Iir; N : Parameter_Index; Param : Iir) is
    begin
@@ -1965,6 +1987,23 @@ package body Vhdl.Utils is
             Error_Kind ("get_file_signature", Def);
       end case;
    end Get_File_Signature;
+
+   function Get_Source_Identifier (Decl : Iir) return Name_Id
+   is
+      use Files_Map;
+      use Name_Table;
+      Loc : constant Location_Type := Get_Location (Decl);
+      Len : constant Natural := Get_Name_Length (Get_Identifier (Decl));
+      subtype Ident_Str is String (1 .. Len);
+      File : Source_File_Entry;
+      Pos : Source_Ptr;
+      Buf : File_Buffer_Acc;
+   begin
+      Location_To_File_Pos (Loc, File, Pos);
+      Buf := Get_File_Source (File);
+      return Get_Identifier
+        (Ident_Str (Buf (Pos .. Pos + Source_Ptr (Len - 1))));
+   end Get_Source_Identifier;
 
    function Get_HDL_Node (N : PSL_Node) return Iir is
    begin

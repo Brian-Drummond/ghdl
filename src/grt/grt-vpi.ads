@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) - VPI interface.
 --  Copyright (C) 2002 - 2014 Tristan Gingold & Felix Bertram
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 -- Description: VPI interface for GRT runtime
 --              the main purpose of this code is to interface with the
@@ -29,8 +27,7 @@ with Grt.Vcd;
 with Grt.Callbacks;
 
 package Grt.Vpi is
-
-   --  Properties, see vpi_user.h
+   --  Properties and objects, see vpi_user.h
    vpiUndefined :     constant Integer := -1;
    vpiType :          constant Integer :=  1;
    vpiName :          constant Integer :=  2;
@@ -47,11 +44,6 @@ package Grt.Vpi is
    vpiScalar :        constant Integer := 17;
    vpiVector :        constant Integer := 18;
 
-   -- object codes, see vpi_user.h
-   vpiModule :        constant Integer := 32;
-   vpiNet :           constant Integer := 36;
-   vpiPort :          constant Integer := 44;
-   --
    vpiDirection :     constant Integer := 20;
    vpiInput :         constant Integer :=  1;
    vpiOutput :        constant Integer :=  2;
@@ -59,12 +51,33 @@ package Grt.Vpi is
    vpiMixedIO :       constant Integer :=  4;
    vpiNoDirection :   constant Integer :=  5;
 
+   vpiIntegerVar :    constant Integer := 25;
+   vpiMemory :        constant Integer := 29;
+   vpiModPath :       constant Integer := 31;
+   vpiModule :        constant Integer := 32;
+   vpiNamedEvent :    constant Integer := 34;
+   vpiNet :           constant Integer := 36;
    vpiParameter :     constant Integer := 41;
+   vpiPort :          constant Integer := 44;
+   vpiRealVar :       constant Integer := 47;
+   vpiReg :           constant Integer := 48;
+   vpiTchk :          constant Integer := 61;
+
    vpiLeftRange :     constant Integer := 79;
    vpiRightRange :    constant Integer := 83;
    vpiScope :         constant Integer := 84;
    vpiInternalScope : constant Integer := 92;
+   vpiProcess :       constant Integer := 92;
 
+   vpiPrimitive :       constant Integer := 103;
+   vpiAttribute :       constant Integer := 105;
+   vpiPrimitiveArray :  constant Integer := 113;
+   vpiNetArray :        constant Integer := 114;
+   vpiRange :           constant Integer := 115;
+   vpiRegArray :        constant Integer := 116;
+   vpiNamedEventArray : constant Integer := 129;
+
+   --  vpi_control constants.
    vpiStop :          constant := 66;
    vpiFinish :        constant := 67;
    vpiReset :         constant := 68;
@@ -257,12 +270,12 @@ package Grt.Vpi is
 
 
    -- vpiHandle vpi_handle_by_index(vpiHandle ref, int index)
-   function vpi_handle_by_index(aRef: vpiHandle; aIndex: Integer)
-                               return vpiHandle;
+   function vpi_handle_by_index (Ref: vpiHandle; Index: Integer)
+                                return vpiHandle;
    pragma Export (C, vpi_handle_by_index, "vpi_handle_by_index");
 
-   function vpi_handle_by_name(Name : Ghdl_C_String; Scope : vpiHandle)
-                              return vpiHandle;
+   function vpi_handle_by_name (Name : Ghdl_C_String; Scope : vpiHandle)
+                               return vpiHandle;
    pragma Export (C, vpi_handle_by_name, "vpi_handle_by_name");
 
    -- unsigned int vpi_mcd_close(unsigned int mcd)
@@ -286,8 +299,22 @@ package Grt.Vpi is
                           return vpiHandle;
    pragma Export (C, vpi_put_value, "vpi_put_value");
 
+   type t_vpi_systf_data is record
+      mType: Integer;
+      sysfunctype : Integer;
+      tfname : Ghdl_C_String;
+      calltf : Address;
+      compiletf : Address;
+      sizetf : Address;
+      user_data : Address;
+   end record;
+   pragma Convention (C, t_vpi_systf_data);
+
+   type p_vpi_systf_data is access all t_vpi_systf_data;
+   pragma Convention (C, p_vpi_systf_data);
+
    -- vpiHandle vpi_register_systf(const struct t_vpi_systf_data*ss)
-   function vpi_register_systf (aSs : Address) return vpiHandle;
+   function vpi_register_systf (Data : p_vpi_systf_data) return vpiHandle;
    pragma Export (C, vpi_register_systf, "vpi_register_systf");
 
    -- int vpi_remove_cb(vpiHandle ref)

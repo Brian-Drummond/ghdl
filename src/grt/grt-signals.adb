@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) - signals management.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -253,6 +251,8 @@ package body Grt.Signals is
 
                               Nbr_Ports => 0,
                               Ports => null,
+
+                              Dump_Table_Idx => 0,
 
                               S => S);
 
@@ -555,7 +555,7 @@ package body Grt.Signals is
       Proc := Get_Current_Process;
       for I in 0 .. Sig.S.Nbr_Drivers - 1 loop
          if Sig.S.Drivers (I).Proc = Proc then
-            return Sig.S.Drivers (I)'Access;
+            return Sig.S.Drivers (I)'Unrestricted_Access;
          end if;
       end loop;
       return null;
@@ -623,6 +623,8 @@ package body Grt.Signals is
 
                                      Nbr_Ports => 0,
                                      Ports => null,
+
+                                     Dump_Table_Idx => 0,
 
                                      S => (Mode_Sig => Mode_End));
 
@@ -3125,7 +3127,12 @@ package body Grt.Signals is
 
       Sig.Event := True;
       Sig.Last_Event := Current_Time;
-      Sig.Flags.RO_Event := True;
+      if not Sig.Flags.RO_Event then
+         Sig.Flags.RO_Event := True;
+         if Sig.Dump_Table_Idx /= 0 then
+            Changed_Sig_Table.Append(Sig);
+         end if;
+      end if;
 
       El := Sig.Event_List;
       while El /= null loop

@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,14 +14,12 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Ada.Text_IO; use Ada.Text_IO;
 with Netlists.Dump; use Netlists.Dump;
 
-with Synth.Values.Debug; use Synth.Values.Debug;
+--  with Synth.Values.Debug; use Synth.Values.Debug;
 
 package body Synth.Environment.Debug is
    procedure Put_Wire_Id (Wid : Wire_Id) is
@@ -36,7 +34,7 @@ package body Synth.Environment.Debug is
       Put ("Wire:");
       Put_Wire_Id (Wid);
       Put_Line ("  kind: " & Wire_Kind'Image (W_Rec.Kind));
-      Put_Line (" decl:" & Source.Syn_Src'Image (W_Rec.Decl));
+--      Put_Line (" decl:" & Source.Syn_Src'Image (W_Rec.Decl));
       Put (" gate: ");
       Dump_Net_Name (W_Rec.Gate, True);
       New_Line;
@@ -86,7 +84,7 @@ package body Synth.Environment.Debug is
       declare
          W_Rec : Wire_Id_Record renames Wire_Id_Table.Table (Rec.Id);
       begin
-         Put_Line (" wire decl:" & Source.Syn_Src'Image (W_Rec.Decl));
+--         Put_Line (" wire decl:" & Source.Syn_Src'Image (W_Rec.Decl));
          Put (" wire gate: ");
          Dump_Net_Name (W_Rec.Gate, True);
          New_Line;
@@ -97,7 +95,7 @@ package body Synth.Environment.Debug is
             Put_Line ("   ??? (unknown)");
          when True =>
             Put_Line ("   static:");
-            Debug_Memtyp (Rec.Val.Val);
+--            Debug_Memtyp (Rec.Val.Val);
          when False =>
             Dump_Partial_Assign (Rec.Val.Asgns);
       end case;

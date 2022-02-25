@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,9 +14,7 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Grt.Severity;
 
@@ -57,6 +55,9 @@ package Synth.Flags is
 
    Flag_Trace_Statements : Boolean := False;
 
+   --  Display source of elaborated design.
+   Flag_Debug_Elaborate : Boolean := False;
+
    --  True to start debugger at elaboration.
    Flag_Debug_Init : Boolean := False;
 
@@ -75,6 +76,12 @@ package Synth.Flags is
    --  If true, automatically add a cover on PSL asserts to know if the
    --  asserted has been started.
    Flag_Assert_Cover : Boolean := True;
+
+   --  If true, treat all PSL assert directives like assume directives
+   Flag_Assert_As_Assume : Boolean := False;
+
+   --  If true, treat all PSL assume directives like assert directives
+   Flag_Assume_As_Assert : Boolean := False;
 
    Flag_Verbose : Boolean := False;
 end Synth.Flags;

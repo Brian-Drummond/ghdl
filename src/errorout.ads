@@ -1,20 +1,18 @@
 --  Error message handling.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Types; use Types;
 
 package Errorout is
@@ -95,6 +93,9 @@ package Errorout is
       --  Signal assignment creates a delta cycle in a postponed process.
       Warnid_Delta_Cycle,
 
+      --  No wait statement in a non-sensitized process.
+      Warnid_No_Wait,
+
       --  Declaration of a shared variable with a non-protected type.
       Warnid_Shared,
 
@@ -116,6 +117,10 @@ package Errorout is
 
       --  Incorrect use of attributes (like non-object prefix).
       Warnid_Attribute,
+
+      --  Useless code (condition is always false or true), assertion cannot
+      --  be triggered.
+      Warnid_Useless,
 
       --  Violation of staticness rules
       Warnid_Static,
@@ -208,7 +213,7 @@ package Errorout is
    --  Disp an error, prepended with program name.
    --  This is used for errors before initialisation, such as bad option or
    --  bad filename.
-   procedure Error_Msg_Option (Msg: String);
+   procedure Error_Msg_Option (Msg: String; Args : Earg_Arr := No_Eargs);
 
    --  Warn about an option.
    procedure Warning_Msg_Option (Id : Msgid_Warnings; Msg: String);
@@ -253,6 +258,7 @@ package Errorout is
       Earg_Location, Earg_Id,
       Earg_Char, Earg_String8, Earg_Uns32, Earg_Int32,
       Earg_Vhdl_Node, Earg_Vhdl_Token,
+      Earg_Verilog_Node, Earg_Verilog_Token,
       Earg_Synth_Instance, Earg_Synth_Net, Earg_Synth_Name);
 
    subtype Earg_Lang_Kind is Earg_Kind range Earg_Vhdl_Node .. Earg_Kind'Last;
@@ -270,11 +276,12 @@ package Errorout is
 
    function Make_Earg_Vhdl_Node (V : Uns32) return Earg_Type;
    function Make_Earg_Vhdl_Token (V : Uns32) return Earg_Type;
+   function Make_Earg_Verilog_Node (V : Uns32) return Earg_Type;
+   function Make_Earg_Verilog_Token (V : Uns32) return Earg_Type;
    function Make_Earg_Synth_Instance (V : Uns32) return Earg_Type;
    function Make_Earg_Synth_Net (V : Uns32) return Earg_Type;
    function Make_Earg_Synth_Name (V : Uns32) return Earg_Type;
 private
-
    type Earg_Type (Kind : Earg_Kind := Earg_None) is record
       case Kind is
          when Earg_None =>
@@ -310,6 +317,7 @@ private
         | Warnid_Runtime_Error | Warnid_Pure | Warnid_Specs | Warnid_Hide
         | Warnid_Pragma | Warnid_Analyze_Assert | Warnid_Attribute
         | Warnid_Deprecated_Option | Warnid_Unexpected_Option
+        | Warnid_No_Wait | Warnid_Useless
         | Msgid_Warning  => (Enabled => True, Error => False),
       Warnid_Delta_Cycle | Warnid_Body | Warnid_Static | Warnid_Nested_Comment
         | Warnid_Universal | Warnid_Port_Bounds

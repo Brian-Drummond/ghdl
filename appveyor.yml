@@ -2,14 +2,14 @@
 # General configuration
 # =============================================================================
 # Virtual Machine Image
-image: WMF 5
+image: Visual Studio 2019
 # Build names
 version: '{branch}-{build}'
 # Branches to build
 branches:
   except:
-    - nightly
     - travis
+skip_tags: true
 
 # =============================================================================
 # Build matrix configuration
@@ -34,37 +34,21 @@ environment:
 init:
   - ps: Write-Host "Initializing virtual machine ..."
   - ps: $env:PATH = "C:\msys64\$($env:BUILD_MINGW)\bin;C:\msys64\usr\bin;" + $env:PATH
-#  - ps: Import-Module .\dist\appveyor\shared.psm1 -Verbose
+#  - ps: Import-Module .\scripts\appveyor\shared.psm1 -Verbose
 
 # installation scripts to run
 install:
-  - ps: .\dist\windows\appveyor\install.ps1
-  - ps: .\dist\windows\appveyor\info.ps1
+  - ps: .\scripts\windows\appveyor\install.ps1
+  - ps: .\scripts\windows\appveyor\info.ps1
 
 # Build flow
 # Disable MSBuild
 build: off
 # build scripts to run
 build_script:
-  - ps: .\dist\windows\appveyor\build.ps1
+  - ps: .\scripts\windows\appveyor\build.ps1
 
 # Test flow
 # test scripts to run
 test_script:
-  - ps: .\dist\windows\appveyor\test.ps1
-
-
-# =============================================================================
-# Deployment configuration
-# =============================================================================
-deploy:
-  - provider: GitHub
-    release: $(APPVEYOR_REPO_TAG_NAME)
-    description: 'Release'
-    draft: true
-    prerelease: false
-    artifact: /.*\.zip/
-    on:
-      appveyor_repo_tag: true
-    auth_token:
-      secure: Qli1B9/I6B1uTMeyGolw8N/zh/PRhLdT8fjUUTcd4Vp14UQki+YTjxKjAe+65Oqv
+  - ps: .\scripts\windows\appveyor\test.ps1

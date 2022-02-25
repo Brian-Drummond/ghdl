@@ -1,20 +1,19 @@
 /* GCC back-end for ortho
   Copyright (C) 2002-1014 Tristan Gingold and al.
 
-  GHDL is free software; you can redistribute it and/or modify it under
-  the terms of the GNU General Public License as published by the Free
-  Software Foundation; either version 2, or (at your option) any later
-  version.
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 2 of the License, or
+  (at your option) any later version.
 
-  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
-  WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-  for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
   You should have received a copy of the GNU General Public License
-  along with GCC; see the file COPYING.  If not, write to the Free
-  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-  02111-1307, USA.  */
+  along with this program.  If not, see <gnu.org/licenses>.
+*/
 
 #include <stddef.h>
 #include <math.h>
@@ -50,6 +49,8 @@
 #include "stringpool.h"
 #include "stor-layout.h"
 #include "varasm.h"
+
+#define TYPE_UNBOUNDED(t) TYPE_LANG_FLAG_0(t)
 
 /* Returns the number of FIELD_DECLs in TYPE.
    Copied here from expr.c in gcc4.9 as it is no longer exported by tree.h.  */
@@ -419,6 +420,22 @@ ortho_post_options (const char **pfilename)
 {
   if (*pfilename == NULL || strcmp (*pfilename, "-") == 0)
     *pfilename = "*stdin*";
+  else if (aux_base_name == NULL)
+    {
+      /* Define auxbase.  The default mechanism in toplev.c doesn't
+         handle extensions longer than 3 characters.  */
+      char *name = xstrdup (lbasename (*pfilename));
+      int len;
+
+      /* Remove extension.  */
+      for (len = strlen (name) - 1; len > 1; len--)
+        if (name[len] == '.')
+          {
+            name[len] = 0;
+            break;
+          }
+      aux_base_name = name;
+    }
 
   /* Default hook.  */
   lhd_post_options (pfilename);
@@ -1140,6 +1157,13 @@ new_record_union_field (struct o_element_list *list,
 {
   tree res;
 
+  if (TYPE_UNBOUNDED(etype)) {
+    /* If the field type is unbounded, it mustn't use any space in the
+       record.  Use VOID instead.  */
+    TYPE_UNBOUNDED(list->res) = 1;
+    etype = void_type_node;
+  }
+
   res = build_decl (input_location, FIELD_DECL, ident, etype);
   DECL_CONTEXT (res) = list->res;
   chain_append (&list->chain, res);
@@ -1304,6 +1328,7 @@ new_array_type (tree el_type, tree index_type)
   /* Build an incomplete array.  */
   range_type = build_range_type (index_type, size_zero_node, NULL_TREE);
   res = build_array_type (el_type, range_type);
+  TYPE_UNBOUNDED(res) = 1;
   return res;
 }
 
@@ -1314,6 +1339,7 @@ new_array_subtype (tree atype, tree eltype, tree length)
   tree index_type;
   tree res;
 
+  gcc_assert(!TYPE_UNBOUNDED(eltype));
   index_type = TYPE_DOMAIN (atype);
 
   range_type = ortho_build_array_range(index_type, length);
@@ -1474,8 +1500,17 @@ new_slice (tree arr, tree res_type, tree index)
                                    TREE_TYPE (TYPE_DOMAIN (res_type)));
     }
 
+  /* Take the element size from RES_TYPE (and not from ARR, which is the
+     default.  */
+  tree elmt_type = TREE_TYPE (res_type);
+  tree elmt_size = TYPE_SIZE_UNIT (elmt_type);
+  tree factor = size_int (TYPE_ALIGN_UNIT (elmt_type));
+
+  /* Divide the element size by the alignment of the element type (above).  */
+  elmt_size = size_binop (EXACT_DIV_EXPR, elmt_size, factor);
+
   ortho_mark_addressable (arr);
-  return build4 (ARRAY_RANGE_REF, res_type, arr, index, NULL_TREE, NULL_TREE);
+  return build4 (ARRAY_RANGE_REF, res_type, arr, index, NULL_TREE, elmt_size);
 }
 
 tree

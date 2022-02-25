@@ -1,20 +1,19 @@
 /*  LLVM binding
   Copyright (C) 2014 Tristan Gingold
 
-  GHDL is free software; you can redistribute it and/or modify it under
-  the terms of the GNU General Public License as published by the Free
-  Software Foundation; either version 2, or (at your option) any later
-  version.
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 2 of the License, or
+  (at your option) any later version.
 
-  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
-  WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-  for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
   You should have received a copy of the GNU General Public License
-  along with GHDL; see the file COPYING.  If not, write to the Free
-  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-  02111-1307, USA.  */
+  along with this program.  If not, see <gnu.org/licenses>.
+*/
 
 //  Style:
 //  C bindings for types, instructions
@@ -377,8 +376,12 @@ struct OTnodeBase {
   DIType *Dbg;
 #endif
 
+  //  Kind of type.
   OTKind Kind;
+
+  //  If true, the type is bounded: all the elements have a defined size.
   bool Bounded;
+
   OTnodeBase (LLVMTypeRef R, OTKind K, bool Bounded) :
     Ref(R),
 #ifdef USE_DEBUG
@@ -644,7 +647,7 @@ struct OElementList {
   OFKind Kind;
 
   //  Number of fields.
-  unsigned Count;
+  unsigned BndCount;
 
   //  For record: the access to the incomplete (but named) type.
   OTnode RecType;
@@ -686,9 +689,10 @@ extern "C" void
 new_record_field(OElementList *Elements,
 		 OFnodeRec **El, OIdent Ident, OTnode Etype)
 {
-  *El = new OFnodeRec(Etype, Ident, Elements->Count);
+  *El = new OFnodeRec(Etype, Ident, Etype->Bounded ? Elements->BndCount : ~0U);
   Elements->Els->push_back(*El);
-  Elements->Count++;
+  if (Etype->Bounded)
+    Elements->BndCount++;
 }
 
 struct OTnodeRecBase : OTnodeBase {
@@ -711,16 +715,19 @@ struct OTnodeIncompleteRec : OTnodeRecBase {
 static DINodeArray
 buildDebugRecordElements(OTnodeRecBase *Atype)
 {
-  unsigned Count = Atype->Els.size();
-  std::vector<Metadata *> els(Count);
+  std::vector<Metadata *> els;
+
+  els.reserve(Atype->Els.size());
 
   unsigned i = 0;
   for (OFnodeBase *e : Atype->Els) {
-    unsigned bitoff = 8 * LLVMOffsetOfElement(TheTargetData, Atype->Ref, i);
-    els[i++] = DBuilder->createMemberType
-      (DebugCurrentSubprg, StringRef(e->Ident.cstr), NULL, 0,
-       e->FType->getBitSize(), /* align */ 0,
-       bitoff, DINode::DIFlags::FlagZero, e->FType->Dbg);
+    if (!e->FType->Bounded)
+      break;
+    unsigned bitoff = 8 * LLVMOffsetOfElement(TheTargetData, Atype->Ref, i++);
+    els.push_back(DBuilder->createMemberType
+		  (DebugCurrentSubprg, StringRef(e->Ident.cstr), NULL, 0,
+		   e->FType->getBitSize(), /* align */ 0,
+		   bitoff, DINode::DIFlags::FlagZero, e->FType->Dbg));
   }
 
   return DBuilder->getOrCreateArray(els);
@@ -730,21 +737,24 @@ buildDebugRecordElements(OTnodeRecBase *Atype)
 extern "C" void
 finish_record_type(OElementList *Els, OTnode *Res)
 {
-  LLVMTypeRef *Types = new LLVMTypeRef[Els->Count];
+  LLVMTypeRef *Types = new LLVMTypeRef[Els->BndCount];
 
   //  Create types array for elements.
   int i = 0;
   bool Bounded = true;
   for (OFnodeBase *Field : *Els->Els) {
-    Bounded &= Field->FType->Bounded;
-    Types[i++] = Field->FType->Ref;
+    if (Field->FType->Bounded)
+      Types[i++] = Field->FType->Ref;
+    else
+      Bounded = false;
   }
+  assert(i == Els->BndCount);
 
   OTnodeRecBase *T;
 
   if (Els->RecType != nullptr) {
     //  Completion
-    LLVMStructSetBody (Els->RecType->Ref, Types, Els->Count, 0);
+    LLVMStructSetBody (Els->RecType->Ref, Types, Els->BndCount, 0);
     Els->RecType->Bounded = Bounded;
     T = static_cast<OTnodeRecBase *>(Els->RecType);
     T->Els = std::move(*Els->Els);
@@ -763,7 +773,7 @@ finish_record_type(OElementList *Els, OTnode *Res)
   } else {
     //  Non-completion.
     //  Debug info are created when the type is declared.
-    T = new OTnodeRec(LLVMStructType(Types, Els->Count, 0), Bounded);
+    T = new OTnodeRec(LLVMStructType(Types, Els->BndCount, 0), Bounded);
     T->Els = std::move(*Els->Els);
   }
   *Res = T;
@@ -1255,7 +1265,7 @@ new_var_decl(ODnode *Res, OIdent Ident, OStorage Storage, OTnode Atype)
          DebugCurrentLine, Atype->Dbg, true);
       DBuilder->insertDeclare
         (unwrap(Decl), D, DBuilder->createExpression(),
-         DebugLoc::get(DebugCurrentLine, 0, DebugCurrentScope),
+         DILocation::get(DebugCurrentScope->getContext(), DebugCurrentLine, 0, DebugCurrentScope),
          unwrap(LLVMGetInsertBlock(DeclBuilder)));
     }
 #endif
@@ -1427,7 +1437,7 @@ struct ODnodeSubprg : ODnodeBase {
   OIdent Ident;
   ODKind getKind() const override { return ODKSubprg; }
   ODnodeSubprg(LLVMValueRef R, OTnode T, OStorage S, OIdent Id,
-               std::vector<ODnodeInter *> Inters) :
+               const std::vector<ODnodeInter *> &Inters) :
     ODnodeBase(R, T), Inters(Inters), Storage(S), Ident(Id) {}
 };
 
@@ -1598,7 +1608,7 @@ start_subprogram_body(ODnodeSubprg *Func)
     DebugCurrentScope = DebugCurrentSubprg;
 
     unwrap(Builder)->SetCurrentDebugLocation
-      (DebugLoc::get(DebugCurrentLine, 0, DebugCurrentScope));
+      (DILocation::get(DebugCurrentScope->getContext(), DebugCurrentLine, 0, DebugCurrentScope));
   }
 
   if (FlagDebug) {
@@ -1613,7 +1623,7 @@ start_subprogram_body(ODnodeSubprg *Func)
          DebugCurrentFile, DebugCurrentLine, Inter->Dtype->Dbg, true);
       DBuilder->insertDeclare
         (unwrap(Var), D, DBuilder->createExpression(),
-         DebugLoc::get(DebugCurrentLine, 0, DebugCurrentSubprg),
+         DILocation::get(DebugCurrentSubprg->getContext(), DebugCurrentLine, 0, DebugCurrentSubprg),
          unwrap(LLVMGetInsertBlock(DeclBuilder)));
       LLVMBuildStore(DeclBuilder, Inter->Ref, Var);
       Inter->Ref = Var;
@@ -2760,7 +2770,7 @@ new_debug_line_stmt (unsigned Line)
   if (FlagDebugLines && Line != DebugCurrentLine) {
     DebugCurrentLine = Line;
     unwrap(Builder)->SetCurrentDebugLocation
-      (DebugLoc::get(DebugCurrentLine, 0, DebugCurrentScope));
+      (DILocation::get(DebugCurrentScope->getContext(), DebugCurrentLine, 0, DebugCurrentScope));
   }
 #endif
 }

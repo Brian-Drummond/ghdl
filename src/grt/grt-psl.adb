@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) - PSL report.
 --  Copyright (C) 2016 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -75,9 +73,10 @@ package body Grt.Psl is
                     return Traverse_Result
    is
       F : constant FILEs := Report_Stream;
-      Obj : Ghdl_Rtin_Object_Acc;
+      Psl_Dir : Ghdl_Rtin_Psl_Directive_Acc;
       Addr : System.Address;
-      Val : Ghdl_Index_Type;
+      Finished_Count : Ghdl_Index_Type;
+      Started_Count : Ghdl_Index_Type;
    begin
       case Rti.Kind is
          when Ghdl_Rtiks_Psl =>
@@ -105,29 +104,35 @@ package body Grt.Psl is
       end case;
       Put_Line (F, ",");
       Put (F, "   ""name"": """);
-      Obj := To_Ghdl_Rtin_Object_Acc (Rti);
+      Psl_Dir := To_Ghdl_Rtin_Psl_Directive_Acc (Rti);
       Put (F, Ctxt);
       Put (F, '.');
-      Put (F, Obj.Name);
+      Put (F, Psl_Dir.Name);
       Put_Line (F, """,");
 
       Put (F, "   ""file"": """);
       Put (F, Get_Filename (Ctxt));
       Put_Line (F, """,");
       Put (F, "   ""line"": ");
-      Put_U32 (F, Get_Linecol_Line (Obj.Linecol));
+      Put_U32 (F, Get_Linecol_Line (Psl_Dir.Linecol));
       Put_Line (F, ",");
 
-      Put (F, "   ""count"": ");
-      Addr := Loc_To_Addr (Obj.Common.Depth, Obj.Loc, Ctxt);
-      Val := To_Ghdl_Index_Ptr (Addr).all;
-      Put_U32 (F, Ghdl_U32 (Val));
+      Put (F, "   ""finished-count"": ");
+      Addr := Loc_To_Addr (Psl_Dir.Common.Depth, Psl_Dir.Loc, Ctxt);
+      Finished_Count := To_Ghdl_Index_Ptr (Addr).all;
+      Put_U32 (F, Ghdl_U32 (Finished_Count));
+      Put_Line (F, ",");
+
+      Put (F, "   ""started-count"": ");
+      Addr := Loc_To_Addr (Psl_Dir.Common.Depth, Psl_Dir.Loc + 4, Ctxt);
+      Started_Count := To_Ghdl_Index_Ptr (Addr).all;
+      Put_U32 (F, Ghdl_U32 (Started_Count));
       Put_Line (F, ",");
 
       Put (F, "   ""status"": """);
       case Rti.Kind is
          when Ghdl_Rtik_Psl_Assert =>
-            if Val = 0 then
+            if Finished_Count = 0 then
                Put (F, "passed");
                Inc (Nbr_Assert_Passed);
             else
@@ -135,7 +140,7 @@ package body Grt.Psl is
                Inc (Nbr_Assert_Failed);
             end if;
          when Ghdl_Rtik_Psl_Assume =>
-            if Val = 0 then
+            if Finished_Count = 0 then
                Put (F, "passed");
                Inc (Nbr_Assume_Passed);
             else
@@ -143,7 +148,7 @@ package body Grt.Psl is
                Inc (Nbr_Assume_Failed);
             end if;
          when Ghdl_Rtik_Psl_Cover =>
-            if Val = 0 then
+            if Finished_Count = 0 then
                Put (F, "not covered");
                Inc (Nbr_Cover_Failed);
             else

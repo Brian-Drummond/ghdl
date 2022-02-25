@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,9 +14,7 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Mutils;
 with Types_Utils; use Types_Utils;
@@ -101,7 +99,7 @@ package body Netlists.Utils is
 
    function Get_Inout_Flag (M : Module; I : Port_Idx) return Boolean is
    begin
-      return Get_Output_Desc (M, I).Is_Inout;
+      return Get_Output_Desc (M, I).Dir = Port_Inout;
    end Get_Inout_Flag;
 
    function Get_Input_Net (Inst : Instance; Idx : Port_Idx) return Net is
@@ -125,29 +123,12 @@ package body Netlists.Utils is
       return Get_Param_Desc (M, I).Typ;
    end Get_Param_Type;
 
-   function Is_Const_Module (Id : Module_Id) return Boolean is
-   begin
-      case Id is
-         when Id_Const_UB32
-           | Id_Const_SB32
-           | Id_Const_UL32
-           | Id_Const_X
-           | Id_Const_Z
-           | Id_Const_0
-           | Id_Const_Bit
-           | Id_Const_Log =>
-            return True;
-         when others =>
-            return False;
-      end case;
-   end Is_Const_Module;
-
    function Is_Const_Net (N : Net) return Boolean is
    begin
       if Get_Width (N) = 0 then
          return True;
       end if;
-      return Is_Const_Module (Get_Id (Get_Net_Parent (N)));
+      return Get_Id (Get_Net_Parent (N)) in Constant_Module_Id;
    end Is_Const_Net;
 
    function Get_Net_Uns64 (N : Net) return Uns64
@@ -289,19 +270,32 @@ package body Netlists.Utils is
       end;
    end Same_Net;
 
-   procedure Copy_Attributes (Dest : Instance; Src : Instance)
+   function Same_Clock (L, R : Net) return Boolean
+   is
+      Linst : constant Instance := Get_Net_Parent (L);
+      Rinst : constant Instance := Get_Net_Parent (R);
+   begin
+      if Get_Id (Linst) /= Get_Id (Rinst) then
+         return False;
+      end if;
+      pragma Assert (Get_Id (Linst) in Edge_Module_Id);
+      return Same_Net (Get_Input_Net (Linst, 0),
+                       Get_Input_Net (Rinst, 0));
+   end Same_Clock;
+
+   procedure Copy_Instance_Attributes (Dest : Instance; Src : Instance)
    is
       Attr : Attribute;
    begin
-      Attr := Get_First_Attribute (Src);
+      Attr := Get_Instance_First_Attribute (Src);
       while Attr /= No_Attribute loop
-         Set_Attribute (Dest,
-                        Get_Attribute_Name (Attr),
-                        Get_Attribute_Type (Attr),
-                        Get_Attribute_Pval (Attr));
+         Set_Instance_Attribute (Dest,
+                                 Get_Attribute_Name (Attr),
+                                 Get_Attribute_Type (Attr),
+                                 Get_Attribute_Pval (Attr));
          Attr := Get_Attribute_Next (Attr);
       end loop;
-   end Copy_Attributes;
+   end Copy_Instance_Attributes;
 
    function Clog2 (W : Width) return Width is
    begin

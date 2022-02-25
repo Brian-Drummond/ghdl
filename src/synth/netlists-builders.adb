@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,27 +14,29 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Types_Utils; use Types_Utils;
 with Name_Table; use Name_Table;
 with Std_Names; use Std_Names;
 
 package body Netlists.Builders is
-   function Create_Input (Id : String; W : Width := 0) return Port_Desc is
+   function Create_Port (Id : String; Dir : Port_Kind; W : Width := 0)
+                        return Port_Desc is
    begin
       return (Name => New_Sname_Artificial (Get_Identifier (Id), No_Sname),
-              Is_Inout => False,
+              Dir => Dir,
               W => W);
+   end Create_Port;
+
+   function Create_Input (Id : String; W : Width := 0) return Port_Desc is
+   begin
+      return Create_Port (Id, Port_In, W);
    end Create_Input;
 
    function Create_Output (Id : String; W : Width := 0) return Port_Desc is
    begin
-      return (Name => New_Sname_Artificial (Get_Identifier (Id), No_Sname),
-              Is_Inout => False,
-              W => W);
+      return Create_Port (Id, Port_Out, W);
    end Create_Output;
 
    procedure Create_Dyadic_Module (Design : Module;
@@ -539,10 +541,10 @@ package body Netlists.Builders is
          Id_Iadff, 5, 1, 0);
       Outputs := (0 => Create_Output ("q"));
       Set_Ports_Desc (Ctxt.M_Iadff, (0 => Create_Input ("clk", 1),
-                                    1 => Create_Input ("d"),
-                                    2 => Create_Input ("rst"),
-                                    3 => Create_Input ("rst_val"),
-                                    4 => Create_Input ("init")),
+                                     1 => Create_Input ("d"),
+                                     2 => Create_Input ("rst"),
+                                     3 => Create_Input ("rst_val"),
+                                     4 => Create_Input ("init")),
                       Outputs);
 
       Ctxt.M_Mdff := New_User_Module
@@ -1228,27 +1230,28 @@ package body Netlists.Builders is
       return O;
    end Build_Addidx;
 
-   function Build_Memory (Ctxt : Context_Acc; W : Width) return Instance
+   function Build_Memory
+     (Ctxt : Context_Acc; Name : Sname; W : Width) return Instance
    is
       pragma Assert (W > 0);
       Inst : Instance;
       O : Net;
    begin
-      Inst := New_Internal_Instance (Ctxt, Ctxt.M_Memory);
+      Inst := New_Instance (Ctxt.Parent, Ctxt.M_Memory, Name);
       O := Get_Output (Inst, 0);
       Set_Width (O, W);
       return Inst;
    end Build_Memory;
 
-   function Build_Memory_Init (Ctxt : Context_Acc; W : Width; Init : Net)
-                              return Instance
+   function Build_Memory_Init
+     (Ctxt : Context_Acc; Name : Sname; W : Width; Init : Net) return Instance
    is
       pragma Assert (W > 0);
       pragma Assert (Get_Width (Init) = W);
       Inst : Instance;
       O : Net;
    begin
-      Inst := New_Internal_Instance (Ctxt, Ctxt.M_Memory_Init);
+      Inst := New_Instance (Ctxt.Parent, Ctxt.M_Memory_Init, Name);
       O := Get_Output (Inst, 0);
       Set_Width (O, W);
       Connect (Get_Input (Inst, 1), Init);
@@ -1525,7 +1528,7 @@ package body Netlists.Builders is
                          D : Net;
                          Rst : Net; Rst_Val : Net; Init : Net) return Net
    is
-      Wd : constant Width := Get_Width (D);
+      Wd : constant Width := Get_Width (Init);
       pragma Assert (Get_Width (Clk) = 1);
       Inst : Instance;
       O : Net;
@@ -1534,7 +1537,9 @@ package body Netlists.Builders is
       O := Get_Output (Inst, 0);
       Set_Width (O, Wd);
       Connect (Get_Input (Inst, 0), Clk);
-      Connect (Get_Input (Inst, 1), D);
+      if D /= No_Net then
+         Connect (Get_Input (Inst, 1), D);
+      end if;
       Connect (Get_Input (Inst, 2), Rst);
       Connect (Get_Input (Inst, 3), Rst_Val);
       Connect (Get_Input (Inst, 4), Init);

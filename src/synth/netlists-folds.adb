@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,9 +14,7 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Types_Utils; use Types_Utils;
 
@@ -87,6 +85,17 @@ package body Netlists.Folds is
          end;
       end if;
    end Build2_Const_Int;
+
+   function Build2_Concat2 (Ctxt : Context_Acc; L, R : Net) return Net is
+   begin
+      if Get_Width (L) = 0 then
+         return R;
+      elsif Get_Width (R) = 0 then
+         return L;
+      else
+         return Build_Concat2 (Ctxt, L, R);
+      end if;
+   end Build2_Concat2;
 
    function Build2_Concat (Ctxt : Context_Acc; Els : Net_Array) return Net
    is
@@ -351,4 +360,29 @@ package body Netlists.Folds is
             return Build_Const_UB32 (Ctxt, 0, 1);
       end case;
    end Build2_Compare;
+
+   function Add_Enable_To_Dyn_Insert
+     (Ctxt : Context_Acc; Inst : Instance; Sel : Net) return Instance
+   is
+      In_Mem : constant Input := Get_Input (Inst, 0);
+      In_V : constant Input := Get_Input (Inst, 1);
+      In_Idx : constant Input := Get_Input (Inst, 2);
+      Off : constant Uns32 := Get_Param_Uns32 (Inst, 0);
+      Res : Net;
+   begin
+      Res := Build_Dyn_Insert_En
+        (Ctxt, Get_Driver (In_Mem), Get_Driver (In_V), Get_Driver (In_Idx),
+         Sel, Off);
+      Set_Location (Res, Get_Location (Inst));
+
+      Disconnect (In_Mem);
+      Disconnect (In_V);
+      Disconnect (In_Idx);
+      Redirect_Inputs (Get_Output (Inst, 0), Res);
+
+      Remove_Instance (Inst);
+
+      return Get_Net_Parent (Res);
+   end Add_Enable_To_Dyn_Insert;
+
 end Netlists.Folds;

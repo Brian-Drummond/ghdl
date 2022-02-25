@@ -1,20 +1,18 @@
 --  Configuration generation.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Name_Table; use Name_Table;
 with Str_Table;
@@ -29,9 +27,11 @@ with Vhdl.Sem_Scopes;
 with Vhdl.Sem_Lib; use Vhdl.Sem_Lib;
 with Vhdl.Canon;
 with Vhdl.Evaluation;
+with Vhdl.Scanner;
 
 package body Vhdl.Configuration is
    procedure Add_Design_Concurrent_Stmts (Parent : Iir);
+   procedure Add_Verification_Unit_Items (Unit : Iir);
    procedure Add_Design_Block_Configuration (Blk : Iir_Block_Configuration);
    procedure Add_Design_Aspect (Aspect : Iir; Add_Default : Boolean);
 
@@ -103,7 +103,9 @@ package body Vhdl.Configuration is
       end if;
 
       if Flag_Load_All_Design_Units then
+         --  Load and analyze UNIT.
          Load_Design_Unit (Unit, From);
+         --  TODO: exit now in case of error ?
       end if;
 
       --  Add packages from depend list.
@@ -112,11 +114,13 @@ package body Vhdl.Configuration is
       --  Note: a design unit may be referenced but unused.
       --  (eg: component specification which does not apply).
       List := Get_Dependence_List (Unit);
-      It := List_Iterate (List);
+      It := List_Iterate_Safe (List);
       while Is_Valid (It) loop
          El := Get_Element (It);
          El := Libraries.Find_Design_Unit (El);
-         if El /= Null_Iir then
+         if El /= Null_Iir
+           and then Get_Kind (El) = Iir_Kind_Design_Unit
+         then
             Lib_Unit := Get_Library_Unit (El);
             if Flag_Build_File_Dependence then
                Add_Design_Unit (El, Loc);
@@ -149,32 +153,43 @@ package body Vhdl.Configuration is
             --  Add entity and architecture.
             --  find all sub-configuration
             Load_Design_Unit (Unit, From);
-            Lib_Unit := Get_Library_Unit (Unit);
-            Add_Design_Unit (Get_Design_Unit (Get_Entity (Lib_Unit)), Loc);
-            declare
-               Blk : Iir_Block_Configuration;
-               Prev_Configuration : Iir_Configuration_Declaration;
-               Arch : Iir;
-            begin
-               Prev_Configuration := Current_Configuration;
-               Current_Configuration := Lib_Unit;
-               Blk := Get_Block_Configuration (Lib_Unit);
-               Add_Design_Block_Configuration (Blk);
-               Current_Configuration := Prev_Configuration;
-               Arch := Strip_Denoting_Name (Get_Block_Specification (Blk));
-               if Arch /= Null_Iir then
-                  Add_Design_Unit (Get_Design_Unit (Arch), Loc);
-               end if;
-            end;
+            if Nbr_Errors = 0 then
+               Lib_Unit := Get_Library_Unit (Unit);
+               Add_Design_Unit (Get_Design_Unit (Get_Entity (Lib_Unit)), Loc);
+               declare
+                  Blk : Iir_Block_Configuration;
+                  Prev_Configuration : Iir_Configuration_Declaration;
+                  Arch : Iir;
+               begin
+                  Prev_Configuration := Current_Configuration;
+                  Current_Configuration := Lib_Unit;
+                  Blk := Get_Block_Configuration (Lib_Unit);
+                  Add_Design_Block_Configuration (Blk);
+                  Current_Configuration := Prev_Configuration;
+                  Arch := Strip_Denoting_Name (Get_Block_Specification (Blk));
+                  if Arch /= Null_Iir then
+                     Add_Design_Unit (Get_Design_Unit (Arch), Loc);
+                  end if;
+               end;
+            end if;
          when Iir_Kind_Architecture_Body =>
             --  Add entity
             --  find all entity/architecture/configuration instantiation
-            Add_Design_Unit (Get_Design_Unit (Get_Entity (Lib_Unit)), Loc);
-            Add_Design_Concurrent_Stmts (Lib_Unit);
+            declare
+               Ent : constant Iir := Get_Entity (Lib_Unit);
+            begin
+               if Ent /= Null_Iir then
+                  --  In case of errors.
+                  Add_Design_Unit (Get_Design_Unit (Ent), Loc);
+               end if;
+               Add_Design_Concurrent_Stmts (Lib_Unit);
+            end;
+         when Iir_Kinds_Verification_Unit =>
+            Add_Verification_Unit_Items (Lib_Unit);
          when Iir_Kind_Entity_Declaration
+           | Iir_Kind_Foreign_Module
            | Iir_Kind_Package_Body
-           | Iir_Kind_Context_Declaration
-           | Iir_Kinds_Verification_Unit =>
+           | Iir_Kind_Context_Declaration =>
             null;
       end case;
 
@@ -228,149 +243,171 @@ package body Vhdl.Configuration is
       end if;
    end Add_Design_Unit;
 
+   procedure Add_Design_Concurrent_Stmt (Stmt : Iir) is
+   begin
+      case Get_Kind (Stmt) is
+         when Iir_Kind_Component_Instantiation_Statement =>
+            if Is_Entity_Instantiation (Stmt) then
+               --  Entity or configuration instantiation.
+               Add_Design_Aspect (Get_Instantiated_Unit (Stmt), True);
+            end if;
+         when Iir_Kind_Block_Statement =>
+            Add_Design_Concurrent_Stmts (Stmt);
+         when Iir_Kind_For_Generate_Statement =>
+            Add_Design_Concurrent_Stmts (Get_Generate_Statement_Body (Stmt));
+         when Iir_Kind_If_Generate_Statement =>
+            declare
+               Clause : Iir;
+            begin
+               Clause := Stmt;
+               while Clause /= Null_Iir loop
+                  Add_Design_Concurrent_Stmts
+                    (Get_Generate_Statement_Body (Clause));
+                  Clause := Get_Generate_Else_Clause (Clause);
+               end loop;
+            end;
+         when Iir_Kind_Case_Generate_Statement =>
+            declare
+               Alt : Iir;
+            begin
+               Alt := Get_Case_Statement_Alternative_Chain (Stmt);
+               while Alt /= Null_Iir loop
+                  if not Get_Same_Alternative_Flag (Alt) then
+                     Add_Design_Concurrent_Stmts (Get_Associated_Block (Alt));
+                  end if;
+                  Alt := Get_Chain (Alt);
+               end loop;
+            end;
+         when Iir_Kinds_Simple_Concurrent_Statement
+           | Iir_Kind_Psl_Default_Clock
+           | Iir_Kind_Psl_Declaration
+           | Iir_Kind_Psl_Endpoint_Declaration
+           | Iir_Kind_Simple_Simultaneous_Statement =>
+            null;
+         when others =>
+            Error_Kind ("add_design_concurrent_stmts(2)", Stmt);
+      end case;
+   end Add_Design_Concurrent_Stmt;
+
    procedure Add_Design_Concurrent_Stmts (Parent : Iir)
    is
       Stmt : Iir;
    begin
       Stmt := Get_Concurrent_Statement_Chain (Parent);
       while Stmt /= Null_Iir loop
-         case Get_Kind (Stmt) is
-            when Iir_Kind_Component_Instantiation_Statement =>
-               if Is_Entity_Instantiation (Stmt) then
-                  --  Entity or configuration instantiation.
-                  Add_Design_Aspect (Get_Instantiated_Unit (Stmt), True);
-               end if;
-            when Iir_Kind_Block_Statement =>
-               Add_Design_Concurrent_Stmts (Stmt);
-            when Iir_Kind_For_Generate_Statement =>
-               Add_Design_Concurrent_Stmts
-                 (Get_Generate_Statement_Body (Stmt));
-            when Iir_Kind_If_Generate_Statement =>
-               declare
-                  Clause : Iir;
-               begin
-                  Clause := Stmt;
-                  while Clause /= Null_Iir loop
-                     Add_Design_Concurrent_Stmts
-                       (Get_Generate_Statement_Body (Clause));
-                     Clause := Get_Generate_Else_Clause (Clause);
-                  end loop;
-               end;
-            when Iir_Kind_Case_Generate_Statement =>
-               declare
-                  Alt : Iir;
-               begin
-                  Alt := Get_Case_Statement_Alternative_Chain (Stmt);
-                  while Alt /= Null_Iir loop
-                     if not Get_Same_Alternative_Flag (Alt) then
-                        Add_Design_Concurrent_Stmts
-                          (Get_Associated_Block (Alt));
-                     end if;
-                     Alt := Get_Chain (Alt);
-                  end loop;
-               end;
-            when Iir_Kinds_Simple_Concurrent_Statement
-              | Iir_Kind_Psl_Default_Clock
-              | Iir_Kind_Psl_Declaration
-              | Iir_Kind_Psl_Endpoint_Declaration
-              | Iir_Kind_Simple_Simultaneous_Statement =>
-               null;
-            when others =>
-               Error_Kind ("add_design_concurrent_stmts(2)", Stmt);
-         end case;
+         Add_Design_Concurrent_Stmt (Stmt);
          Stmt := Get_Chain (Stmt);
       end loop;
    end Add_Design_Concurrent_Stmts;
 
-   procedure Add_Design_Aspect (Aspect : Iir; Add_Default : Boolean)
+   procedure Add_Verification_Unit_Items (Unit : Iir)
    is
-      use Libraries;
+      Item : Iir;
+   begin
+      Item := Get_Vunit_Item_Chain (Unit);
+      while Item /= Null_Iir loop
+         if Get_Kind (Item) in Iir_Kinds_Concurrent_Statement then
+            Add_Design_Concurrent_Stmt (Item);
+         end if;
+         Item := Get_Chain (Item);
+      end loop;
+   end Add_Verification_Unit_Items;
 
-      Loc : Location_Type;
+   --  ASPECT is an entity_aspect_entity.
+   procedure Add_Design_Aspect_Entity (Aspect : Iir; Add_Default : Boolean)
+   is
+      Loc : constant Location_Type := Get_Location (Aspect);
+      Entity_Lib : constant Iir := Get_Entity (Aspect);
       Entity : Iir;
       Arch_Name : Iir;
       Arch : Iir;
       Config : Iir;
       Arch_Lib : Iir;
       Id : Name_Id;
-      Entity_Lib : Iir;
+   begin
+      if Entity_Lib = Null_Iir then
+         --  In case of error (using -c).
+         return;
+      end if;
+
+      --  Add the entity.
+      Entity := Get_Design_Unit (Entity_Lib);
+      Add_Design_Unit (Entity, Loc);
+
+      if Get_Kind (Entity_Lib) = Iir_Kind_Foreign_Module then
+         return;
+      end if;
+
+      --  Extract and add the architecture.
+      Arch_Name := Get_Architecture (Aspect);
+      if Arch_Name /= Null_Iir then
+         case Get_Kind (Arch_Name) is
+            when Iir_Kind_Simple_Name =>
+               Id := Get_Identifier (Arch_Name);
+               Arch := Load_Secondary_Unit (Entity, Id, Aspect);
+               if Arch = Null_Iir then
+                  Error_Msg_Elab ("cannot find architecture %i of %n",
+                                  (+Id, +Entity_Lib));
+                  return;
+               else
+                  Set_Named_Entity (Arch_Name, Get_Library_Unit (Arch));
+               end if;
+            when Iir_Kind_Reference_Name =>
+               Arch := Get_Design_Unit (Get_Named_Entity (Arch_Name));
+            when others =>
+               Error_Kind ("add_design_aspect", Arch_Name);
+         end case;
+      else
+         Arch := Libraries.Get_Latest_Architecture (Entity_Lib);
+         if Arch = Null_Iir then
+            Error_Msg_Elab
+              (Aspect, "no architecture in library for %n", +Entity_Lib);
+            return;
+         end if;
+         Arch := Get_Design_Unit (Arch);
+      end if;
+      Load_Design_Unit (Arch, Aspect);
+
+      --  Add the default configuration if required.  Must be done
+      --  before the architecture in case of recursive instantiation:
+      --  the configuration depends on the architecture.
+      if Add_Default then
+         Arch_Lib := Get_Library_Unit (Arch);
+
+         --  The default configuration may already exist due to a
+         --  previous instantiation.  Create it if it doesn't exist.
+         Config := Get_Default_Configuration_Declaration (Arch_Lib);
+         if Is_Null (Config) then
+            Config := Vhdl.Canon.Create_Default_Configuration_Declaration
+              (Arch_Lib);
+            Set_Default_Configuration_Declaration (Arch_Lib, Config);
+         end if;
+
+         if Get_Configuration_Mark_Flag (Config)
+           and then not Get_Configuration_Done_Flag (Config)
+         then
+            --  Recursive instantiation.
+            return;
+         else
+            Add_Design_Unit (Config, Loc);
+         end if;
+      end if;
+
+      --  Otherwise, simply the architecture.
+      Add_Design_Unit (Arch, Loc);
+   end Add_Design_Aspect_Entity;
+
+   procedure Add_Design_Aspect (Aspect : Iir; Add_Default : Boolean) is
    begin
       if Aspect = Null_Iir then
          return;
       end if;
-      Loc := Get_Location (Aspect);
       case Get_Kind (Aspect) is
          when Iir_Kind_Entity_Aspect_Entity =>
-            --  Add the entity.
-            Entity_Lib := Get_Entity (Aspect);
-            if Entity_Lib = Null_Iir then
-               --  In case of error (using -c).
-               return;
-            end if;
-            Entity := Get_Design_Unit (Entity_Lib);
-            Add_Design_Unit (Entity, Loc);
-
-            --  Extract and add the architecture.
-            Arch_Name := Get_Architecture (Aspect);
-            if Arch_Name /= Null_Iir then
-               case Get_Kind (Arch_Name) is
-                  when Iir_Kind_Simple_Name =>
-                     Id := Get_Identifier (Arch_Name);
-                     Arch := Load_Secondary_Unit (Entity, Id, Aspect);
-                     if Arch = Null_Iir then
-                        Error_Msg_Elab ("cannot find architecture %i of %n",
-                                        (+Id, +Entity_Lib));
-                        return;
-                     else
-                        Set_Named_Entity (Arch_Name, Get_Library_Unit (Arch));
-                     end if;
-                  when Iir_Kind_Reference_Name =>
-                     Arch := Get_Design_Unit (Get_Named_Entity (Arch_Name));
-                  when others =>
-                     Error_Kind ("add_design_aspect", Arch_Name);
-               end case;
-            else
-               Arch := Get_Latest_Architecture (Entity_Lib);
-               if Arch = Null_Iir then
-                  Error_Msg_Elab (Aspect, "no architecture in library for %n",
-                                  +Entity_Lib);
-                  return;
-               end if;
-               Arch := Get_Design_Unit (Arch);
-            end if;
-            Load_Design_Unit (Arch, Aspect);
-
-            --  Add the default configuration if required.  Must be done
-            --  before the architecture in case of recursive instantiation:
-            --  the configuration depends on the architecture.
-            if Add_Default then
-               Arch_Lib := Get_Library_Unit (Arch);
-
-               --  The default configuration may already exist due to a
-               --  previous instantiation.  Create it if it doesn't exist.
-               Config := Get_Default_Configuration_Declaration (Arch_Lib);
-               if Is_Null (Config) then
-                  Config := Vhdl.Canon.Create_Default_Configuration_Declaration
-                    (Arch_Lib);
-                  Set_Default_Configuration_Declaration (Arch_Lib, Config);
-               end if;
-
-               if Get_Configuration_Mark_Flag (Config)
-                 and then not Get_Configuration_Done_Flag (Config)
-               then
-                  --  Recursive instantiation.
-                  return;
-               else
-                  Add_Design_Unit (Config, Loc);
-               end if;
-            end if;
-
-            --  Otherwise, simply the architecture.
-            Add_Design_Unit (Arch, Loc);
-
+            Add_Design_Aspect_Entity (Aspect, Add_Default);
          when Iir_Kind_Entity_Aspect_Configuration =>
-            Add_Design_Unit
-              (Get_Design_Unit (Get_Configuration (Aspect)), Loc);
+            Add_Design_Unit (Get_Design_Unit (Get_Configuration (Aspect)),
+                             Get_Location (Aspect));
          when Iir_Kind_Entity_Aspect_Open =>
             null;
          when others =>
@@ -427,7 +464,7 @@ package body Vhdl.Configuration is
       Aspect : constant Iir := Get_Entity_Aspect (Bind);
       Ent : constant Iir := Get_Entity_From_Entity_Aspect (Aspect);
       Assoc_Chain : constant Iir := Get_Port_Map_Aspect_Chain (Bind);
-      Inter_Chain : constant Iir := Get_Port_Chain (Ent);
+      Inter_Chain : Iir;
       Assoc : Iir;
       Inter : Iir;
       Inst_Assoc_Chain : Iir;
@@ -440,6 +477,11 @@ package body Vhdl.Configuration is
       Inter_1 : Iir;
       Actual : Iir;
    begin
+      if Get_Kind (Ent) = Iir_Kind_Foreign_Module then
+         return;
+      end if;
+
+      Inter_Chain := Get_Port_Chain (Ent);
       Err := False;
       --  Note: the assoc chain is already canonicalized.
 
@@ -630,21 +672,35 @@ package body Vhdl.Configuration is
    --  corresponding configurations.
    --
    --  Return the configuration declaration for the design.
-   function Configure (Primary_Id : Name_Id; Secondary_Id : Name_Id)
+   function Configure
+     (Library_Id: Name_Id; Primary_Id : Name_Id; Secondary_Id : Name_Id)
      return Iir
    is
       use Libraries;
 
+      Library : Iir;
       Unit : Iir_Design_Unit;
       Lib_Unit : Iir;
       Top : Iir;
    begin
-      Unit := Find_Primary_Unit (Work_Library, Primary_Id);
+      if Library_Id /= Null_Identifier then
+         Library := Get_Library (Library_Id, Command_Line_Location);
+         if Library = Null_Iir then
+            return Null_Iir;
+         end if;
+      else
+         Library := Work_Library;
+      end if;
+      Unit := Find_Primary_Unit (Library, Primary_Id);
       if Unit = Null_Iir then
          Error_Msg_Elab ("cannot find entity or configuration "
                          & Name_Table.Image (Primary_Id));
          return Null_Iir;
       end if;
+      if Get_Kind (Unit) = Iir_Kind_Foreign_Module then
+         return Unit;
+      end if;
+
       Lib_Unit := Get_Library_Unit (Unit);
       case Get_Kind (Lib_Unit) is
          when Iir_Kind_Entity_Declaration =>
@@ -691,6 +747,8 @@ package body Vhdl.Configuration is
                   +Primary_Id);
                return Null_Iir;
             end if;
+            Top := Unit;
+         when Iir_Kind_Foreign_Module =>
             Top := Unit;
          when others =>
             Error_Msg_Elab ("%i is neither an entity nor a configuration",
@@ -749,12 +807,14 @@ package body Vhdl.Configuration is
          while File /= Null_Iir loop
             Unit := Get_First_Design_Unit (File);
             while Unit /= Null_Iir loop
-               Lib := Get_Library_Unit (Unit);
-               if Get_Kind (Lib) = Iir_Kind_Vunit_Declaration then
-                  --  Load it.
-                  Load_Design_Unit (Unit, Unit);
+               if Get_Kind (Unit) = Iir_Kind_Design_Unit then
+                  Lib := Get_Library_Unit (Unit);
+                  if Get_Kind (Lib) = Iir_Kind_Vunit_Declaration then
+                     --  Load it.
+                     Load_Design_Unit (Unit, Unit);
 
-                  Add_Verification_Unit (Get_Library_Unit (Unit));
+                     Add_Verification_Unit (Get_Library_Unit (Unit));
+                  end if;
                end if;
                Unit := Get_Chain (Unit);
             end loop;
@@ -875,7 +935,7 @@ package body Vhdl.Configuration is
       --  Add entities to the name table (so that they easily could be found).
       function Add_Entity_Cb (Design : Iir) return Walk_Status
       is
-         Kind : constant Iir_Kind := Get_Kind (Get_Library_Unit (Design));
+         Lib_Unit : Iir;
       begin
          if not Flags.Flag_Elaborate_With_Outdated then
             --  Discard obsolete or non-analyzed units.
@@ -884,20 +944,26 @@ package body Vhdl.Configuration is
             end if;
          end if;
 
-         case Iir_Kinds_Library_Unit (Kind) is
+         Lib_Unit := Get_Library_Unit (Design);
+         case Iir_Kinds_Library_Unit (Get_Kind (Lib_Unit)) is
             when Iir_Kind_Architecture_Body
-              | Iir_Kind_Configuration_Declaration =>
+              | Iir_Kind_Configuration_Declaration
+              | Iir_Kinds_Verification_Unit =>
                Load_Design_Unit (Design, Loc_Err);
             when Iir_Kind_Entity_Declaration =>
                Load_Design_Unit (Design, Loc_Err);
-               Vhdl.Sem_Scopes.Add_Name (Get_Library_Unit (Design));
+               --  Library unit has changed (loaded).
+               Lib_Unit := Get_Library_Unit (Design);
+               Vhdl.Sem_Scopes.Add_Name (Lib_Unit);
+            when Iir_Kind_Foreign_Module =>
+               Vhdl.Sem_Scopes.Add_Name (Lib_Unit);
             when Iir_Kind_Package_Declaration
               | Iir_Kind_Package_Instantiation_Declaration
               | Iir_Kind_Package_Body
-              | Iir_Kinds_Verification_Unit
               | Iir_Kind_Context_Declaration =>
                null;
          end case;
+
          return Walk_Continue;
       end Add_Entity_Cb;
 
@@ -953,8 +1019,6 @@ package body Vhdl.Configuration is
                   Interp := Get_Interpretation (Get_Identifier (Comp));
                   if Valid_Interpretation (Interp) then
                      Decl := Get_Declaration (Interp);
-                     pragma Assert
-                       (Get_Kind (Decl) = Iir_Kind_Entity_Declaration);
                      Set_Elab_Flag (Get_Design_Unit (Decl), True);
                   else
                      --  If there is no corresponding entity name for the
@@ -974,7 +1038,7 @@ package body Vhdl.Configuration is
 
       function Mark_Units_Cb (Design : Iir) return Walk_Status
       is
-         Unit : constant Iir := Get_Library_Unit (Design);
+         Unit : Iir;
          Status : Walk_Status;
       begin
          if not Flags.Flag_Elaborate_With_Outdated then
@@ -984,6 +1048,7 @@ package body Vhdl.Configuration is
             end if;
          end if;
 
+         Unit := Get_Library_Unit (Design);
          case Iir_Kinds_Library_Unit (Get_Kind (Unit)) is
             when Iir_Kind_Architecture_Body =>
                Status := Walk_Concurrent_Statements_Chain
@@ -993,11 +1058,30 @@ package body Vhdl.Configuration is
             when Iir_Kind_Configuration_Declaration =>
                --  Just ignored.
                null;
+            when Iir_Kinds_Verification_Unit =>
+               declare
+                  Item : Iir;
+               begin
+                  Item := Get_Vunit_Item_Chain (Unit);
+                  while Item /= Null_Iir loop
+                     if Get_Kind (Item) in Iir_Kinds_Concurrent_Statement
+                     then
+                        Status := Walk_Concurrent_Statement
+                          (Item, Mark_Instantiation_Cb'Access);
+                        pragma Assert (Status = Walk_Continue);
+                     end if;
+                     Item := Get_Chain (Item);
+                  end loop;
+               end;
+            when Iir_Kind_Foreign_Module =>
+               if Mark_Foreign_Module = null then
+                  raise Internal_Error;
+               end if;
+               Mark_Foreign_Module.all (Get_Foreign_Node (Unit));
             when Iir_Kind_Package_Declaration
               | Iir_Kind_Package_Instantiation_Declaration
               | Iir_Kind_Package_Body
               | Iir_Kind_Entity_Declaration
-              | Iir_Kinds_Verification_Unit
               | Iir_Kind_Context_Declaration =>
                null;
          end case;
@@ -1031,21 +1115,27 @@ package body Vhdl.Configuration is
 
       function Extract_Entity_Cb (Design : Iir) return Walk_Status
       is
-         Unit : constant Iir := Get_Library_Unit (Design);
+         Unit : Iir;
       begin
-         if Get_Kind (Unit) = Iir_Kind_Entity_Declaration then
-            if Get_Elab_Flag (Design) then
-               --  Clean elab flag.
-               Set_Elab_Flag (Design, False);
-            else
-               if Flags.Verbose then
-                  Report_Msg (Msgid_Note, Elaboration, +Unit,
-                              "candidate for top entity: %n", (1 => +Unit));
-               end if;
-               Nbr_Top_Entities := Nbr_Top_Entities + 1;
-               if Nbr_Top_Entities = 1 then
-                  First_Top_Entity := Unit;
-               end if;
+         Unit := Get_Library_Unit (Design);
+
+         if not Kind_In (Unit,
+                         Iir_Kind_Entity_Declaration, Iir_Kind_Foreign_Module)
+         then
+            return Walk_Continue;
+         end if;
+
+         if Get_Elab_Flag (Design) then
+            --  Clean elab flag.
+            Set_Elab_Flag (Design, False);
+         else
+            if Flags.Verbose then
+               Report_Msg (Msgid_Note, Elaboration, +Unit,
+                           "candidate for top entity: %n", (1 => +Unit));
+            end if;
+            Nbr_Top_Entities := Nbr_Top_Entities + 1;
+            if Nbr_Top_Entities = 1 then
+               First_Top_Entity := Unit;
             end if;
          end if;
          return Walk_Continue;
@@ -1078,7 +1168,7 @@ package body Vhdl.Configuration is
    end Find_Top_Entity;
 
    type Override_Entry is record
-      Gen : Name_Id;
+      Gen : String_Acc;
       Value : String_Acc;
    end record;
 
@@ -1088,9 +1178,9 @@ package body Vhdl.Configuration is
       Table_Low_Bound => 1,
       Table_Initial => 16);
 
-   procedure Add_Generic_Override (Id : Name_Id; Value : String) is
+   procedure Add_Generic_Override (Name : String; Value : String) is
    begin
-      Override_Table.Append (Override_Entry'(Gen => Id,
+      Override_Table.Append (Override_Entry'(Gen => new String'(Name),
                                              Value => new String'(Value)));
    end Add_Generic_Override;
 
@@ -1236,29 +1326,57 @@ package body Vhdl.Configuration is
 
    procedure Apply_Generic_Override (Ent : Iir)
    is
-      Inter_Chain : constant Iir := Get_Generic_Chain (Ent);
-      Inter : Iir;
    begin
       for I in Override_Table.First .. Override_Table.Last loop
          declare
             Over : constant Override_Entry := Override_Table.Table (I);
          begin
-            Inter := Inter_Chain;
-            while Inter /= Null_Iir loop
-               exit when Get_Identifier (Inter) = Over.Gen;
-               Inter := Get_Chain (Inter);
-            end loop;
+            case Get_Kind (Ent) is
+               when Iir_Kind_Entity_Declaration =>
+                  declare
+                     Inter_Chain : constant Iir := Get_Generic_Chain (Ent);
+                     Gen_Name : String := Over.Gen.all;
+                     Gen_Id : Name_Id;
+                     Inter : Iir;
+                     Err : Boolean;
+                  begin
+                     Vhdl.Scanner.Convert_Identifier (Gen_Name, Err);
+                     if Err then
+                        Error_Msg_Option
+                          ("incorrect name in generic override option");
+                        Gen_Id := Null_Identifier;
+                     else
+                        Gen_Id := Name_Table.Get_Identifier (Gen_Name);
 
-            if Inter = Null_Iir then
-               Error_Msg_Elab ("no generic %i for -g", +Over.Gen);
-            elsif Get_Kind (Inter) /= Iir_Kind_Interface_Constant_Declaration
-            then
-               Error_Msg_Elab
-                 ("generic %n cannot be overriden (not a constant)",
-                  +Over.Gen);
-            else
-               Override_Generic (Inter, Over.Value);
-            end if;
+                        Inter := Inter_Chain;
+                        while Inter /= Null_Iir loop
+                           exit when Get_Identifier (Inter) = Gen_Id;
+                           Inter := Get_Chain (Inter);
+                        end loop;
+                     end if;
+
+                     if Gen_Id = Null_Identifier then
+                        --  Skip it
+                        null;
+                     elsif Inter = Null_Iir then
+                        Error_Msg_Elab ("no generic %i for -g", +Gen_Id);
+                     elsif (Get_Kind (Inter)
+                              /= Iir_Kind_Interface_Constant_Declaration)
+                     then
+                        --  Could be a generic package, a generic type...
+                        Error_Msg_Elab
+                          ("generic %n cannot be overriden (not a constant)",
+                           +Gen_Id);
+                     else
+                        Override_Generic (Inter, Over.Value);
+                     end if;
+                  end;
+               when Iir_Kind_Foreign_Module =>
+                  Apply_Foreign_Override
+                    (Get_Foreign_Node (Ent), Over.Gen.all, Over.Value.all);
+               when others =>
+                  raise Internal_Error;
+            end case;
          end;
       end loop;
    end Apply_Generic_Override;

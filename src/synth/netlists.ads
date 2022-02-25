@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,13 +14,10 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Types; use Types;
 with Hash; use Hash;
-with Dyn_Maps;
 
 package Netlists is
    --  Netlists.
@@ -155,7 +152,7 @@ package Netlists is
       --  Name of the port.
       Name : Sname;
 
-      Is_Inout : Boolean;
+      Dir : Port_Kind;
 
       --  Port width (number of bits).
       W : Width;
@@ -331,11 +328,26 @@ package Netlists is
    procedure Write_Pval (P : Pval; Off : Uns32; Val : Logic_32);
 
    --  Add an attribute to INST.
-   procedure Set_Attribute
+   procedure Set_Instance_Attribute
      (Inst : Instance; Id : Name_Id; Ptype : Param_Type; Pv : Pval);
 
+   procedure Set_Input_Port_Attribute (M : Module;
+                                       Port : Port_Idx;
+                                       Id : Name_Id;
+                                       Ptype : Param_Type;
+                                       Pv : Pval);
+   procedure Set_Output_Port_Attribute (M : Module;
+                                        Port : Port_Idx;
+                                        Id : Name_Id;
+                                        Ptype : Param_Type;
+                                        Pv : Pval);
+
    --  Return the first attribute for INST.  Returns No_Attribute if none.
-   function Get_First_Attribute (Inst : Instance) return Attribute;
+   function Get_Instance_First_Attribute (Inst : Instance) return Attribute;
+   function Get_Input_Port_First_Attribute (M : Module; Port : Port_Idx)
+                                           return Attribute;
+   function Get_Output_Port_First_Attribute (M : Module; Port : Port_Idx)
+                                            return Attribute;
 
    --  Get name/type/value of an attribute.
    function Get_Attribute_Name (Attr : Attribute) return Name_Id;
@@ -345,11 +357,17 @@ package Netlists is
    --  Get the next attribute for the same instance.
    function Get_Attribute_Next (Attr : Attribute) return Attribute;
 
+   --  Return True iff INST has at least one attribute.
+   function Has_Instance_Attribute (Inst : Instance) return Boolean;
+
    --  Display some usage stats on the standard error.
    procedure Disp_Stats;
 private
    type Sname is new Uns32 range 0 .. 2**30 - 1;
    No_Sname : constant Sname := 0;
+
+   --  Just to confirm.
+   for Port_Desc'Size use 64;
 
    --  We don't care about C compatible representation of Sname_Record.
    pragma Warnings (Off, "*convention*");
@@ -393,21 +411,6 @@ private
       Chain : Attribute;
    end record;
 
-   function Attribute_Hash (Params : Instance) return Hash_Value_Type;
-   function Attribute_Build (Params : Instance) return Instance;
-   function Attribute_Build_Value (Obj : Instance) return Attribute;
-
-   package Attribute_Maps is new Dyn_Maps
-     (Params_Type => Instance,
-      Object_Type => Instance,
-      Value_Type => Attribute,
-      Hash => Attribute_Hash,
-      Build => Attribute_Build,
-      Build_Value => Attribute_Build_Value,
-      Equal => "=");
-
-   type Attribute_Map_Acc is access Attribute_Maps.Instance;
-
    type Module_Record is record
       Parent           : Module;
       Name             : Sname;
@@ -430,24 +433,19 @@ private
       --  FIXME: use an array instead ?
       First_Instance : Instance;
       Last_Instance  : Instance;
-
-      --  Map of instance (of this module) to its attributes.
-      Attrs          : Attribute_Map_Acc;
    end record;
 
    function Get_First_Port_Desc (M : Module) return Port_Desc_Idx;
    function Get_First_Output (Inst : Instance) return Net;
    function Get_Port_Desc (Idx : Port_Desc_Idx) return Port_Desc;
 
-   function Get_Attributes (M : Module) return Attribute_Map_Acc;
-
    function Is_Valid (I : Instance) return Boolean;
 
    type Instance_Record is record
       --  The instance is instantiated in Parent.
-      Parent     : Module;
-      Has_Attr  : Boolean;  --  Set when there is at least one attribute.
-      Flag4      : Boolean;
+      Parent   : Module;
+      Has_Attr : Boolean;  --  Set when there is at least one attribute.
+      Flag4    : Boolean;
 
       --  Instances are in a doubly-linked list.
       Prev_Instance : Instance;

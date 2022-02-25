@@ -1,37 +1,41 @@
 #  Copyright (C) 2002 - 2015 Tristan Gingold
 #
-#  GHDL is free software; you can redistribute it and/or modify it under
-#  the terms of the GNU General Public License as published by the Free
-#  Software Foundation; either version 2, or (at your option) any later
-#  version.
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 2 of the License, or
+#  (at your option) any later version.
 #
-#  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
-#  WARRANTY; without even the implied warranty of MERCHANTABILITY or
-#  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-#  for more details.
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
 #
 #  You should have received a copy of the GNU General Public License
-#  along with GCC; see the file COPYING.  If not, write to the Free
-#  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-#  02111-1307, USA.
+#  along with this program.  If not, see <gnu.org/licenses>.
 
 # Some files are automatically generated using pnodes.py
 # This Makefile can be used to regenerate these files.  Generated files must
 # be committed and distribued with the sources, so that users don't need to
 # regenerate them (and don't need to have python installed).
 
-PNODES=../../python/xtools/pnodes.py
-PNODESPY=../../python/xtools/pnodespy.py
+PNODES=../../scripts/pnodes.py
+PNODESPY=../../scripts/pnodespy.py
+PYTHON=python3
 
 DEPS=vhdl-nodes.ads vhdl-nodes.adb.in $(PNODES)
 
-GEN_FILES=vhdl-nodes.adb vhdl-nodes_meta.ads vhdl-nodes_meta.adb \
-  vhdl-elocations.adb vhdl-elocations_meta.ads vhdl-elocations_meta.adb \
-  ../../python/libghdl/thin/vhdl/nodes.py \
-  ../../python/libghdl/thin/vhdl/nodes_meta.py \
-  ../../python/libghdl/thin/vhdl/tokens.py \
-  ../../python/libghdl/thin/vhdl/elocations.py \
-  ../../python/libghdl/thin/errorout.py ../../python/libghdl/thin/std_names.py
+GEN_FILES=vhdl-nodes.adb \
+  vhdl-nodes_meta.ads \
+  vhdl-nodes_meta.adb \
+  vhdl-elocations.adb \
+  vhdl-elocations_meta.ads \
+  vhdl-elocations_meta.adb \
+  ../../pyGHDL/libghdl/vhdl/nodes.py \
+  ../../pyGHDL/libghdl/vhdl/nodes_meta.py \
+  ../../pyGHDL/libghdl/vhdl/tokens.py \
+  ../../pyGHDL/libghdl/vhdl/elocations.py \
+  ../../pyGHDL/libghdl/errorout.py \
+  ../../pyGHDL/libghdl/std_names.py
 
 NODES_FLAGS=--node-file=vhdl-nodes.ads --field-file=vhdl-nodes.adb.in \
   --template-file=vhdl-nodes.adb.in --kind-file=vhdl-nodes.ads \
@@ -73,34 +77,40 @@ vhdl-elocations_meta.adb: vhdl-elocations_meta.adb.in vhdl-elocations.ads $(DEPS
 	$(PNODES) $(ELOCATIONS_FLAGS) meta_body > $@
 	chmod -w $@
 
-../../python/libghdl/thin/vhdl/nodes.py: $(DEPS) $(PNODESPY)
+../../pyGHDL/libghdl/vhdl/nodes.py: $(DEPS) $(PNODESPY)
 	$(RM) $@
 	$(PNODESPY) $(NODES_FLAGS) libghdl-nodes > $@
+	$(PYTHON) -m black $@
 	chmod -w $@
 
-../../python/libghdl/thin/vhdl/nodes_meta.py: $(DEPS) $(PNODESPY)
+../../pyGHDL/libghdl/vhdl/nodes_meta.py: $(DEPS) $(PNODESPY)
 	$(RM) $@
 	$(PNODESPY) $(NODES_FLAGS) libghdl-meta > $@
+	$(PYTHON) -m black $@
 	chmod -w $@
 
-../../python/libghdl/thin/std_names.py: $(PNODESPY) ../std_names.ads
+../../pyGHDL/libghdl/std_names.py: $(PNODESPY) ../std_names.ads
 	$(RM) $@
 	$(PNODESPY) $(NODES_FLAGS) libghdl-names > $@
+	$(PYTHON) -m black $@
 	chmod -w $@
 
-../../python/libghdl/thin/vhdl/tokens.py: $(PNODESPY) vhdl-tokens.ads
+../../pyGHDL/libghdl/vhdl/tokens.py: $(PNODESPY) vhdl-tokens.ads
 	$(RM) $@
 	$(PNODESPY) $(NODES_FLAGS) libghdl-tokens > $@
+	$(PYTHON) -m black $@
 	chmod -w $@
 
-../../python/libghdl/thin/vhdl/elocations.py: $(PNODESPY) vhdl-elocations.ads
+../../pyGHDL/libghdl/vhdl/elocations.py: $(PNODESPY) vhdl-elocations.ads
 	$(RM) $@
 	$(PNODESPY) $(ELOCATIONS_FLAGS) libghdl-elocs > $@
+	$(PYTHON) -m black $@
 	chmod -w $@
 
-../../python/libghdl/thin/errorout.py: $(PNODESPY) ../errorout.ads
+../../pyGHDL/libghdl/errorout.py: $(PNODESPY) ../errorout.ads
 	$(RM) $@
 	$(PNODESPY) $(ELOCATIONS_FLAGS) libghdl-errorout > $@
+	$(PYTHON) -m black $@
 	chmod -w $@
 
 clean:

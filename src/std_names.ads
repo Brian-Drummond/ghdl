@@ -1,20 +1,18 @@
 --  Well known name table entries.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Types; use Types;
 
 -- Note: since all identifiers declared in this package begins with either
@@ -183,9 +181,10 @@ package Std_Names is
    Name_Restrict :           constant Name_Id := Name_First_Keyword + 106;
    Name_Restrict_Guarantee : constant Name_Id := Name_First_Keyword + 107;
    Name_Sequence :           constant Name_Id := Name_First_Keyword + 108;
-   Name_Vmode :              constant Name_Id := Name_First_Keyword + 109;
-   Name_Vprop :              constant Name_Id := Name_First_Keyword + 110;
-   Name_Vunit :              constant Name_Id := Name_First_Keyword + 111;
+   Name_Inherit :            constant Name_Id := Name_First_Keyword + 109;
+   Name_Vmode :              constant Name_Id := Name_First_Keyword + 110;
+   Name_Vprop :              constant Name_Id := Name_First_Keyword + 111;
+   Name_Vunit :              constant Name_Id := Name_First_Keyword + 112;
    Name_Last_Vhdl08 :        constant Name_Id := Name_Vunit;
 
    subtype Name_Id_Vhdl08_Reserved_Words is
@@ -695,19 +694,20 @@ package Std_Names is
    Name_None :                  constant Name_Id := Name_First_Misc + 041;
    Name_Last_Misc :             constant Name_Id := Name_None;
 
-   Name_First_Ieee_Pkg     : constant Name_Id := Name_Last_Misc + 1;
-   Name_Ieee               : constant Name_Id := Name_First_Ieee_Pkg + 000;
-   Name_Std_Logic_1164     : constant Name_Id := Name_First_Ieee_Pkg + 001;
-   Name_VITAL_Timing       : constant Name_Id := Name_First_Ieee_Pkg + 002;
-   Name_Numeric_Std        : constant Name_Id := Name_First_Ieee_Pkg + 003;
-   Name_Numeric_Bit        : constant Name_Id := Name_First_Ieee_Pkg + 004;
-   Name_Std_Logic_Arith    : constant Name_Id := Name_First_Ieee_Pkg + 005;
-   Name_Std_Logic_Signed   : constant Name_Id := Name_First_Ieee_Pkg + 006;
-   Name_Std_Logic_Unsigned : constant Name_Id := Name_First_Ieee_Pkg + 007;
-   Name_Std_Logic_Textio   : constant Name_Id := Name_First_Ieee_Pkg + 008;
-   Name_Std_Logic_Misc     : constant Name_Id := Name_First_Ieee_Pkg + 009;
-   Name_Math_Real          : constant Name_Id := Name_First_Ieee_Pkg + 010;
-   Name_Last_Ieee_Pkg      : constant Name_Id := Name_Math_Real;
+   Name_First_Ieee_Pkg       : constant Name_Id := Name_Last_Misc + 1;
+   Name_Ieee                 : constant Name_Id := Name_First_Ieee_Pkg + 000;
+   Name_Std_Logic_1164       : constant Name_Id := Name_First_Ieee_Pkg + 001;
+   Name_VITAL_Timing         : constant Name_Id := Name_First_Ieee_Pkg + 002;
+   Name_Numeric_Std          : constant Name_Id := Name_First_Ieee_Pkg + 003;
+   Name_Numeric_Bit          : constant Name_Id := Name_First_Ieee_Pkg + 004;
+   Name_Numeric_Std_Unsigned : constant Name_Id := Name_First_Ieee_Pkg + 005;
+   Name_Std_Logic_Arith      : constant Name_Id := Name_First_Ieee_Pkg + 006;
+   Name_Std_Logic_Signed     : constant Name_Id := Name_First_Ieee_Pkg + 007;
+   Name_Std_Logic_Unsigned   : constant Name_Id := Name_First_Ieee_Pkg + 008;
+   Name_Std_Logic_Textio     : constant Name_Id := Name_First_Ieee_Pkg + 009;
+   Name_Std_Logic_Misc       : constant Name_Id := Name_First_Ieee_Pkg + 010;
+   Name_Math_Real            : constant Name_Id := Name_First_Ieee_Pkg + 011;
+   Name_Last_Ieee_Pkg        : constant Name_Id := Name_Math_Real;
 
    Name_First_Ieee_Name    : constant Name_Id := Name_Last_Ieee_Pkg + 1;
    Name_Std_Ulogic         : constant Name_Id := Name_First_Ieee_Name + 000;
@@ -755,12 +755,13 @@ package Std_Names is
    Name_Log2               : constant Name_Id := Name_First_Ieee_Name + 042;
    Name_Sin                : constant Name_Id := Name_First_Ieee_Name + 043;
    Name_Cos                : constant Name_Id := Name_First_Ieee_Name + 044;
-   Name_Shl                : constant Name_Id := Name_First_Ieee_Name + 045;
-   Name_Shr                : constant Name_Id := Name_First_Ieee_Name + 046;
-   Name_Ext                : constant Name_Id := Name_First_Ieee_Name + 047;
-   Name_Sxt                : constant Name_Id := Name_First_Ieee_Name + 048;
-   Name_Find_Leftmost      : constant Name_Id := Name_First_Ieee_Name + 049;
-   Name_Find_Rightmost     : constant Name_Id := Name_First_Ieee_Name + 050;
+   Name_Arctan             : constant Name_Id := Name_First_Ieee_Name + 045;
+   Name_Shl                : constant Name_Id := Name_First_Ieee_Name + 046;
+   Name_Shr                : constant Name_Id := Name_First_Ieee_Name + 047;
+   Name_Ext                : constant Name_Id := Name_First_Ieee_Name + 048;
+   Name_Sxt                : constant Name_Id := Name_First_Ieee_Name + 049;
+   Name_Find_Leftmost      : constant Name_Id := Name_First_Ieee_Name + 050;
+   Name_Find_Rightmost     : constant Name_Id := Name_First_Ieee_Name + 051;
    Name_Last_Ieee_Name     : constant Name_Id := Name_Find_Rightmost;
 
    Name_First_Synthesis    : constant Name_Id := Name_Last_Ieee_Name + 1;
@@ -768,7 +769,11 @@ package Std_Names is
    Name_Allseq             : constant Name_Id := Name_First_Synthesis + 001;
    Name_Anyconst           : constant Name_Id := Name_First_Synthesis + 002;
    Name_Anyseq             : constant Name_Id := Name_First_Synthesis + 003;
-   Name_Last_Synthesis     : constant Name_Id := Name_Anyseq;
+   Name_Gclk               : constant Name_Id := Name_First_Synthesis + 004;
+   Name_Loc                : constant Name_Id := Name_First_Synthesis + 005;
+   Name_Keep               : constant Name_Id := Name_First_Synthesis + 006;
+   Name_Syn_Black_Box      : constant Name_Id := Name_First_Synthesis + 007;
+   Name_Last_Synthesis     : constant Name_Id := Name_Syn_Black_Box;
 
    --  Verilog Directives.
    Name_First_Directive : constant Name_Id := Name_Last_Synthesis + 1;
@@ -918,7 +923,7 @@ package Std_Names is
    --   while
    Name_Last_BSV :          constant Name_Id := Name_First_BSV + 49;
 
-   --  VHDL special comments
+   --  Special comments
    Name_First_Comment :  constant Name_Id := Name_Last_BSV + 1;
    Name_Psl :            constant Name_Id := Name_First_Comment + 0;
    Name_Pragma :         constant Name_Id := Name_First_Comment + 1;
@@ -930,7 +935,9 @@ package Std_Names is
    Name_Synthesis_Off :  constant Name_Id := Name_First_Comment + 7;
    Name_Synthesis_On :   constant Name_Id := Name_First_Comment + 8;
    Name_Off :            constant Name_Id := Name_First_Comment + 9;
-   Name_Last_Comment :   constant Name_Id := Name_Off;
+   Name_Full_Case :      constant Name_Id := Name_First_Comment + 10;
+   Name_Parallel_Case :  constant Name_Id := Name_First_Comment + 11;
+   Name_Last_Comment :   constant Name_Id := Name_Parallel_Case;
 
    --  PSL words.
    Name_First_PSL :          constant Name_Id := Name_Last_Comment + 1;
@@ -943,25 +950,26 @@ package Std_Names is
    --  Name_And
    --  Name_Assume
    Name_Assume_Guarantee :   constant Name_Id := Name_First_PSL + 05;
-   Name_Before :             constant Name_Id := Name_First_PSL + 06;
+   Name_Async_Abort :        constant Name_Id := Name_First_PSL + 06;
+   Name_Before :             constant Name_Id := Name_First_PSL + 07;
    --  Name_Boolean
-   Name_Clock :              constant Name_Id := Name_First_PSL + 07;
+   Name_Clock :              constant Name_Id := Name_First_PSL + 08;
    --  Name_Const
    --  Name_Cover
    --  Name_Default
-   Name_E :                  constant Name_Id := Name_First_PSL + 08;
-   Name_Ef :                 constant Name_Id := Name_First_PSL + 09;
-   Name_Eg :                 constant Name_Id := Name_First_PSL + 10;
-   Name_Ex :                 constant Name_Id := Name_First_PSL + 11;
-   Name_Endpoint :           constant Name_Id := Name_First_PSL + 12;
-   Name_Eventually :         constant Name_Id := Name_First_PSL + 13;
-   Name_Fairness :           constant Name_Id := Name_First_PSL + 14;
-   Name_Fell :               constant Name_Id := Name_First_PSL + 15;
-   Name_Forall :             constant Name_Id := Name_First_PSL + 16;
-   Name_G :                  constant Name_Id := Name_First_PSL + 17;
+   Name_E :                  constant Name_Id := Name_First_PSL + 09;
+   Name_Ef :                 constant Name_Id := Name_First_PSL + 10;
+   Name_Eg :                 constant Name_Id := Name_First_PSL + 11;
+   Name_Ex :                 constant Name_Id := Name_First_PSL + 12;
+   Name_Endpoint :           constant Name_Id := Name_First_PSL + 13;
+   Name_Eventually :         constant Name_Id := Name_First_PSL + 14;
+   Name_Fairness :           constant Name_Id := Name_First_PSL + 15;
+   Name_Fell :               constant Name_Id := Name_First_PSL + 16;
+   Name_Forall :             constant Name_Id := Name_First_PSL + 17;
+   Name_G :                  constant Name_Id := Name_First_PSL + 18;
    --  Name_In
-   Name_Inf :                constant Name_Id := Name_First_PSL + 18;
-   Name_Inherit :            constant Name_Id := Name_First_PSL + 19;
+   Name_Inf :                constant Name_Id := Name_First_PSL + 19;
+   --  Name_Inherit
    --  Name_Is
    Name_Never :              constant Name_Id := Name_First_PSL + 20;
    --  Name_Next
@@ -973,18 +981,21 @@ package Std_Names is
    --  Name_Not
    --  Name_Or
    --  Name_Property
-   Name_Prev :               constant Name_Id := Name_First_PSL + 26;
+   Name_Onehot :             constant Name_Id := Name_First_PSL + 26;
+   Name_Onehot0 :            constant Name_Id := Name_First_PSL + 27;
+   Name_Prev :               constant Name_Id := Name_First_PSL + 28;
    --  Name_Restrict
    --  Name_Restrict_Guarantee
-   Name_Rose :               constant Name_Id := Name_First_PSL + 27;
+   Name_Rose :               constant Name_Id := Name_First_PSL + 29;
    --   sequence
-   Name_Strong :             constant Name_Id := Name_First_PSL + 28;
+   Name_Strong :             constant Name_Id := Name_First_PSL + 30;
+   Name_Sync_Abort :         constant Name_Id := Name_First_PSL + 31;
    --   union
    --   until
-   Name_W :                  constant Name_Id := Name_First_PSL + 29;
-   Name_Whilenot :           constant Name_Id := Name_First_PSL + 30;
-   Name_Within :             constant Name_Id := Name_First_PSL + 31;
-   Name_X :                  constant Name_Id := Name_First_PSL + 32;
+   Name_W :                  constant Name_Id := Name_First_PSL + 32;
+   Name_Whilenot :           constant Name_Id := Name_First_PSL + 33;
+   Name_Within :             constant Name_Id := Name_First_PSL + 34;
+   Name_X :                  constant Name_Id := Name_First_PSL + 35;
    Name_Last_PSL :           constant Name_Id := Name_X;
 
    subtype Name_Id_PSL_Keywords is

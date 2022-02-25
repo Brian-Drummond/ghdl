@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) std_logic_1664 subprograms.
 --  Copyright (C) 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -92,6 +90,20 @@ package body Grt.Std_Logic_1164 is
       return Std_Ulogic'Pos (Or_Table (Match_Lt_Table (Left, Right),
                                        Match_Eq_Table (Left, Right)));
    end Ghdl_Std_Ulogic_Match_Le;
+
+   function Ghdl_Std_Ulogic_Match_Ge (L, R : Ghdl_E8) return Ghdl_E8
+   is
+      Lt : constant Ghdl_E8 := Ghdl_Std_Ulogic_Match_Lt(L, R);
+   begin
+      return Std_Ulogic'Pos (Not_Table (Std_Ulogic'Val(Lt))) ;
+   end Ghdl_Std_Ulogic_Match_Ge;
+
+   function Ghdl_Std_Ulogic_Match_Gt (L, R : Ghdl_E8) return Ghdl_E8
+   is
+      Le : constant Ghdl_E8 := Ghdl_Std_Ulogic_Match_Le(L, R);
+   begin
+      return Std_Ulogic'Pos (Not_Table (Std_Ulogic'Val(Le))) ;
+   end Ghdl_Std_Ulogic_Match_Gt;
 
    Assert_Arr_Msg : constant String :=
      "parameters of '?=' array operator are not of the same length";

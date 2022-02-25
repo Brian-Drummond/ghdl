@@ -1,20 +1,18 @@
 --  Semantic analysis.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Libraries;
 with Flags; use Flags;
 with Types; use Types;
@@ -465,7 +463,7 @@ package body Vhdl.Sem_Types is
             Val := Eval_Physical_Literal (Val);
             Set_Physical_Literal (Unit, Val);
 
-            --  LRM93 §3.1
+            --  LRM93 3.1
             --  The position number of unit names need not lie within the range
             --  specified by the range constraint.
             --  GHDL: this was not true in VHDL87.
@@ -554,7 +552,7 @@ package body Vhdl.Sem_Types is
       Check_No_File_Type (El_Type, Def);
       Set_Signal_Type_Flag (Def, Get_Signal_Type_Flag (El_Type));
 
-      --  LRM93 §3.2.1.1
+      --  LRM93 3.2.1.1
       --  The same requirement exists [must define a constrained
       --  array subtype] [...] for the element subtype indication
       --  of an array type definition, if the type of the array
@@ -1100,7 +1098,7 @@ package body Vhdl.Sem_Types is
 
       Set_Signal_Type_Flag (Def, Get_Signal_Type_Flag (Base_Type));
 
-      --  According to LRM93 §7.4.1, an unconstrained array type
+      --  According to LRM93 7.4.1, an unconstrained array type
       --  is not static.
       Set_Type_Staticness (Base_Type, None);
       Set_Type_Staticness (Def, Min (Staticness,
@@ -1316,6 +1314,7 @@ package body Vhdl.Sem_Types is
       Decl: Iir;
       Decl_Type : Iir;
       Ret_Type : Iir;
+      El_Type : Iir;
    begin
       -- LRM93 2.4
       --  A resolution function must be a [pure] function;
@@ -1345,14 +1344,17 @@ package body Vhdl.Sem_Types is
       --  The type of the return value of the function must also be that of
       --  the signal.
       Ret_Type := Get_Return_Type (Func);
-      if Get_Base_Type (Get_Element_Subtype (Decl_Type))
-        /= Get_Base_Type (Ret_Type)
-      then
+      El_Type := Get_Element_Subtype (Decl_Type);
+      if Get_Base_Type (El_Type) /= Get_Base_Type (Ret_Type) then
          return False;
       end if;
       if Atype /= Null_Iir
         and then Get_Base_Type (Ret_Type) /= Get_Base_Type (Atype)
       then
+         return False;
+      end if;
+      if not Is_Fully_Constrained_Type (El_Type) then
+         --  FIXME: not yet handled: unbounded element.
          return False;
       end if;
       -- LRM93 2.4
@@ -1687,11 +1689,10 @@ package body Vhdl.Sem_Types is
    end Sem_Array_Constraint_Indexes;
 
    --  DEF is an array_subtype_definition.
-   procedure Sem_Array_Type_Constraint_Indexes (Def : Iir; Type_Mark : Iir)
+   procedure Sem_Array_Type_Constraint_Indexes
+     (Def : Iir; Type_Mark : Iir; Index_Staticness : out Iir_Staticness)
    is
-      El_Type : constant Iir := Get_Element_Subtype (Type_Mark);
       Base_Type : constant Iir := Get_Base_Type (Type_Mark);
-      Index_Staticness : Iir_Staticness;
    begin
       -- Check each index constraint against array type.
       Set_Parent_Type (Def, Type_Mark);
@@ -1699,13 +1700,11 @@ package body Vhdl.Sem_Types is
       Sem_Array_Constraint_Indexes
         (Def, Type_Mark, Base_Type, Index_Staticness);
 
-      Set_Type_Staticness
-        (Def, Min (Get_Type_Staticness (El_Type), Index_Staticness));
       Set_Signal_Type_Flag (Def, Get_Signal_Type_Flag (Type_Mark));
    end Sem_Array_Type_Constraint_Indexes;
 
    --  DEF is an incomplete subtype_indication or array_constraint,
-   --  TYPE_MARK is the base type of the subtype_indication.
+   --  TYPE_MARK is an array type or subtype.
    function Sem_Array_Constraint
      (Def : Iir; Type_Mark : Iir; Resolution : Iir) return Iir
    is
@@ -1715,6 +1714,7 @@ package body Vhdl.Sem_Types is
       Resolv_Func : Iir := Null_Iir;
       Resolv_El : Iir := Null_Iir;
       Resolv_Ind : Iir;
+      Index_Staticness : Iir_Staticness;
    begin
       if Resolution /= Null_Iir then
          --  A resolution indication is present.
@@ -1760,13 +1760,16 @@ package body Vhdl.Sem_Types is
                   return Res;
                end if;
 
+               Index_Staticness := None;
+
                --  No element constraint.
                El_Def := Null_Iir;
 
             when Iir_Kind_Array_Subtype_Definition =>
                -- Case of a constraint for an array.
                El_Def := Get_Array_Element_Constraint (Def);
-               Sem_Array_Type_Constraint_Indexes (Def, Type_Mark);
+               Sem_Array_Type_Constraint_Indexes
+                 (Def, Type_Mark, Index_Staticness);
                Res := Def;
 
             when others =>
@@ -1803,6 +1806,8 @@ package body Vhdl.Sem_Types is
       Set_Element_Subtype (Res, El_Def);
 
       Set_Constraint_State (Res, Get_Array_Constraint (Res));
+      Set_Type_Staticness
+        (Res, Min (Get_Type_Staticness (El_Def), Index_Staticness));
 
       if Resolv_Func /= Null_Iir then
          Sem_Resolution_Function (Resolv_Func, Res);
@@ -1924,6 +1929,7 @@ package body Vhdl.Sem_Types is
 
       Res := Create_Iir (Iir_Kind_Array_Subtype_Definition);
       Location_Copy (Res, Name);
+      Set_Has_Array_Constraint_Flag (Res, True);
       Chain := Get_Association_Chain (Name);
       if Get_Kind (Chain) = Iir_Kind_Association_Element_Open then
          if Get_Chain (Chain) /= Null_Iir then
@@ -1950,6 +1956,10 @@ package body Vhdl.Sem_Types is
             when Iir_Kinds_Array_Type_Definition =>
                Set_Array_Element_Constraint
                  (Res, Reparse_As_Array_Constraint (Def, Def_El_Type));
+               Set_Has_Element_Constraint_Flag (Res, True);
+            when Iir_Kind_Record_Type_Definition =>
+               Set_Array_Element_Constraint
+                 (Res, Reparse_As_Record_Constraint (Def));
             when others =>
                Error_Kind ("reparse_as_array_constraint", Def_El_Type);
          end case;

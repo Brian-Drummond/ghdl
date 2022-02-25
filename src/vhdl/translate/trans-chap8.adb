@@ -1,20 +1,18 @@
 --  Iir to ortho translator.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Simple_IO;
 with Std_Names;
@@ -403,69 +401,48 @@ package body Trans.Chap8 is
    end Translate_If_Statement;
 
    --  Inc or dec ITERATOR according to DIR.
-   procedure Gen_Update_Iterator_Common (Val      : Unsigned_64;
-                                         Itype    : Iir;
-                                         V : out O_Enode)
+   procedure Gen_Update_Iterator (Iterator : Var_Type;
+                                  Dir      : Direction_Type;
+                                  Itype    : Iir)
    is
       Base_Type : constant Iir := Get_Base_Type (Itype);
+      Op        : ON_Op_Kind;
+      V         : O_Enode;
    begin
       case Get_Kind (Base_Type) is
          when Iir_Kind_Integer_Type_Definition =>
             V := New_Lit
               (New_Signed_Literal
-                 (Get_Ortho_Type (Base_Type, Mode_Value), Integer_64 (Val)));
+                 (Get_Ortho_Type (Base_Type, Mode_Value), 1));
          when Iir_Kind_Enumeration_Type_Definition =>
             declare
                List : constant Iir_Flist :=
                  Get_Enumeration_Literal_List (Base_Type);
+               Num : Natural;
             begin
-               --  FIXME: what about type E is ('T') ??
-               if Natural (Val) > Get_Nbr_Elements (List) then
-                  raise Internal_Error;
+               if Get_Nbr_Elements (List) = 1 then
+                  --  In the case of:
+                  --    type E is ('T')
+                  --  the iterator must have already finished.  So it doesn't
+                  --  matter if not incremented.
+                  Num := 0;
+               else
+                  Num := 1;
                end if;
-               V := New_Lit
-                 (Get_Ortho_Literal (Get_Nth_Element (List, Natural (Val))));
+               V := New_Lit (Get_Ortho_Literal (Get_Nth_Element (List, Num)));
             end;
 
          when others =>
             Error_Kind ("gen_update_iterator", Base_Type);
       end case;
-   end Gen_Update_Iterator_Common;
 
-   procedure Gen_Update_Iterator (Iterator : O_Dnode;
-                                  Dir      : Direction_Type;
-                                  Val      : Unsigned_64;
-                                  Itype    : Iir)
-   is
-      Op        : ON_Op_Kind;
-      V         : O_Enode;
-   begin
       case Dir is
          when Dir_To =>
             Op := ON_Add_Ov;
          when Dir_Downto =>
             Op := ON_Sub_Ov;
       end case;
-      Gen_Update_Iterator_Common (Val, Itype, V);
-      New_Assign_Stmt (New_Obj (Iterator),
-                       New_Dyadic_Op (Op, New_Obj_Value (Iterator), V));
-   end Gen_Update_Iterator;
 
-   procedure Gen_Update_Iterator (Iterator : Var_Type;
-                                  Dir      : Direction_Type;
-                                  Val      : Unsigned_64;
-                                  Itype    : Iir)
-   is
-      Op        : ON_Op_Kind;
-      V         : O_Enode;
-   begin
-      case Dir is
-         when Dir_To =>
-            Op := ON_Add_Ov;
-         when Dir_Downto =>
-            Op := ON_Sub_Ov;
-      end case;
-      Gen_Update_Iterator_Common (Val, Itype, V);
       New_Assign_Stmt (Get_Var (Iterator),
                        New_Dyadic_Op (Op, New_Value (Get_Var (Iterator)), V));
    end Gen_Update_Iterator;
@@ -660,10 +637,10 @@ package body Trans.Chap8 is
       if Deep_Rng /= Null_Iir then
          if Get_Direction (Deep_Rng) = Dir_To xor Deep_Reverse then
             Gen_Update_Iterator (It_Info.Iterator_Var,
-                                 Dir_To, 1, Iter_Base_Type);
+                                 Dir_To, Iter_Base_Type);
          else
             Gen_Update_Iterator (It_Info.Iterator_Var,
-                                 Dir_Downto, 1, Iter_Base_Type);
+                                 Dir_Downto, Iter_Base_Type);
          end if;
       else
          Start_If_Stmt
@@ -673,10 +650,10 @@ package body Trans.Chap8 is
                New_Lit (Ghdl_Dir_To_Node),
                Ghdl_Bool_Type));
          Gen_Update_Iterator (It_Info.Iterator_Var,
-                              Dir_To, 1, Iter_Base_Type);
+                              Dir_To, Iter_Base_Type);
          New_Else_Stmt (If_Blk1);
          Gen_Update_Iterator (It_Info.Iterator_Var,
-                              Dir_Downto, 1, Iter_Base_Type);
+                              Dir_Downto, Iter_Base_Type);
          Finish_If_Stmt (If_Blk1);
       end if;
    end Update_For_Loop;
@@ -2586,7 +2563,8 @@ package body Trans.Chap8 is
                   Has_Value_Field := True;
                   Actual := Null_Iir;
                   Act_Type := Get_Actual_Type (Assoc);
-               when Iir_Kind_Association_Element_By_Expression =>
+               when Iir_Kind_Association_Element_By_Expression
+                 | Iir_Kind_Association_Element_By_Name =>
                   Actual := Get_Actual (Assoc);
                   Act_Type := Get_Type (Actual);
                when Iir_Kind_Association_Element_Open =>
@@ -4241,6 +4219,9 @@ package body Trans.Chap8 is
                   Sub_Type := Get_Element_Subtype (Target_Type);
                else
                   Sub_Type := Get_Type (Expr);
+                  if Get_Kind (Expr) = Iir_Kind_Slice_Name then
+                     Chap3.Create_Composite_Subtype (Sub_Type, False);
+                  end if;
                   Sub_Aggr := Chap3.Slice_Base
                     (Aggr, Sub_Type, New_Obj_Value (Idx), O_Enode_Null);
                end if;
@@ -4261,6 +4242,7 @@ package body Trans.Chap8 is
                         Chap3.Get_Array_Length (Sub_Aggr, Sub_Type)));
                end if;
             else
+               --  TODO
                raise Internal_Error;
             end if;
          else
@@ -4329,6 +4311,9 @@ package body Trans.Chap8 is
          end;
       else
          Src := Chap6.Translate_Name (Target, Mode_Signal);
+         if Get_Type_Info (Src).Type_Mode in Type_Mode_Unbounded then
+            Src := Chap3.Get_Composite_Base (Src);
+         end if;
          Chap3.Translate_Object_Copy (Aggr, Src, Target_Type);
       end if;
    end Translate_Signal_Target_Aggr;
@@ -4562,20 +4547,21 @@ package body Trans.Chap8 is
       Bounds : Mnode;
    begin
       if Get_Kind (Target) = Iir_Kind_Aggregate then
+         --  The target is an aggregate.
          Chap3.Translate_Anonymous_Subtype_Definition (Target_Type, False);
          Target_Tinfo := Get_Info (Target_Type);
          Targ := Create_Temp (Target_Tinfo, Mode_Signal);
          if Target_Tinfo.Type_Mode in Type_Mode_Unbounded then
+            --  Unbounded array, allocate bounds.
             Bounds := Dv2M (Create_Temp (Target_Tinfo.B.Bounds_Type),
                             Target_Tinfo,
                             Mode_Value,
                             Target_Tinfo.B.Bounds_Type,
                             Target_Tinfo.B.Bounds_Ptr_Type);
-            New_Assign_Stmt
-              (M2Lp (Chap3.Get_Composite_Bounds (Targ)),
-               M2Addr (Bounds));
+            New_Assign_Stmt (M2Lp (Chap3.Get_Composite_Bounds (Targ)),
+                             M2Addr (Bounds));
             --  Build bounds from aggregate.
-            Chap7.Translate_Aggregate_Bounds (Bounds, Target);
+            Chap7.Translate_Aggregate_Bounds (Bounds, Target, Mode_Signal);
             Chap3.Allocate_Unbounded_Composite_Base
               (Alloc_Stack, Targ, Target_Type);
             Translate_Signal_Target_Aggr
@@ -4745,6 +4731,14 @@ package body Trans.Chap8 is
          Close_Temp;
       end;
    end Translate_Waveform_Assignment;
+
+   procedure Translate_Inertial_Assignment
+     (Targ : Mnode; Targ_Type : Iir; Val : Mnode; Assoc : Iir) is
+   begin
+      Signal_Assign_Line := Get_Line_Number (Assoc);
+
+      Gen_Simple_Signal_Assign (Targ, Targ_Type, M2E (Val));
+   end Translate_Inertial_Assignment;
 
    procedure Translate_Simple_Signal_Assignment_Statement (Stmt : Iir)
    is

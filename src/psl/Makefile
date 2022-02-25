@@ -1,30 +1,35 @@
 #  Copyright (C) 2002 - 2015 Tristan Gingold
 #
-#  GHDL is free software; you can redistribute it and/or modify it under
-#  the terms of the GNU General Public License as published by the Free
-#  Software Foundation; either version 2, or (at your option) any later
-#  version.
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 2 of the License, or
+#  (at your option) any later version.
 #
-#  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
-#  WARRANTY; without even the implied warranty of MERCHANTABILITY or
-#  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-#  for more details.
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
 #
 #  You should have received a copy of the GNU General Public License
-#  along with GCC; see the file COPYING.  If not, write to the Free
-#  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-#  02111-1307, USA.
+#  along with this program.  If not, see <gnu.org/licenses>.
 
 # Some files are automatically generated using pnodes.py
 # This Makefile can be used to regenerate these files.  Generated files must
 # be committed and distribued with the sources, so that users don't need to
 # regenerate them (and don't need to have python installed).
 
-PNODES=../../python/xtools/pnodes.py
+PNODES=../../scripts/pnodes.py
 
 DEPS=psl-nodes.ads psl-nodes.adb.in $(PNODES)
 
-PNODES_FLAGS=--field-file=psl-nodes.adb.in --kind-file=psl-nodes.ads --node-file=psl-nodes.ads --template-file=psl-nodes.adb.in --meta-basename=psl-nodes_meta --kind-type=Nkind --kind-prefix=N_ --node-type=Node
+PNODES_FLAGS=--field-file=psl-nodes.adb.in \
+  --kind-file=psl-nodes.ads \
+  --node-file=psl-nodes.ads \
+  --template-file=psl-nodes.adb.in \
+  --meta-basename=psl-nodes_meta \
+  --kind-type=Nkind \
+  --kind-prefix=N_ \
+  --node-type=Node
 
 GEN_FILES=psl-nodes.adb psl-nodes_meta.ads psl-nodes_meta.adb
 

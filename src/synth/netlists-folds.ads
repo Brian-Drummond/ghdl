@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,19 +14,21 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Netlists.Gates; use Netlists.Gates;
 with Netlists.Builders; use Netlists.Builders;
 
 package Netlists.Folds is
    --  Build a const from VAL.  Result is either a Const_UB32 or a Const_Bit.
+   --  VAL is zero extended, so any width is allowed.
+   --  But VAL must fit in the width.
    function Build2_Const_Uns (Ctxt : Context_Acc; Val : Uns64; W : Width)
                              return Net;
 
    --  Build a const from VAL.  Result is either a Const_SB32 or a Const_Bit.
+   --  VAL is sign extended, so any width is allowed, but it must fit in the
+   --  width.
    function Build2_Const_Int (Ctxt : Context_Acc; Val : Int64; W : Width)
                              return Net;
 
@@ -36,6 +38,9 @@ package Netlists.Folds is
    --  Concatenate nets of ELS in reverse order.  So if ELS(L .. R), then
    --  ELS(L) will be at offset 0.
    function Build2_Concat (Ctxt : Context_Acc; Els : Net_Array) return Net;
+
+   --  If L or R has a null width, return the other.
+   function Build2_Concat2 (Ctxt : Context_Acc; L, R : Net) return Net;
 
    --  Truncate I to width W.  Merge if the input is an extend.
    function Build2_Trunc (Ctxt : Context_Acc;
@@ -92,4 +97,9 @@ package Netlists.Folds is
                             Id   : Compare_Module_Id;
                             L, R : Net) return Net;
 
+   --  INST is a dyn_insert gate that will be converted to a dyn_insert_en
+   --  by using SEL as enable input.
+   --  The old dyn_insert gate is removed.
+   function Add_Enable_To_Dyn_Insert
+     (Ctxt : Context_Acc; Inst : Instance; Sel : Net) return Instance;
 end Netlists.Folds;

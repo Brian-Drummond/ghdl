@@ -1,20 +1,18 @@
 --  Loading of source files.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Ada.Unchecked_Deallocation;
 with GNAT.OS_Lib;
 with GNAT.SHA1;
@@ -177,9 +175,8 @@ package body Files_Map is
          for I in Line_Pos .. Line_Pos + Source_Ptr (Offset) - 1 loop
             if Source_File.Source (I) = ASCII.HT then
                Res := Res + Tab_Stop - Res mod Tab_Stop;
-            else
-               Res := Res + 1;
             end if;
+            Res := Res + 1;
          end loop;
          return Res;
       end if;
@@ -537,6 +534,50 @@ package body Files_Map is
       end;
       Name := Get_Identifier (Filename (Separator_Pos + 1 .. Filename'Last));
    end Normalize_Pathname;
+
+   function Find_Language (Filename : String) return Language_Type
+   is
+      P, E : Natural;
+      Ext : String (1 .. 5);
+   begin
+      P := Filename'Last;
+      E := Ext'Last;
+      loop
+         if P <= Filename'First
+           or else E < Ext'First
+         then
+            return Language_Unknown;
+         end if;
+         case Filename (P) is
+            when 'a' .. 'z' =>
+               Ext (E) := Filename (P);
+            when 'A' .. 'Z' =>
+               Ext (E) := Character'Val (Character'Pos (Filename (P))
+                                           - Character'Pos ('A')
+                                           + Character'Pos ('a'));
+            when '.' =>
+               if Ext (E + 1 .. Ext'Last) = "vhd"
+                 or else Ext (E + 1 .. Ext'Last) = "vhdl"
+               then
+                  return Language_Vhdl;
+               end if;
+               if Ext (E + 1 .. Ext'Last) = "v"
+                 or else Ext (E + 1 .. Ext'Last) = "v"
+                 or else Ext (E + 1 .. Ext'Last) = "sv"
+                 or else Ext (E + 1 .. Ext'Last) = "svh"
+               then
+                  return Language_Verilog;
+               end if;
+               if Ext (E + 1 .. Ext'Last) = "psl" then
+                  return Language_Psl;
+               end if;
+            when others =>
+               return Language_Unknown;
+         end case;
+         P := P - 1;
+         E := E - 1;
+      end loop;
+   end Find_Language;
 
    --  Find a source_file by DIRECTORY and NAME.
    --  Return NO_SOURCE_FILE_ENTRY if not already opened.
@@ -1213,12 +1254,16 @@ package body Files_Map is
    pragma Unreferenced (Debug_Source_Lines);
    pragma Unreferenced (Debug_Source_Loc);
 
-   procedure Initialize is
+   procedure Finalize is
    begin
       for I in Source_Files.First .. Source_Files.Last loop
          Free_Source_File (I);
       end loop;
       Source_Files.Free;
+   end Finalize;
+
+   procedure Initialize is
+   begin
       Source_Files.Init;
       Next_Location := Location_Nil + 1;
    end Initialize;

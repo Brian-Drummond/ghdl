@@ -1,25 +1,24 @@
 --  GHDL driver for synthesis
 --  Copyright (C) 2016 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with GNAT.OS_Lib; use GNAT.OS_Lib;
 
 with Types; use Types;
 with Name_Table;
+with Files_Map;
 with Ghdllocal; use Ghdllocal;
 with Ghdlcomp; use Ghdlcomp;
 with Ghdlmain; use Ghdlmain;
@@ -34,7 +33,6 @@ with Simple_IO;
 with Libraries;
 with Flags;
 with Vhdl.Nodes; use Vhdl.Nodes;
-with Vhdl.Errors;
 with Vhdl.Scanner;
 with Vhdl.Std_Package;
 with Vhdl.Canon;
@@ -44,19 +42,26 @@ with Vhdl.Utils;
 
 with Netlists.Dump;
 with Netlists.Disp_Vhdl;
+with Netlists.Disp_Verilog;
 with Netlists.Disp_Dot;
 with Netlists.Errors;
+with Netlists.Inference;
+
+with Elab.Vhdl_Context; use Elab.Vhdl_Context;
+with Elab.Vhdl_Insts;
+with Elab.Vhdl_Objtypes;
 
 with Synthesis;
 with Synth.Disp_Vhdl;
-with Synth.Context; use Synth.Context;
+with Synth.Vhdl_Context;
 with Synth.Flags; use Synth.Flags;
 
 package body Ghdlsynth is
    type Out_Format is
      (Format_Default,
       Format_Raw, Format_Dump, Format_Dot,
-      Format_Vhdl,
+      Format_Vhdl, Format_Raw_Vhdl,
+      Format_Verilog,
       Format_None);
 
    type Name_Id_Array is array (Natural range <>) of Name_Id;
@@ -123,11 +128,15 @@ package body Ghdlsynth is
       P ("  -gNAME=VALUE");
       P ("    Override the generic NAME of the top unit");
       P ("  --vendor-library=NAME");
-      P ("    Any unit from library NAME is a black boxe");
+      P ("    Any unit from library NAME is a black box");
       P ("  --no-formal");
       P ("    Neither synthesize assert nor PSL");
       P ("  --no-assert-cover");
       P ("    Cover PSL assertion activation");
+      P ("  --assert-assumes");
+      P ("    Treat all PSL asserts like PSL assumes");
+      P ("  --assume-asserts");
+      P ("    Treat all PSL assumes like PSL asserts");
    end Disp_Long_Help;
 
    procedure Decode_Option (Cmd : in out Command_Synth;
@@ -148,10 +157,16 @@ package body Ghdlsynth is
          Synth.Flags.Flag_Formal := False;
       elsif Option = "--formal" then
          Synth.Flags.Flag_Formal := True;
+      elsif Option = "--latches" then
+         Netlists.Inference.Flag_Latches := True;
       elsif Option = "--no-assert-cover" then
          Synth.Flags.Flag_Assert_Cover := False;
       elsif Option = "--assert-cover" then
          Synth.Flags.Flag_Assert_Cover := True;
+      elsif Option = "--assert-assumes" then
+         Synth.Flags.Flag_Assert_As_Assume := True;
+      elsif Option = "--assume-asserts" then
+         Synth.Flags.Flag_Assume_As_Assert := True;
       elsif Option = "--top-name=hash" then
          Cmd.Top_Encoding := Name_Hash;
       elsif Option = "--top-name=asis" then
@@ -194,6 +209,10 @@ package body Ghdlsynth is
          Cmd.Oformat := Format_None;
       elsif Option = "--out=vhdl" then
          Cmd.Oformat := Format_Vhdl;
+      elsif Option = "--out=raw-vhdl" then
+         Cmd.Oformat := Format_Raw_Vhdl;
+      elsif Option = "--out=verilog" then
+         Cmd.Oformat := Format_Verilog;
       elsif Option = "-di" then
          Flag_Debug_Noinference := True;
       elsif Option = "-dc" then
@@ -204,6 +223,8 @@ package body Ghdlsynth is
       elsif Option = "-dm2" then
          --  Reduce muxes, but do not create memories.
          Flag_Debug_Nomemory2 := True;
+      elsif Option = "-le" then
+         Flag_Debug_Elaborate := True;
       elsif Option = "-de" then
          Flag_Debug_Noexpand := True;
       elsif Option = "-t" then
@@ -230,14 +251,12 @@ package body Ghdlsynth is
    function Ghdl_Synth_Configure
      (Init : Boolean; Cmd : Command_Synth; Args : Argument_List) return Node
    is
-      use Vhdl.Errors;
-      use Vhdl.Configuration;
       use Errorout;
       E_Opt : Integer;
       Opt_Arg : Natural;
       Design_File : Iir;
       Config : Iir;
-      Top : Iir;
+      Lib_Id : Name_Id;
       Prim_Id : Name_Id;
       Sec_Id : Name_Id;
    begin
@@ -268,6 +287,12 @@ package body Ghdlsynth is
          --  Do not create concurrent signal assignment for inertial
          --  association.  They are handled directly.
          Vhdl.Canon.Canon_Flag_Inertial_Associations := False;
+
+         Elab.Vhdl_Objtypes.Init;
+
+         if Ghdlcomp.Init_Verilog_Options /= null then
+            Ghdlcomp.Init_Verilog_Options.all (False);
+         end if;
       end if;
 
       --  Mark vendor libraries.
@@ -276,10 +301,15 @@ package body Ghdlsynth is
             Lib : Node;
          begin
             Lib := Libraries.Get_Library
-              (Cmd.Vendor_Libraries (I), No_Location);
+              (Cmd.Vendor_Libraries (I), Libraries.Command_Line_Location);
             Set_Vendor_Library_Flag (Lib, True);
          end;
       end loop;
+
+      --  Maybe a vendor library is unknown.
+      if Errorout.Nbr_Errors > 0 then
+         return Null_Iir;
+      end if;
 
       Flags.Flag_Elaborate_With_Outdated := E_Opt >= Args'First;
 
@@ -298,7 +328,24 @@ package body Ghdlsynth is
                Libraries.Work_Library_Name := Id;
                Libraries.Load_Work_Library (True);
             else
-               Ghdlcomp.Compile_Load_File (Arg);
+               case Files_Map.Find_Language (Arg) is
+                  when Language_Vhdl
+                    | Language_Psl =>
+                     Ghdlcomp.Compile_Load_Vhdl_File (Arg);
+                  when Language_Verilog =>
+                     if Ghdlcomp.Load_Verilog_File = null then
+                        Error_Msg_Option
+                          ("verilog file %i is not supported",
+                           (1 => +Name_Table.Get_Identifier (Arg)));
+                     else
+                        Ghdlcomp.Load_Verilog_File (Arg);
+                     end if;
+                  when others =>
+                     Errorout.Report_Msg
+                       (Warnid_Library, Option, No_Source_Coord,
+                        "unexpected extension for file %i",
+                        (1 => +Name_Table.Get_Identifier (Arg)));
+               end case;
             end if;
          end;
       end loop;
@@ -310,32 +357,18 @@ package body Ghdlsynth is
       end if;
 
       --  Elaborate
-      if E_Opt = Args'Last then
-         --  No unit.
-         Top := Vhdl.Configuration.Find_Top_Entity
-           (Libraries.Work_Library, Libraries.Command_Line_Location);
-         if Top = Null_Node then
-            Ghdlmain.Error ("no top unit found");
-            return Null_Iir;
-         end if;
-         Errorout.Report_Msg (Msgid_Note, Option, No_Source_Coord,
-                              "top entity is %i", (1 => +Top));
-         if Nbr_Errors > 0 then
-            --  No need to configure if there are missing units.
-            return Null_Iir;
-         end if;
-         Prim_Id := Get_Identifier (Top);
-         Sec_Id := Null_Identifier;
-      else
-         Extract_Elab_Unit ("--synth", Args (E_Opt + 1 .. Args'Last), Opt_Arg,
-                            Prim_Id, Sec_Id);
-         if Opt_Arg <= Args'Last then
-            Ghdlmain.Error ("extra options ignored");
-            return Null_Iir;
-         end if;
+      Extract_Elab_Unit
+        ("--synth", True, Args (E_Opt + 1 .. Args'Last), Opt_Arg,
+         Lib_Id, Prim_Id, Sec_Id);
+      if Prim_Id = Null_Identifier then
+         return Null_Iir;
+      end if;
+      if Opt_Arg <= Args'Last then
+         Ghdlmain.Error ("extra options ignored");
+         return Null_Iir;
       end if;
 
-      Config := Vhdl.Configuration.Configure (Prim_Id, Sec_Id);
+      Config := Vhdl.Configuration.Configure (Lib_Id, Prim_Id, Sec_Id);
 
       if Nbr_Errors > 0 then
          --  No need to configure if there are missing units.
@@ -344,26 +377,29 @@ package body Ghdlsynth is
 
       Vhdl.Configuration.Add_Verification_Units;
 
+      if Foreign_Resolve_Instances /= null then
+         Foreign_Resolve_Instances.all;
+      end if;
+
       --  Check (and possibly abandon) if entity can be at the top of the
       --  hierarchy.
       declare
-         Entity : constant Iir :=
-           Vhdl.Utils.Get_Entity_From_Configuration (Config);
+         Config_Unit : constant Iir := Get_Library_Unit (Config);
+         Top : Iir;
       begin
-         Vhdl.Configuration.Apply_Generic_Override (Entity);
-         Vhdl.Configuration.Check_Entity_Declaration_Top (Entity, False);
+         if Get_Kind (Config_Unit) = Iir_Kind_Foreign_Module then
+            Top := Config_Unit;
+            Vhdl.Configuration.Apply_Generic_Override (Top);
+            --  No Check_Entity_Declaration (yet).
+         else
+            Top := Vhdl.Utils.Get_Entity_From_Configuration (Config);
+            Vhdl.Configuration.Apply_Generic_Override (Top);
+            Vhdl.Configuration.Check_Entity_Declaration_Top (Top, False);
+         end if;
          if Nbr_Errors > 0 then
             return Null_Iir;
          end if;
       end;
-
-      --  Annotate all units.
-      Vhdl.Annotations.Initialize_Annotate;
-      Vhdl.Annotations.Annotate (Vhdl.Std_Package.Std_Standard_Unit);
-      for I in Design_Units.First .. Design_Units.Last loop
-         Vhdl.Annotations.Annotate (Design_Units.Table (I));
-      end loop;
-
       return Config;
    end Ghdl_Synth_Configure;
 
@@ -396,12 +432,18 @@ package body Ghdlsynth is
          when Format_Dot =>
             Netlists.Disp_Dot.Disp_Dot_Top_Module (Res);
          when Format_Vhdl =>
-            if Boolean'(True) then
+            if Get_Kind (Get_Library_Unit (Config)) = Iir_Kind_Foreign_Module
+            then
+               --  Not a VHDL design.
+               Netlists.Disp_Vhdl.Disp_Vhdl (Res);
+            else
                Ent := Vhdl.Utils.Get_Entity_From_Configuration (Config);
                Synth.Disp_Vhdl.Disp_Vhdl_Wrapper (Ent, Res, Inst);
-            else
-               Netlists.Disp_Vhdl.Disp_Vhdl (Res);
             end if;
+         when Format_Raw_Vhdl =>
+            Netlists.Disp_Vhdl.Disp_Vhdl (Res);
+         when Format_Verilog =>
+            Netlists.Disp_Verilog.Disp_Verilog (Res);
       end case;
    end Disp_Design;
 
@@ -426,6 +468,9 @@ package body Ghdlsynth is
          end;
       end loop;
 
+      --  Forget any previous errors.
+      Errorout.Nbr_Errors := 0;
+
       --  Find the command.  This is a little bit convoluted...
       Decode_Command_Options (Cmd, Args, First_Arg);
 
@@ -436,7 +481,9 @@ package body Ghdlsynth is
          return No_Module;
       end if;
 
-      Synthesis.Synth_Design (Config, Cmd.Top_Encoding, Res, Inst);
+      Inst := Elab.Vhdl_Insts.Elab_Top_Unit (Get_Library_Unit (Config));
+
+      Res := Synthesis.Synth_Design (Config, Inst, Cmd.Top_Encoding);
       if Res = No_Module then
          return No_Module;
       end if;
@@ -452,7 +499,7 @@ package body Ghdlsynth is
       Set_Elab_Flag (Vhdl.Std_Package.Std_Standard_Unit, False);
 
       Vhdl.Annotations.Finalize_Annotate;
-      Synth.Context.Free_Base_Instance;
+      Synth.Vhdl_Context.Free_Base_Instance;
       return Res;
 
    exception
@@ -471,6 +518,7 @@ package body Ghdlsynth is
       Res : Module;
       Inst : Synth_Instance_Acc;
       Config : Iir;
+      Lib_Unit : Iir;
    begin
       Config := Ghdl_Synth_Configure (True, Cmd, Args);
 
@@ -482,9 +530,20 @@ package body Ghdlsynth is
          end if;
       end if;
 
-      Netlists.Errors.Initialize;
+      Lib_Unit := Get_Library_Unit (Config);
+      if Get_Kind (Lib_Unit) /= Iir_Kind_Foreign_Module then
+         Inst := Elab.Vhdl_Insts.Elab_Top_Unit (Lib_Unit);
+      else
+         Inst := null;
+      end if;
 
-      Synthesis.Synth_Design (Config, Cmd.Top_Encoding, Res, Inst);
+      if Errorout.Nbr_Errors > 0 then
+         Res := No_Module;
+      else
+         Netlists.Errors.Initialize;
+         Res := Synthesis.Synth_Design (Config, Inst, Cmd.Top_Encoding);
+      end if;
+
       if Res = No_Module then
          if Cmd.Expect_Failure then
             return;
@@ -569,8 +628,8 @@ package body Ghdlsynth is
    procedure Init_For_Ghdl_Synth is
    begin
       Ghdlsynth.Register_Commands;
-      Options.Initialize;
       Errorout.Console.Install_Handler;
+      Options.Initialize;
       Netlists.Errors.Initialize;
    end Init_For_Ghdl_Synth;
 end Ghdlsynth;

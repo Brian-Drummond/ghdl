@@ -1,20 +1,18 @@
 --  PSL - Pretty print
 --  Copyright (C) 2002-2016 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Types; use Types;
 with PSL.Types; use PSL.Types;
@@ -26,7 +24,8 @@ package body PSL.Prints is
    function Get_Priority (N : Node) return Priority is
    begin
       case Get_Kind (N) is
-         when N_Never | N_Always =>
+         when N_Never
+            | N_Always =>
             return Prio_FL_Invariance;
          when N_Eventually
            | N_Next
@@ -52,7 +51,9 @@ package body PSL.Prints is
          when N_Until
            | N_Before =>
             return Prio_FL_Bounding;
-         when N_Abort =>
+         when N_Abort
+           | N_Sync_Abort
+           | N_Async_Abort =>
             return Prio_FL_Abort;
          when N_Or_Prop =>
             return Prio_Seq_Or;
@@ -67,6 +68,7 @@ package body PSL.Prints is
             return Prio_Bool_Imp;
          when N_Name_Decl
            | N_Number
+           | N_Inf
            | N_True
            | N_False
            | N_EOS
@@ -151,6 +153,8 @@ package body PSL.Prints is
             begin
                Put (Str (2 .. Str'Last));
             end;
+         when N_Inf =>
+            Put ("inf");
          when N_Name_Decl =>
             Put (Image (Get_Identifier (N)));
          when N_HDL_Expr
@@ -321,6 +325,16 @@ package body PSL.Prints is
       Put (")");
    end Print_Boolean_Range_Property;
 
+   procedure Print_Abort_Property
+     (Tok : String; Prop : Node; Prio : Priority) is
+   begin
+      Print_Property (Get_Property (Prop), Prio);
+      Put (' ');
+      Put (Tok);
+      Put (' ');
+      Print_Expr (Get_Boolean (Prop));
+   end Print_Abort_Property;
+
    procedure Print_Property (Prop : Node;
                              Parent_Prio : Priority := Prio_Lowest)
    is
@@ -370,9 +384,11 @@ package body PSL.Prints is
          when N_Until =>
             Print_Binary_Property_SI (" until", Prop, Prio);
          when N_Abort =>
-            Print_Property (Get_Property (Prop), Prio);
-            Put (" abort ");
-            Print_Expr (Get_Boolean (Prop));
+            Print_Abort_Property ("abort", Prop, Prio);
+         when N_Sync_Abort =>
+            Print_Abort_Property ("sync_abort", Prop, Prio);
+         when N_Async_Abort =>
+            Print_Abort_Property ("async_abort", Prop, Prio);
          when N_Before =>
             Print_Binary_Property_SI (" before", Prop, Prio);
          when N_Or_Prop =>

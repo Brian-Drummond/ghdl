@@ -56,7 +56,8 @@ analyze_failure ()
 }
 
 # Elaborate a design (no error expected)
-# Note: somewhat deprecated, use elab_simulate instead.
+# Note: somewhat deprecated, use elab_simulate instead;
+# unless ghdl_has_feature needs to be used between elab and simulate
 elab ()
 {
   echo "elaborate $@"
@@ -64,7 +65,8 @@ elab ()
 }
 
 # Elaborate a design (failure expected)
-# Note: somewhat deprecated, use elab_simulate_failure instead.
+# Note: somewhat deprecated, use elab_simulate_failure instead;
+# unless ghdl_has_feature needs to be used between elab and simulate
 elab_failure ()
 {
   echo "elaborate (failure expected) $@"
@@ -72,7 +74,8 @@ elab_failure ()
 }
 
 # Simulate a design (no error expected)
-# Note: somewhat deprecated, use elab_simulate instead.
+# Note: somewhat deprecated, use elab_simulate instead;
+# unless ghdl_has_feature needs to be used between elab and simulate
 simulate ()
 {
   echo "simulate $@ ($GHDL_FLAGS $@)" >&2
@@ -81,7 +84,8 @@ simulate ()
 }
 
 # Simulate a design (failure expected)
-# Note: somewhat deprecated, use elab_simulate_failure instead.
+# Note: somewhat deprecated, use elab_simulate_failure instead;
+# unless ghdl_has_feature needs to be used between elab and simulate
 simulate_failure ()
 {
   echo "simulate (failure expected) $@" >&2
@@ -137,15 +141,25 @@ synth_analyze()
 synth_tb()
 {
   t=$1
+  shift
 
-  analyze $t.vhdl tb_$t.vhdl
+  analyze $* $t.vhdl tb_$t.vhdl
   elab_simulate tb_$t
   clean
 
-  synth $t.vhdl -e $t > syn_$t.vhdl
-  analyze syn_$t.vhdl tb_$t.vhdl
+  synth $* $t.vhdl -e $t > syn_$t.vhdl
+  analyze $* syn_$t.vhdl tb_$t.vhdl
   elab_simulate tb_$t --ieee-asserts=disable-at-0 --assert-level=error
   clean
+}
+
+# Check if a C compiler is installed on this system
+c_compiler_is_available ()
+{
+  if [ -z $CC ]; then
+    CC="gcc"
+  fi
+  which $CC
 }
 
 # Check if a feature is present
@@ -202,5 +216,44 @@ clean ()
         echo "Remove $1 library"
         "$GHDL" --remove $GHDL_STD_FLAGS --work=$1 ;;
     esac
+  fi
+}
+
+
+# Like diff but ignore CR ('\r') end-of-line on windows (as the reference file
+# was generated on a UNIX platform).
+# The --strip-trailing-cr option is available with GNU diff but not on BSD
+# platforms.
+diff_nocr ()
+{
+    if [ "$OS" = "Windows_NT" ]; then
+	diff --strip-trailing-cr $@
+    else
+	diff $@
+    fi
+}
+
+# Call ghwdump
+ghw_dump ()
+{
+  if [ x"$GHWDUMP" = x ]; then
+    case "$GHDL" in
+      */*) export GHWDUMP=$(dirname $GHDL)/ghwdump;;
+      *) export GHWDUMP=ghwdump;;
+    esac
+  fi
+
+  "$GHWDUMP" -ths "$1".ghw > "$1".txt
+}
+
+# Compare the dump of a GHW wave and a previous golden dump
+ghw_diff ()
+{
+  ghw_dump "$1"
+  if diff_nocr "$1".txt golden_"$1".txt; then
+    echo "The ghw dump matches."
+  else
+    echo "The ghw dump does not match what is expected."
+    exit 1
   fi
 }

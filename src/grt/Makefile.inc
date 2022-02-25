@@ -1,20 +1,18 @@
 #  -*- Makefile -*- for the GHDL Run Time library.
 #  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 #
-#  GHDL is free software; you can redistribute it and/or modify it under
-#  the terms of the GNU General Public License as published by the Free
-#  Software Foundation; either version 2, or (at your option) any later
-#  version.
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 2 of the License, or
+#  (at your option) any later version.
 #
-#  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
-#  WARRANTY; without even the implied warranty of MERCHANTABILITY or
-#  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-#  for more details.
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
 #
 #  You should have received a copy of the GNU General Public License
-#  along with GCC; see the file COPYING.  If not, write to the Free
-#  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-#  02111-1307, USA.
+#  along with this program.  If not, see <gnu.org/licenses>.
 
 # Variables used:
 # AR: ar command
@@ -57,7 +55,7 @@ GRT_ELF_EXEC_OPTS:=-Wl,--version-script=@/grt.ver -Wl,--export-dynamic
 #     functions) so that a vpi object file can refer them.
 #  GRT_SHARED_OPTS: platform specific options to be added during link of
 #     -shared simulation binaries.  Used instead of GET_EXEC_OPTS
-ifeq ($(filter-out mingw32 mingw64,$(osys)),)
+ifeq ($(filter-out mingw32 mingw64 windows,$(osys)),)
   # For windows.
   GRT_TARGET_OBJS=win32.o clock.o
   GRT_EXTRA_LIB=-ldbghelp
@@ -94,7 +92,7 @@ GRT_FST_OBJS := fstapi.o lz4.o fastlz.o
 
 # Additionnal object files (C or asm files).
 GRT_BASE_C_OBJS:=$(GRT_TARGET_OBJS) grt-cstdio.o grt-cgnatrts.o
-GRT_ADD_OBJS:=$(GRT_BASE_C_OBJS) grt-cvpi.o grt-cdynload.o $(GRT_FST_OBJS)
+GRT_ADD_OBJS:=$(GRT_BASE_C_OBJS) grt-cvpi.o grt-cvhpi.o grt-cdynload.o $(GRT_FST_OBJS)
 
 # Source files create by grt.
 GRT_SRC_DEPS:=grt-backtraces-impl.ads
@@ -155,8 +153,8 @@ grt/run-bind.o: grt grt/run-bind.adb
 grt/main.o: grt $(GRTSRCDIR)/main.adb
 	cd grt && $(MSYS2_ARG) $(GRT_ADACOMPILE) -o main.o $(GRTSRCDIR)/main.adb -Igrt
 
-GRT_C_COMPILE = $(CC) -c $(GRT_FLAGS) -o $@ $<
-GRT_C_COMPILE_PIC = $(CC) -c $(GRT_FLAGS) $(PIC_FLAGS) -o $@ $<
+GRT_C_COMPILE = $(CC) -c $(GRT_FLAGS) $(CFLAGS) -o $@ $<
+GRT_C_COMPILE_PIC = $(CC) -c $(GRT_FLAGS) $(PIC_FLAGS) $(CFLAGS) -o $@ $<
 
 jumps.o: $(GRTSRCDIR)/config/jumps.c
 	$(GRT_C_COMPILE)
@@ -185,16 +183,23 @@ grt-cstdio.o: $(GRTSRCDIR)/grt-cstdio.c
 pic/grt-cstdio.o: $(GRTSRCDIR)/grt-cstdio.c
 	$(GRT_C_COMPILE_PIC)
 
-grt-cgnatrts.o: $(GRTSRCDIR)/grt-cgnatrts.c
+# Note: grt-cgnatrts.o depends on the config.
+grt-cgnatrts.o: $(GRTSRCDIR)/grt-cgnatrts.c Makefile
 	$(GRT_C_COMPILE)
 
-pic/grt-cgnatrts.o: $(GRTSRCDIR)/grt-cgnatrts.c
+pic/grt-cgnatrts.o: $(GRTSRCDIR)/grt-cgnatrts.c Makefile
 	$(GRT_C_COMPILE_PIC)
 
 grt-cvpi.o: $(GRTSRCDIR)/grt-cvpi.c
 	$(GRT_C_COMPILE)
 
 pic/grt-cvpi.o: $(GRTSRCDIR)/grt-cvpi.c
+	$(GRT_C_COMPILE_PIC)
+
+grt-cvhpi.o: $(GRTSRCDIR)/grt-cvhpi.c
+	$(GRT_C_COMPILE)
+
+pic/grt-cvhpi.o: $(GRTSRCDIR)/grt-cvhpi.c
 	$(GRT_C_COMPILE_PIC)
 
 grt-cdynload.o: $(GRTSRCDIR)/grt-cdynload.c

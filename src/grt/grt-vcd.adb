@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) - VCD generator.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -61,6 +59,9 @@ package body Grt.Vcd is
    --  Can be set to FALSE to make vcd comparaison easier.
    Flag_Vcd_Date : Boolean := True;
 
+   --  Only use 4 states (01zx) for std_ulogic.
+   Flag_Vcd_4states : Boolean := False;
+
    Stream : FILEs;
 
    procedure My_Vcd_Put (Str : String)
@@ -85,10 +86,6 @@ package body Grt.Vcd is
       Stream := NULL_Stream;
    end My_Vcd_Close;
 
-   --  VCD filename.
-   --  Stream corresponding to the VCD filename.
-   --Vcd_Stream : FILEs;
-
    --  Index type of the table of vcd variables to dump.
    type Vcd_Index_Type is new Integer;
 
@@ -104,6 +101,10 @@ package body Grt.Vcd is
       end if;
       if Opt'Length = 12 and then Opt (F + 5 .. F + 11) = "-nodate" then
          Flag_Vcd_Date := False;
+         return True;
+      end if;
+      if Opt'Length = 13 and then Opt (F + 5 .. F + 12) = "-4states" then
+         Flag_Vcd_4states := True;
          return True;
       end if;
       if Opt'Length > 6 and then Opt (F + 5) = '=' then
@@ -141,6 +142,7 @@ package body Grt.Vcd is
    begin
       Put_Line (" --vcd=FILENAME     dump signal values into a VCD file");
       Put_Line (" --vcd-nodate       do not write date in VCD file");
+      Put_Line (" --vcd-4states      reduce std_logic to verilog 0/1/x/z");
    end Vcd_Help;
 
    procedure Vcd_Newline is
@@ -270,7 +272,6 @@ package body Grt.Vcd is
       pragma Unreferenced (Err);
    begin
       Put_Line ("Vcd.Avhpi_Error!");
-      null;
    end Avhpi_Error;
 
    function Rti_To_Vcd_Kind (Rti : Ghdl_Rti_Access) return Vcd_Var_Type is
@@ -302,8 +303,8 @@ package body Grt.Vcd is
       end case;
    end Rti_To_Vcd_Kind;
 
-   function Rti_To_Vcd_Kind (Rti : Ghdl_Rtin_Type_Array_Acc)
-                            return Vcd_Var_Type
+   function Rti_Array_To_Vcd_Kind (Rti : Ghdl_Rtin_Type_Array_Acc)
+                                  return Vcd_Var_Type
    is
       It : Ghdl_Rti_Access;
    begin
@@ -331,9 +332,46 @@ package body Grt.Vcd is
          when Vcd_Stdlogic =>
             return Vcd_Stdlogic_Vector;
          when others =>
-            return Vcd_Bad;
+            return Vcd_Array;
       end case;
-   end Rti_To_Vcd_Kind;
+   end Rti_Array_To_Vcd_Kind;
+
+   function Get_Vcd_Value_Kind (Sig : VhpiHandleT) return Vcd_Value_Kind is
+   begin
+      case Vhpi_Get_Kind (Sig) is
+         when VhpiPortDeclK =>
+            case Vhpi_Get_Mode (Sig) is
+               when VhpiInMode
+                 | VhpiInoutMode
+                 | VhpiBufferMode
+                 | VhpiLinkageMode =>
+                  return Vcd_Effective;
+               when VhpiOutMode =>
+                  return Vcd_Driving;
+               when VhpiErrorMode =>
+                  return Vcd_Value_Bad;
+            end case;
+         when VhpiSigDeclK =>
+            return Vcd_Effective;
+         when VhpiGenericDeclK
+           | VhpiConstDeclK =>
+            return Vcd_Variable;
+         when VhpiIndexedNameK =>
+            declare
+               Base : VhpiHandleT;
+               Err : AvhpiErrorT;
+            begin
+               Vhpi_Handle (VhpiBaseName, Sig, Base, Err);
+               if Err /= AvhpiErrorOk then
+                  raise Program_Error;
+               end if;
+               return Get_Vcd_Value_Kind (Base);
+            end;
+         when others =>
+            raise Program_Error;
+            --  return Vcd_Value_Bad;
+      end case;
+   end Get_Vcd_Value_Kind;
 
    procedure Get_Verilog_Wire (Sig : VhpiHandleT; Info : out Verilog_Wire_Info)
    is
@@ -345,6 +383,7 @@ package body Grt.Vcd is
       Bounds : Address;
 
       Kind : Vcd_Var_Type;
+      Arr_Rti : Ghdl_Rtin_Type_Array_Acc;
       Irange : Ghdl_Range_Ptr;
       Val : Vcd_Value_Kind;
    begin
@@ -365,70 +404,55 @@ package body Grt.Vcd is
            | Ghdl_Rtik_Type_E8
            | Ghdl_Rtik_Subtype_Scalar =>
             Kind := Rti_To_Vcd_Kind (Rti);
-            Irange := null;
          when Ghdl_Rtik_Subtype_Array =>
             declare
                St : constant Ghdl_Rtin_Subtype_Composite_Acc :=
                  To_Ghdl_Rtin_Subtype_Composite_Acc (Rti);
-               Arr_Rti : constant Ghdl_Rtin_Type_Array_Acc :=
-                 To_Ghdl_Rtin_Type_Array_Acc (St.Basetype);
-               Idx_Rti : constant Ghdl_Rti_Access :=
-                 Get_Base_Type (Arr_Rti.Indexes (0));
             begin
-               Kind := Rti_To_Vcd_Kind (Arr_Rti);
+               Arr_Rti := To_Ghdl_Rtin_Type_Array_Acc (St.Basetype);
+               Kind := Rti_Array_To_Vcd_Kind (Arr_Rti);
+               pragma Assert (Bounds = Null_Address);
                Bounds := Loc_To_Addr (St.Common.Depth, St.Layout,
                                       Avhpi_Get_Context (Sig));
                Bounds := Array_Layout_To_Bounds (Bounds);
-               Extract_Range (Bounds, Idx_Rti, Irange);
             end;
          when Ghdl_Rtik_Type_Array =>
-            declare
-               Arr_Rti : constant Ghdl_Rtin_Type_Array_Acc :=
-                 To_Ghdl_Rtin_Type_Array_Acc (Rti);
-               Idx_Rti : constant Ghdl_Rti_Access :=
-                 Get_Base_Type (Arr_Rti.Indexes (0));
-            begin
-               Kind := Rti_To_Vcd_Kind (Arr_Rti);
-               Extract_Range (Bounds, Idx_Rti, Irange);
-            end;
+            Arr_Rti := To_Ghdl_Rtin_Type_Array_Acc (Rti);
+            Kind := Rti_Array_To_Vcd_Kind (Arr_Rti);
          when others =>
             Kind := Vcd_Bad;
       end case;
 
-      --  Do not allow null-array.
-      if Kind = Vcd_Bad
-        or else (Irange /= null and then Irange.I32.Len = 0)
-      then
+      if Kind = Vcd_Bad then
          Info := (Vtype => Vcd_Bad, Val => Vcd_Effective, Ptr => Null_Address);
          return;
       end if;
 
-      case Vhpi_Get_Kind (Sig) is
-         when VhpiPortDeclK =>
-            case Vhpi_Get_Mode (Sig) is
-               when VhpiInMode
-                 | VhpiInoutMode
-                 | VhpiBufferMode
-                 | VhpiLinkageMode =>
-                  Val := Vcd_Effective;
-               when VhpiOutMode =>
-                  Val := Vcd_Driving;
-               when VhpiErrorMode =>
-                  Kind := Vcd_Bad;
-            end case;
-         when VhpiSigDeclK =>
-            Val := Vcd_Effective;
-         when VhpiGenericDeclK
-           | VhpiConstDeclK =>
-            Val := Vcd_Variable;
-         when others =>
-            Info := (Vtype => Vcd_Bad,
-                     Val => Vcd_Effective, Ptr => Null_Address);
-            return;
-      end case;
+      Val := Get_Vcd_Value_Kind (Sig);
+      if Val = Vcd_Value_Bad then
+         Info := (Vtype => Vcd_Bad, Val => Vcd_Effective, Ptr => Null_Address);
+         return;
+      end if;
 
+      --  For vectors: extract range.
+      Irange := null;
+      if Kind in Vcd_Var_Vectors then
+         declare
+            Idx_Rti : constant Ghdl_Rti_Access :=
+              Get_Base_Type (Arr_Rti.Indexes (0));
+         begin
+            Extract_Range (Bounds, Idx_Rti, Irange);
+         end;
+         --  Do not allow null-array.
+         if Irange.I32.Len = 0 then
+            Kind := Vcd_Bad;
+         end if;
+      end if;
+
+      --  Build the info.
       case Kind is
-         when Vcd_Bad =>
+         when Vcd_Bad
+           | Vcd_Struct =>
             Info := (Vcd_Bad, Vcd_Effective, Null_Address);
          when Vcd_Enum8 =>
             Info := (Vcd_Enum8, Val, Sig_Addr, Rti);
@@ -446,6 +470,8 @@ package body Grt.Vcd is
             Info := (Vcd_Bitvector, Val, Sig_Addr, Irange);
          when Vcd_Stdlogic_Vector =>
             Info := (Vcd_Stdlogic_Vector, Val, Sig_Addr, Irange);
+         when Vcd_Array =>
+            Info := (Vcd_Array, Val, Sig_Addr, Rti, Bounds);
       end case;
    end Get_Verilog_Wire;
 
@@ -453,7 +479,7 @@ package body Grt.Vcd is
                             return Ghdl_Index_Type is
    begin
       if Info.Vtype in Vcd_Var_Vectors then
-         return Info.Irange.I32.Len;
+         return Info.Vec_Range.I32.Len;
       else
          return 1;
       end if;
@@ -462,7 +488,7 @@ package body Grt.Vcd is
    function Verilog_Wire_Val (Info : Verilog_Wire_Info)
                              return Ghdl_Value_Ptr is
    begin
-      case Info.Val is
+      case Vcd_Value_Valid (Info.Val) is
          when Vcd_Effective =>
             return To_Signal_Arr_Ptr (Info.Ptr)(0).Value_Ptr;
          when Vcd_Driving =>
@@ -475,7 +501,7 @@ package body Grt.Vcd is
    function Verilog_Wire_Val (Info : Verilog_Wire_Info; Idx : Ghdl_Index_Type)
                              return Ghdl_Value_Ptr is
    begin
-      case Info.Val is
+      case Vcd_Value_Valid (Info.Val) is
          when Vcd_Effective =>
             return To_Signal_Arr_Ptr (Info.Ptr)(Idx).Value_Ptr;
          when Vcd_Driving =>
@@ -493,66 +519,77 @@ package body Grt.Vcd is
    begin
       Get_Verilog_Wire (Sig, Vcd_El);
 
-      if Vcd_El.Vtype = Vcd_Bad
-        or else Vcd_El.Vtype = Vcd_Enum8
-      then
-         Vcd_Put ("$comment ");
-         Vcd_Put_Name (Sig);
-         Vcd_Put (" is not handled");
-         --Vcd_Put (Ghdl_Type_Kind'Image (Desc.Kind));
-         Vcd_Putc (' ');
-         Vcd_Put_End;
-         return;
-      else
-         Vcd_Table.Increment_Last;
-         N := Vcd_Table.Last;
-
-         Vcd_Table.Table (N) := Vcd_El;
-         Vcd_Put ("$var ");
-         case Vcd_El.Vtype is
-            when Vcd_Integer32 =>
-               Vcd_Put ("integer 32");
-            when Vcd_Float64 =>
-               Vcd_Put ("real 64");
-            when Vcd_Bool
-              | Vcd_Bit
-              | Vcd_Stdlogic =>
-               Vcd_Put ("reg 1");
-            when Vcd_Bitvector
-              | Vcd_Stdlogic_Vector =>
-               Vcd_Put ("reg ");
-               Vcd_Put_I32 (Ghdl_I32 (Vcd_El.Irange.I32.Len));
-            when Vcd_Bad
-              | Vcd_Enum8 =>
-               null;
-         end case;
-         Vcd_Putc (' ');
-         Vcd_Put_Idcode (N);
-         Vcd_Putc (' ');
-         Vcd_Put_Name (Sig);
-         if Vcd_El.Vtype in Vcd_Var_Vectors then
-            Vcd_Putc ('[');
-            Vcd_Put_I32 (Vcd_El.Irange.I32.Left);
-            Vcd_Putc (':');
-            Vcd_Put_I32 (Vcd_El.Irange.I32.Right);
-            Vcd_Putc (']');
-         end if;
-         Vcd_Putc (' ');
-         Vcd_Put_End;
-         if Boolean'(False) then
+      case Vcd_El.Vtype is
+         when Vcd_Integer32
+           | Vcd_Float64
+           | Vcd_Bool
+           | Vcd_Bit
+           | Vcd_Stdlogic
+           | Vcd_Bitvector
+           | Vcd_Stdlogic_Vector =>
+            --  Handled below.
+            null;
+         when others =>
+            --  Not handled.
             Vcd_Put ("$comment ");
             Vcd_Put_Name (Sig);
-            Vcd_Put (" is ");
-            case Vcd_El.Val is
-               when Vcd_Effective =>
-                  Vcd_Put ("effective ");
-               when Vcd_Driving =>
-                  Vcd_Put ("driving ");
-               when Vcd_Variable =>
-                  Vcd_Put ("variable ");
-            end case;
+            Vcd_Put (" is not handled");
+            --Vcd_Put (Ghdl_Type_Kind'Image (Desc.Kind));
+            Vcd_Putc (' ');
             Vcd_Put_End;
-         end if;
+            return;
+      end case;
+
+      Vcd_Table.Increment_Last;
+      N := Vcd_Table.Last;
+
+      Vcd_Table.Table (N) := Vcd_El;
+      Vcd_Put ("$var ");
+      case Vcd_El.Vtype is
+         when Vcd_Integer32 =>
+            Vcd_Put ("integer 32");
+         when Vcd_Float64 =>
+            Vcd_Put ("real 64");
+         when Vcd_Bool
+           | Vcd_Bit
+           | Vcd_Stdlogic =>
+            Vcd_Put ("reg 1");
+         when Vcd_Bitvector
+           | Vcd_Stdlogic_Vector =>
+            Vcd_Put ("reg ");
+            Vcd_Put_I32 (Ghdl_I32 (Vcd_El.Vec_Range.I32.Len));
+         when Vcd_Bad
+           | Vcd_Array
+           | Vcd_Struct
+           | Vcd_Enum8 =>
+            raise Program_Error;
+      end case;
+      Vcd_Putc (' ');
+      Vcd_Put_Idcode (N);
+      Vcd_Putc (' ');
+      Vcd_Put_Name (Sig);
+      if Vcd_El.Vtype in Vcd_Var_Vectors then
+         Vcd_Putc ('[');
+         Vcd_Put_I32 (Vcd_El.Vec_Range.I32.Left);
+         Vcd_Putc (':');
+         Vcd_Put_I32 (Vcd_El.Vec_Range.I32.Right);
+         Vcd_Putc (']');
+      end if;
+      Vcd_Putc (' ');
+      Vcd_Put_End;
+      if Boolean'(False) then
+         Vcd_Put ("$comment ");
+         Vcd_Put_Name (Sig);
+         Vcd_Put (" is ");
+         case Vcd_Value_Valid (Vcd_El.Val) is
+            when Vcd_Effective =>
+               Vcd_Put ("effective ");
+            when Vcd_Driving =>
+               Vcd_Put ("driving ");
+            when Vcd_Variable =>
+               Vcd_Put ("variable ");
+         end case;
+         Vcd_Put_End;
       end if;
    end Add_Signal;
 
@@ -648,14 +685,20 @@ package body Grt.Vcd is
    is
       type Map_Type is array (Ghdl_E8 range 0 .. 8) of Character;
       --                             "UX01ZWLH-"
-   -- Map_Vlg : constant Map_Type := "xx01zz01x";
+      Map_Vlg : constant Map_Type := "xx01zz01x";
       Map_Std : constant Map_Type := "UX01ZWLH-";
+      C : Character;
    begin
       if V not in Map_Type'Range then
-         Vcd_Putc ('?');
+         C := '?';
       else
-         Vcd_Putc (Map_Std (V));
+         if Flag_Vcd_4states then
+            C := Map_Vlg (V);
+         else
+            C := Map_Std (V);
+         end if;
       end if;
+      Vcd_Putc (C);
    end Vcd_Put_Stdlogic;
 
    procedure Vcd_Put_Integer32 (V : Ghdl_U32)
@@ -736,6 +779,8 @@ package body Grt.Vcd is
             end loop;
             Vcd_Putc (' ');
          when Vcd_Bad
+           | Vcd_Array
+           | Vcd_Struct
            | Vcd_Enum8 =>
             null;
       end case;
@@ -760,12 +805,14 @@ package body Grt.Vcd is
                   end if;
                when Vcd_Bitvector
                  | Vcd_Stdlogic_Vector =>
-                  for J in 0 .. Info.Irange.I32.Len - 1 loop
+                  for J in 0 .. Info.Vec_Range.I32.Len - 1 loop
                      if To_Signal_Arr_Ptr (Info.Ptr)(J).Last_Event = Last then
                         return True;
                      end if;
                   end loop;
-               when Vcd_Bad =>
+               when Vcd_Bad
+                 | Vcd_Array
+                 | Vcd_Struct =>
                   null;
             end case;
          when Vcd_Driving =>
@@ -781,12 +828,14 @@ package body Grt.Vcd is
                   end if;
                when Vcd_Bitvector
                  | Vcd_Stdlogic_Vector =>
-                  for J in 0 .. Info.Irange.I32.Len - 1 loop
+                  for J in 0 .. Info.Vec_Range.I32.Len - 1 loop
                      if To_Signal_Arr_Ptr (Info.Ptr)(J).Last_Active = Last then
                         return True;
                      end if;
                   end loop;
-               when Vcd_Bad =>
+               when Vcd_Bad
+                 | Vcd_Array
+                 | Vcd_Struct =>
                   null;
             end case;
       end case;
@@ -807,12 +856,14 @@ package body Grt.Vcd is
             end if;
          when Vcd_Bitvector
            | Vcd_Stdlogic_Vector =>
-            for J in 0 .. Info.Irange.I32.Len - 1 loop
+            for J in 0 .. Info.Vec_Range.I32.Len - 1 loop
                if To_Signal_Arr_Ptr (Info.Ptr)(J).Event then
                   return True;
                end if;
             end loop;
-         when Vcd_Bad =>
+         when Vcd_Bad
+           | Vcd_Array
+           | Vcd_Struct =>
             null;
       end case;
       return False;

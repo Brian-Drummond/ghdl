@@ -1,20 +1,18 @@
 --  Iir to ortho translator.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Name_Table;
 with Vhdl.Errors; use Vhdl.Errors;
@@ -504,6 +502,9 @@ package body Trans.Chap3 is
       end if;
    end Type_To_Last_Object_Kind;
 
+   --  A fat pointer is a struct with 2 fields:
+   --  * pointer to the object base
+   --  * pointer to the bounds (for arrays) or to the layout (for records)
    procedure Create_Unbounded_Type_Fat_Pointer (Info : Type_Info_Acc)
    is
       Constr : O_Element_List;
@@ -798,6 +799,63 @@ package body Trans.Chap3 is
       Close_Temp;
    end Elab_Composite_Subtype_Layout;
 
+   --  Compute sizes for DEF (settings the size fields of layout variable
+   --  TARGET) for all the new constraints.
+   procedure Elab_Composite_Subtype_Size (Def : Iir; Target : Mnode)
+   is
+      Info : constant Type_Info_Acc := Get_Info (Def);
+      T : Mnode;
+   begin
+      case Type_Mode_Composite (Info.Type_Mode) is
+         when Type_Mode_Static_Record
+            | Type_Mode_Static_Array =>
+            --  Precomputed.
+            null;
+         when Type_Mode_Complex_Record
+            | Type_Mode_Complex_Array =>
+            Open_Temp;
+            T := Stabilize (Target);
+            Gen_Call_Type_Builder (T, Def, Mode_Value);
+            if Get_Has_Signal_Flag (Def) then
+               Gen_Call_Type_Builder (T, Def, Mode_Signal);
+            end if;
+            Close_Temp;
+         when Type_Mode_Unbounded_Record =>
+            declare
+               El : Iir;
+               El_Type : Iir;
+            begin
+               El := Get_Owned_Elements_Chain (Def);
+               if El = Null_Iir then
+                  --  No new constraints.
+                  return;
+               end if;
+               Open_Temp;
+               T := Stabilize (Target);
+               while El /= Null_Iir loop
+                  El_Type := Get_Type (El);
+                  Elab_Composite_Subtype_Size
+                    (El_Type,
+                     Record_Layout_To_Element_Layout (T, El));
+                  El := Get_Chain (El);
+               end loop;
+               Close_Temp;
+            end;
+         when Type_Mode_Unbounded_Array =>
+            if Get_Array_Element_Constraint (Def) = Null_Iir then
+               --  Element is defined by the subtype.
+               return;
+            end if;
+            Elab_Composite_Subtype_Size
+              (Get_Element_Subtype (Def),
+               Array_Bounds_To_Element_Layout (Layout_To_Bounds (Target),
+                 Def));
+         when Type_Mode_Protected =>
+            --  Not expected.
+            raise Internal_Error;
+      end case;
+   end Elab_Composite_Subtype_Size;
+
    procedure Elab_Composite_Subtype_Layout (Def : Iir)
    is
       Info : constant Type_Info_Acc := Get_Info (Def);
@@ -807,16 +865,11 @@ package body Trans.Chap3 is
          return;
       end if;
 
+      --  Fill ranges and length.
       Elab_Composite_Subtype_Layout (Def, Get_Composite_Type_Layout (Info));
 
-      if Is_Complex_Type (Info) then
-         Gen_Call_Type_Builder
-           (Get_Composite_Type_Layout (Info), Def, Mode_Value);
-         if Get_Has_Signal_Flag (Def) then
-            Gen_Call_Type_Builder
-              (Get_Composite_Type_Layout (Info), Def, Mode_Signal);
-         end if;
-      end if;
+      --  Compute sizes for this subtype.
+      Elab_Composite_Subtype_Size (Def, Get_Composite_Type_Layout (Info));
    end Elab_Composite_Subtype_Layout;
 
    --  Create a variable containing the layout for composite subtype DEF.
@@ -859,7 +912,10 @@ package body Trans.Chap3 is
    --  Array  --
    -------------
 
-   --  Declare the bounds types for DEF.
+   --  Declare the bounds types for array type definition DEF.
+   --  Bounds type is a record with:
+   --   * a range field for each dimension
+   --   * an element layout if the element is unbounded.
    procedure Translate_Array_Type_Bounds
      (Def : Iir_Array_Type_Definition; Info : Type_Info_Acc)
    is
@@ -913,7 +969,9 @@ package body Trans.Chap3 is
       Finish_Unbounded_Type_Bounds (Info);
    end Translate_Array_Type_Bounds;
 
-   --  Create the layout type.
+   --  Create the layout type.  It is a record with:
+   --  * the size field for the size of objects and signals
+   --  * the bounds
    procedure Create_Array_Type_Layout_Type (Info : Type_Info_Acc)
    is
       Constr : O_Element_List;
@@ -997,6 +1055,9 @@ package body Trans.Chap3 is
             return -1;
          end if;
          Idx_Len := Eval_Discrete_Type_Length (Index);
+         if Idx_Len < 0 then
+            return -1;
+         end if;
 
          --  Do not consider very large arrays as static, to avoid overflow at
          --  compile time.
@@ -1111,16 +1172,38 @@ package body Trans.Chap3 is
       Finish_Subprogram_Body;
    end Create_Array_Type_Builder;
 
+   function Get_Element_Subtype_For_Info (Arr_Def : Iir) return Iir
+   is
+      Info : constant Type_Info_Acc := Get_Info (Arr_Def);
+      Arr : Iir;
+   begin
+      if Info.Type_Locally_Constrained then
+         Arr := Arr_Def;
+      else
+         --  When an element is constrained, no ortho array is created with
+         --  the constrained element (unless it is statically constrained).
+         --  So use the base type as a fall back (if the element cannot be
+         --  constrained, it is the same as the base type element).
+         Arr := Get_Base_Type (Arr_Def);
+      end if;
+      return Get_Element_Subtype (Arr);
+   end Get_Element_Subtype_For_Info;
+
    procedure Translate_Array_Subtype_Definition (Def : Iir)
    is
       Parent_Type : constant Iir := Get_Parent_Type (Def);
-      Parent_El_Type : constant Iir := Get_Element_Subtype (Parent_Type);
       El_Type : constant Iir := Get_Element_Subtype (Def);
       El_Tinfo : Type_Info_Acc;
       Mark : Id_Mark_Type;
    begin
       --  Handle element subtype.
-      if Get_Array_Element_Constraint (Def) /= Null_Iir then
+      El_Tinfo := Get_Info (El_Type);
+      if El_Tinfo = null then
+         --  Usually, if the array element subtype was not yet translated,
+         --  it's because it is defined by the array subtype (the array
+         --  subtype adds constraints to the elements).
+         --  However, for an aggregate, the array type may not be the owner.
+
          --  Do not create vars for element subtype, but use
          --  the layout field of the array vars.
          Push_Identifier_Prefix (Mark, "ET");
@@ -1128,16 +1211,17 @@ package body Trans.Chap3 is
          Pop_Identifier_Prefix (Mark);
 
          El_Tinfo := Get_Info (El_Type);
-         if Is_Composite (El_Tinfo) then
-            pragma Assert (El_Tinfo.S.Composite_Layout = Null_Var);
-            El_Tinfo.S.Subtype_Owner := Get_Info (Def);
-         end if;
-      elsif Get_Info (El_Type) = null then
-         --  if the element subtype is created for this subtype, be sure it
-         --  has infos.
-         --  FIXME: the test should be refined.  There can be a new element
-         --  subtype because a resolver has been added.
-         Set_Info (El_Type, Get_Info (Parent_El_Type));
+         case El_Tinfo.S.Kind is
+            when Kind_Type_Array
+              | Kind_Type_Record =>
+               pragma Assert (El_Tinfo.S.Composite_Layout = Null_Var);
+               El_Tinfo.S.Subtype_Owner := Get_Info (Def);
+            when Kind_Type_Scalar =>
+               pragma Assert (El_Tinfo.S.Range_Var /= Null_Var);
+            when Kind_Type_File
+              | Kind_Type_Protected =>
+               raise Internal_Error;
+         end case;
       end if;
 
       if Get_Constraint_State (Def) = Fully_Constrained then
@@ -1724,7 +1808,8 @@ package body Trans.Chap3 is
                if Get_Info (El) /= null then
                   Chap2.Translate_Subprogram_Declaration (El);
                end if;
-            when Iir_Kind_Attribute_Specification =>
+            when Iir_Kind_Attribute_Specification
+               | Iir_Kind_Use_Clause =>
                null;
             when others =>
                Error_Kind ("translate_protected_type_subprograms_spec", El);
@@ -2101,24 +2186,47 @@ package body Trans.Chap3 is
       --  If the range is the same as its parent (its type_mark), set
       --  Same_Range and return (so that no new range variable would be
       --  created).
-      if Get_Kind (Base) in Iir_Kinds_Scalar_Subtype_Definition then
-         declare
-            Tm_Rng : constant Iir := Get_Range_Constraint (Base);
-         begin
-            if Tm_Rng = Rng then
-               Subtype_Info.S.Same_Range := True;
-               return;
-            elsif Get_Kind (Rng) = Iir_Kind_Range_Expression
-              and then Get_Kind (Tm_Rng) = Iir_Kind_Range_Expression
-              and then Get_Left_Limit (Rng) = Get_Left_Limit (Tm_Rng)
-              and then Get_Right_Limit (Rng) = Get_Right_Limit (Tm_Rng)
-              and then Get_Direction (Rng) = Get_Direction (Tm_Rng)
+      case Get_Kind (Base) is
+         when Iir_Kinds_Scalar_Subtype_Definition =>
+            declare
+               Tm_Rng : constant Iir := Get_Range_Constraint (Base);
+            begin
+               if Tm_Rng = Rng then
+                  Subtype_Info.S.Same_Range := True;
+                  return;
+               elsif Get_Kind (Rng) = Iir_Kind_Range_Expression
+                 and then Get_Kind (Tm_Rng) = Iir_Kind_Range_Expression
+                 and then Get_Left_Limit (Rng) = Get_Left_Limit (Tm_Rng)
+                 and then Get_Right_Limit (Rng) = Get_Right_Limit (Tm_Rng)
+                 and then Get_Direction (Rng) = Get_Direction (Tm_Rng)
+               then
+                  Subtype_Info.S.Same_Range := True;
+                  return;
+               end if;
+            end;
+         when Iir_Kind_Enumeration_Type_Definition =>
+            if Get_Kind (Rng) = Iir_Kind_Range_Expression
+              and then Get_Direction (Rng) = Dir_To
             then
-               Subtype_Info.S.Same_Range := True;
-               return;
+               declare
+                  Left : constant Iir := Get_Left_Limit (Rng);
+                  Right : constant Iir := Get_Right_Limit (Rng);
+               begin
+                  if Get_Kind (Left) = Iir_Kind_Enumeration_Literal
+                    and then Get_Enum_Pos (Left) = 0
+                    and then Get_Kind (Right) = Iir_Kind_Enumeration_Literal
+                    and then Natural (Get_Enum_Pos (Right))
+                               = (Get_Nbr_Elements
+                                    (Get_Enumeration_Literal_List (Base)) - 1)
+                  then
+                     Subtype_Info.S.Same_Range := True;
+                     return;
+                  end if;
+               end;
             end if;
-         end;
-      end if;
+         when others =>
+            null;
+      end case;
 
       --  So range is not the same.
       Subtype_Info.S.Same_Range := False;
@@ -2132,10 +2240,15 @@ package body Trans.Chap3 is
       else
          --  Bounds are locally static.
          Get_Low_High_Limit (Rng, Lo, Hi);
-         Subtype_Info.S.Nocheck_Hi :=
-           Is_Equal_Limit (Hi, True, Def, Base_Info.Type_Mode);
-         Subtype_Info.S.Nocheck_Low :=
-           Is_Equal_Limit (Lo, False, Def, Base_Info.Type_Mode);
+         if Is_Overflow_Literal (Hi) or else Is_Overflow_Literal (Lo) then
+            Subtype_Info.S.Nocheck_Hi := True;
+            Subtype_Info.S.Nocheck_Low := True;
+         else
+            Subtype_Info.S.Nocheck_Hi :=
+              Is_Equal_Limit (Hi, True, Def, Base_Info.Type_Mode);
+            Subtype_Info.S.Nocheck_Low :=
+              Is_Equal_Limit (Lo, False, Def, Base_Info.Type_Mode);
+         end if;
       end if;
    end Create_Subtype_Info_From_Type;
 
@@ -2360,6 +2473,7 @@ package body Trans.Chap3 is
       --  This is usually done in translate_type_definition, but boolean
       --  types are not handled by translate_type_definition.
       Create_Scalar_Type_Range_Type (Def, True);
+      Create_Type_Range_Var (Def);
    end Translate_Bool_Type_Definition;
 
    procedure Translate_Subtype_Definition
@@ -2994,8 +3108,10 @@ package body Trans.Chap3 is
       return E2M (Res, Res_Info, Kind);
    end Reindex_Complex_Array;
 
-   function Index_Base (Base : Mnode; Atype : Iir; Index : O_Enode)
-                        return Mnode
+   function Index_Base (Base : Mnode;
+                        Atype : Iir;
+                        Index : O_Enode;
+                        Stride : O_Enode := O_Enode_Null) return Mnode
    is
       Arr_Tinfo : constant Type_Info_Acc := Get_Type_Info (Base);
       Kind      : constant Object_Kind_Type := Get_Object_Kind (Base);
@@ -3009,6 +3125,13 @@ package body Trans.Chap3 is
          --  If the array is fully constrained it can be indexed.
          return Lv2M (New_Indexed_Element (M2Lv (Base), Index),
                       El_Tinfo, Kind);
+      elsif Is_Unbounded_Type (El_Tinfo) then
+         return E2M (Add_Pointer (M2E (Base),
+                                  New_Dyadic_Op (ON_Mul_Ov, Index, Stride),
+                                  El_Tinfo.B.Base_Ptr_Type (Kind)),
+                     El_Tinfo, Kind,
+                     El_Tinfo.B.Base_Type (Kind),
+                     El_Tinfo.B.Base_Ptr_Type (Kind));
       end if;
 
       --  If the element type of the base type is static, the array
@@ -3038,26 +3161,18 @@ package body Trans.Chap3 is
       El_Tinfo : constant Type_Info_Acc := Get_Info (El_Type);
       Kind     : constant Object_Kind_Type := Get_Object_Kind (Arr);
       Base     : Mnode;
+      Stride   : O_Enode;
    begin
       Base := Get_Composite_Base (Arr);
       --  For indexing, we need to consider the size of elements.
       if Is_Unbounded_Type (El_Tinfo) then
-         return E2M
-           (Add_Pointer
-              (M2E (Base),
-               New_Dyadic_Op
-                 (ON_Mul_Ov,
-                  Index,
-                  New_Value (Array_Bounds_To_Element_Size
-                               (Get_Composite_Bounds (Arr), Atype,
-                                Get_Object_Kind (Arr)))),
-               El_Tinfo.B.Base_Ptr_Type (Kind)),
-            El_Tinfo, Kind,
-            El_Tinfo.B.Base_Type (Kind),
-            El_Tinfo.B.Base_Ptr_Type (Kind));
+         Stride := New_Value
+           (Array_Bounds_To_Element_Size
+              (Get_Composite_Bounds (Arr), Atype, Kind));
       else
-         return Index_Base (Base, Atype, Index);
+         Stride := O_Enode_Null;
       end if;
+      return Index_Base (Base, Atype, Index, Stride);
    end Index_Array;
 
    function Slice_Base
@@ -3065,7 +3180,7 @@ package body Trans.Chap3 is
      return Mnode
    is
       T_Info   : constant Type_Info_Acc := Get_Info (Atype);
-      El_Type  : constant Iir := Get_Element_Subtype (Atype);
+      El_Type  : constant Iir := Get_Element_Subtype_For_Info (Atype);
       El_Tinfo : constant Type_Info_Acc := Get_Info (El_Type);
       Kind     : constant Object_Kind_Type := Get_Object_Kind (Base);
    begin

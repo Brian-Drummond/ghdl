@@ -6,6 +6,7 @@ import subprocess
 import select
 import os
 import os.path
+import sys
 import time
 
 NUMJOBS=4
@@ -84,11 +85,17 @@ def run(keep):
         nbr_run, nbr_tests, end_time - start_time, nbr_err))
     if failures:
         print('Failure: {}'.format(failures))
+        return False
+    return True
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="parallel test driver")
     parser.add_argument("-k", "--keep",
                         help="keep running", action='store_true')
+    parser.add_argument("-j", "--jobs", type=int, default=4,
+                        help="number of parallel jobs")
     args = parser.parse_args()
-    run(args.keep)
+    NUMJOBS = args.jobs
+    if not run(args.keep):
+        sys.exit(1)

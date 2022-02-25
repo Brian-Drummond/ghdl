@@ -1,20 +1,18 @@
 --  Error message handling for vhdl.
 --  Copyright (C) 2002-2019 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Flags; use Flags;
 with Name_Table;
@@ -258,7 +256,7 @@ package body Vhdl.Errors is
            | Iir_Kind_Nature_Element_Declaration =>
             return Disp_Identifier (Node, "element");
          when Iir_Kind_Record_Element_Constraint =>
-            return "record element constraint";
+            return "record element constraint " & Image_Identifier (Node);
          when Iir_Kind_Array_Element_Resolution =>
             return "array element resolution";
          when Iir_Kind_Record_Resolution =>
@@ -295,6 +293,7 @@ package body Vhdl.Errors is
          when Iir_Kind_Association_Element_By_Individual =>
             return "individual association element";
          when Iir_Kind_Association_Element_By_Expression
+           | Iir_Kind_Association_Element_By_Name
            | Iir_Kind_Association_Element_Package
            | Iir_Kind_Association_Element_Type
            | Iir_Kind_Association_Element_Subprogram
@@ -343,6 +342,8 @@ package body Vhdl.Errors is
             return Disp_Type (Node, "protected type body");
          when Iir_Kind_Subtype_Definition =>
             return "subtype definition";
+         when Iir_Kind_Foreign_Vector_Type_Definition =>
+            return "foreign vector type definition";
 
          when Iir_Kind_Scalar_Nature_Definition =>
             return Disp_Nature (Node, "scalar nature");
@@ -494,9 +495,6 @@ package body Vhdl.Errors is
          when Iir_Kind_Signal_Attribute_Declaration =>
             --  Should not appear.
             return "signal attribute";
-         when Iir_Kind_Anonymous_Signal_Declaration =>
-            --  Should not appear.
-            return "anonymous signal";
          when Iir_Kind_Group_Template_Declaration =>
             return Disp_Identifier (Node, "group template");
          when Iir_Kind_Group_Declaration =>
@@ -523,6 +521,9 @@ package body Vhdl.Errors is
          when Iir_Kind_Procedure_Body
            | Iir_Kind_Function_Body =>
             return "subprogram body";
+
+         when Iir_Kind_Foreign_Module =>
+            return Disp_Identifier (Node, "foreign module");
 
          when Iir_Kind_Package_Declaration =>
             return Disp_Identifier (Node, "package");
@@ -574,6 +575,8 @@ package body Vhdl.Errors is
             return "use clause";
          when Iir_Kind_Context_Reference =>
             return "context reference";
+         when Iir_Kind_PSL_Inherit_Spec =>
+            return "PSL inherit";
          when Iir_Kind_Disconnection_Specification =>
             return "disconnection specification";
          when Iir_Kind_Step_Limit_Specification =>
@@ -794,6 +797,10 @@ package body Vhdl.Errors is
             return "PSL rose function";
          when Iir_Kind_Psl_Fell =>
             return "PSL fell function";
+         when Iir_Kind_Psl_Onehot =>
+            return "PSL onehot function";
+         when Iir_Kind_Psl_Onehot0 =>
+            return "PSL onehot0 function";
 
          when Iir_Kind_If_Statement =>
             return Disp_Label (Node, "if statement");

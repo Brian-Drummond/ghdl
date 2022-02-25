@@ -1,26 +1,25 @@
 --  Global checks after analyze pass.
 --  Copyright (C) 2002 - 2016 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Types; use Types;
 with Std_Names; use Std_Names;
 with Vhdl.Sem_Specs;
 with Vhdl.Ieee.Std_Logic_1164;
 with Vhdl.Ieee.Vital_Timing;
 with Vhdl.Ieee.Numeric;
+with Vhdl.Ieee.Numeric_Std_Unsigned;
 with Vhdl.Ieee.Math_Real;
 with Vhdl.Ieee.Std_Logic_Unsigned;
 with Vhdl.Ieee.Std_Logic_Arith;
@@ -60,7 +59,11 @@ package body Vhdl.Post_Sems is
                when Name_VITAL_Timing =>
                   Vhdl.Ieee.Vital_Timing.Extract_Declarations (Lib_Unit);
                when Name_Numeric_Std =>
-                  Vhdl.Ieee.Numeric.Extract_Std_Declarations (Lib_Unit);
+                  Vhdl.Ieee.Numeric.Extract_Std_Declarations
+                    (Lib_Unit);
+               when Name_Numeric_Std_Unsigned =>
+                  Vhdl.Ieee.Numeric_Std_Unsigned.Extract_Declarations
+                    (Lib_Unit);
                when Name_Math_Real =>
                   Vhdl.Ieee.Math_Real.Extract_Declarations (Lib_Unit);
                when Name_Std_Logic_Unsigned =>

@@ -1,20 +1,18 @@
 --  VHDL PSL parser.
 --  Copyright (C) 2009 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Types; use Types;
 with Errorout; use Errorout;
@@ -59,21 +57,47 @@ package body Vhdl.Parse_Psl is
          Scan;
          return Res;
       elsif Current_Token = Tok_Inf then
-         --  FIXME: create node
+         Res := Create_Node_Loc (N_Inf);
          Scan;
-         return Null_Node;
+         return Res;
       else
          Error_Msg_Parse ("number expected");
          return Null_Node;
       end if;
    end Parse_Number;
 
-   procedure Parse_Count (N : Node) is
+   procedure Check_Positive_Count (N : Node)
+   is
+      Low_B : constant Node := Get_Low_Bound (N);
+      High_B : constant Node := Get_High_Bound (N);
+      Low  : constant Uns32 := Get_Value (Low_B);
+      High : Uns32;
+   begin
+      if Get_Kind (High_B) = N_Inf then
+         return;
+      end if;
+
+      High := Get_Value (High_B);
+      if Low > High then
+         Error_Msg_Parse
+           ("Low bound of range must be lower than High bound," &
+              " actual range is:" &
+              Uns32'Image (Low) & " to" & Uns32'Image (High));
+      end if;
+   end Check_Positive_Count;
+
+   procedure Parse_Count (N : Node)
+   is
+      Hi : Node;
    begin
       Set_Low_Bound (N, Parse_Number);
       if Current_Token = Tok_To then
          Scan;
-         Set_High_Bound (N, Parse_Number);
+         Hi := Parse_Number;
+         Set_High_Bound (N, Hi);
+         if Hi /= Null_Node then
+            Check_Positive_Count (N);
+         end if;
       end if;
    end Parse_Count;
 
@@ -104,6 +128,10 @@ package body Vhdl.Parse_Psl is
             Res := Binary_Psl_Operator_To_Vhdl (N, Iir_Kind_And_Operator);
          when N_Or_Prop =>
             Res := Binary_Psl_Operator_To_Vhdl (N, Iir_Kind_Or_Operator);
+         when N_Paren_Prop =>
+            Res := Create_Iir (Iir_Kind_Parenthesis_Expression);
+            Set_Location (Res, Get_Location (N));
+            Set_Expression (Res, Psl_To_Vhdl (Get_Property (N)));
          when others =>
             Error_Msg_Parse
               (+N, "PSL construct not allowed as VHDL expression");
@@ -316,23 +344,26 @@ package body Vhdl.Parse_Psl is
    end Parse_Braced_SERE;
 
    --  Parse [ Count ] ']'
-   function Parse_Maybe_Count (Kind : Nkind; Seq : Node) return Node
+   function Parse_Brack_Star (Seq : Node) return Node
    is
-      N : Node;
+      Res : Node;
    begin
-      N := Create_Node_Loc (Kind);
-      Set_Sequence (N, Seq);
+      Res := Create_Node_Loc (N_Star_Repeat_Seq);
+      Set_Sequence (Res, Seq);
+
+      --  Skip '[->'
       Scan;
+
       if Current_Token /= Tok_Right_Bracket then
-         Parse_Count (N);
+         Parse_Count (Res);
       end if;
       if Current_Token /= Tok_Right_Bracket then
          Error_Msg_Parse ("missing ']'");
       else
          Scan;
       end if;
-      return N;
-   end Parse_Maybe_Count;
+      return Res;
+   end Parse_Brack_Star;
 
    procedure Parse_Bracket_Range (N : Node) is
    begin
@@ -352,6 +383,7 @@ package body Vhdl.Parse_Psl is
          else
             Scan;
          end if;
+         Check_Positive_Count(N);
       end if;
    end Parse_Bracket_Range;
 
@@ -374,6 +406,97 @@ package body Vhdl.Parse_Psl is
       end if;
    end Parse_Bracket_Number;
 
+   function Parse_Brack_Equal (Left : Node) return Node
+   is
+      Res : Node;
+   begin
+      Res := Create_Node_Loc (N_Equal_Repeat_Seq);
+      Set_Boolean (Res, Left);
+
+      --  Skip '[='
+      Scan;
+      Parse_Count (Res);
+      if Current_Token /= Tok_Right_Bracket then
+         Error_Msg_Parse ("missing ']'");
+      else
+         Scan;
+      end if;
+      return Res;
+   end Parse_Brack_Equal;
+
+   function Parse_Brack_Arrow (Left : Node) return Node
+   is
+      Res : Node;
+   begin
+      Res := Create_Node_Loc (N_Goto_Repeat_Seq);
+      Set_Boolean (Res, Left);
+
+      --  Skip '[->'
+      Scan;
+      if Current_Token /= Tok_Right_Bracket then
+         Parse_Count (Res);
+      end if;
+      if Current_Token /= Tok_Right_Bracket then
+         Error_Msg_Parse ("missing ']'");
+      else
+         Scan;
+      end if;
+      return Res;
+   end Parse_Brack_Arrow;
+
+   --  Parse:
+   --     Boolean [= Count ]
+   --   | Boolean [-> [ positive_Count ] ]
+   --   | Boolean
+   --  Where LEFT is the boolean expression
+   function Parse_Boolean_Repeated_Sequence (Left : Node) return Node is
+   begin
+      case Current_Token is
+         when Tok_Brack_Equal =>
+            return Parse_Brack_Equal (Left);
+         when Tok_Brack_Arrow =>
+            return Parse_Brack_Arrow (Left);
+         when others =>
+            return Left;
+      end case;
+   end Parse_Boolean_Repeated_Sequence;
+
+   --  Parse:
+   --     Boolean [* [ Count ] ]
+   --   | Sequence [* [ Count ] ]
+   --   | Boolean [+]
+   --   | Sequence [+]
+   --  Where LEFT is a boolean expression or a sequence
+   function Parse_Sequence_Repeated_Sequence (Left : Node) return Node
+   is
+      Res : Node;
+      N : Node;
+   begin
+      Res := Left;
+      loop
+         case Current_Token is
+            when Tok_Brack_Star =>
+               Res := Parse_Brack_Star (Res);
+            when Tok_Brack_Plus_Brack =>
+               N := Create_Node_Loc (N_Plus_Repeat_Seq);
+               Set_Sequence (N, Res);
+
+               --  Skip '[+]'
+               Scan;
+               Res := N;
+            when Tok_Brack_Arrow =>
+               Error_Msg_Parse ("'[->' not allowed on a SERE");
+               Res := Parse_Brack_Arrow (Res);
+            when Tok_Brack_Equal =>
+               Error_Msg_Parse ("'[=' not allowed on a SERE");
+               Res := Parse_Brack_Equal (Res);
+            when others =>
+               exit;
+         end case;
+      end loop;
+      return Res;
+   end Parse_Sequence_Repeated_Sequence;
+
    function Parse_Psl_Sequence_Or_SERE (Full_Hdl_Expr : Boolean) return Node
    is
       Res, N : Node;
@@ -392,7 +515,7 @@ package body Vhdl.Parse_Psl is
                Res := N;
             end if;
          when Tok_Brack_Star =>
-            return Parse_Maybe_Count (N_Star_Repeat_Seq, Null_Node);
+            return Parse_Brack_Star (Null_Node);
          when Tok_Left_Paren =>
             if Parse.Flag_Parse_Parenthesis then
                Res := Create_Node_Loc (N_Paren_Bool);
@@ -416,40 +539,15 @@ package body Vhdl.Parse_Psl is
             Res := Create_Node_Loc (N_Plus_Repeat_Seq);
             Scan;
             return Res;
+
          when others =>
             --  Repeated_SERE
             Res := Parse_Unary_Boolean (Full_Hdl_Expr);
+
+            Res := Parse_Boolean_Repeated_Sequence (Res);
       end case;
-      loop
-         case Current_Token is
-            when Tok_Brack_Star =>
-               Res := Parse_Maybe_Count (N_Star_Repeat_Seq, Res);
-            when Tok_Brack_Plus_Brack =>
-               N := Create_Node_Loc (N_Plus_Repeat_Seq);
-               Set_Sequence (N, Res);
 
-               --  Skip '[+]'
-               Scan;
-               Res := N;
-            when Tok_Brack_Arrow =>
-               Res := Parse_Maybe_Count (N_Goto_Repeat_Seq, Res);
-            when Tok_Brack_Equal =>
-               N := Create_Node_Loc (N_Equal_Repeat_Seq);
-               Set_Sequence (N, Res);
-
-               --  Skip '[='
-               Scan;
-               Parse_Count (N);
-               if Current_Token /= Tok_Right_Bracket then
-                  Error_Msg_Parse ("missing ']'");
-               else
-                  Scan;
-               end if;
-               Res := N;
-            when others =>
-               exit;
-         end case;
-      end loop;
+      Res := Parse_Sequence_Repeated_Sequence (Res);
 
       return Res;
    end Parse_Psl_Sequence_Or_SERE;
@@ -617,7 +715,13 @@ package body Vhdl.Parse_Psl is
          when Tok_Next_Event_E_Em =>
             Res := Parse_Boolean_Range_Property (N_Next_Event_E, True);
          when Tok_Left_Paren =>
-            return Parse_Parenthesis_FL_Property;
+            Res := Parse_Parenthesis_FL_Property;
+            if Get_Kind (Res) = N_HDL_Expr then
+               --  Might be a boolean expression followed by a SERE repeatition
+               Res := Parse_Boolean_Repeated_Sequence (Res);
+               Res := Parse_Sequence_Repeated_Sequence (Res);
+               --  TODO: can be then a SERE (: ; | & && within)
+            end if;
          when Tok_Left_Curly =>
             Res := Parse_Psl_Sequence_Or_SERE (True);
             if Get_Kind (Res) = N_Braced_SERE
@@ -708,6 +812,8 @@ package body Vhdl.Parse_Psl is
             | N_Endpoint_Instance
             | N_Strong
             | N_Abort
+            | N_Async_Abort
+            | N_Sync_Abort
             | N_Next_Event_E
             | N_Next_Event_A
             | N_Next_Event
@@ -743,6 +849,7 @@ package body Vhdl.Parse_Psl is
             | N_False
             | N_True
             | N_Number
+            | N_Inf
             | N_Name_Decl
             | N_Name
             | N_EOS
@@ -758,6 +865,18 @@ package body Vhdl.Parse_Psl is
             raise Internal_Error;
       end case;
    end Property_To_Sequence;
+
+   function Parse_Abort (Kind : Nkind; Left : Node) return Node
+   is
+      N : Node;
+   begin
+      N := Create_Node_Loc (Kind);
+      Set_Property (N, Left);
+      Scan;
+      Set_Boolean (N, Parse_Boolean (Prio_Lowest));
+      --  Left associative.
+      return N;
+   end Parse_Abort;
 
    --  A.4.4 PSL properties
    --  FL_Property::=
@@ -854,12 +973,17 @@ package body Vhdl.Parse_Psl is
                if Prio > Prio_FL_Abort then
                   return Res;
                end if;
-               N := Create_Node_Loc (N_Abort);
-               Set_Property (N, Res);
-               Scan;
-               Set_Boolean (N, Parse_Boolean (Prio_Lowest));
-               --  Left associative.
-               return N;
+               return Parse_Abort (N_Abort, Res);
+            when Tok_Sync_Abort =>
+               if Prio > Prio_FL_Abort then
+                  return Res;
+               end if;
+               return Parse_Abort (N_Sync_Abort, Res);
+            when Tok_Async_Abort =>
+               if Prio > Prio_FL_Abort then
+                  return Res;
+               end if;
+               return Parse_Abort (N_Async_Abort, Res);
             when Tok_Exclam_Mark =>
                N := Create_Node_Loc (N_Strong);
                Set_Property (N, Res);

@@ -1,20 +1,18 @@
 --  GHDL driver - main part.
 --  Copyright (C) 2002 - 2010 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Ada.Command_Line;
 with Ada.Command_Line.Response_File;
 
@@ -260,6 +258,19 @@ package body Ghdlmain is
       pragma Unreferenced (Cmd);
       use Simple_IO;
    begin
+      if Args'Length /= 0 then
+         if Args (1).all = "ref" or else Args (1).all = "--ref" then
+            Put_Line (Version.Ghdl_Ref);
+            return;
+         end if;
+         if Args (1).all = "hash" or else Args (1).all = "--hash" then
+            Put_Line (Version.Ghdl_Hash);
+            return;
+         end if;
+         Error ("warning: 'version' subcommand '"
+                & Args(1).all & "' not supported");
+         return;
+      end if;
       Put ("GHDL ");
       Put (Version.Ghdl_Ver);
       Put (' ');
@@ -273,14 +284,11 @@ package body Ghdlmain is
       Put_Line ("Written by Tristan Gingold.");
       New_Line;
       --  Display copyright.  Assume 80 cols terminal.
-      Put_Line ("Copyright (C) 2003 - 2020 Tristan Gingold.");
+      Put_Line ("Copyright (C) 2003 - 2021 Tristan Gingold.");
       Put_Line ("GHDL is free software, covered by the "
                 & "GNU General Public License.  There is NO");
       Put_Line ("warranty; not even for MERCHANTABILITY or"
                 & " FITNESS FOR A PARTICULAR PURPOSE.");
-      if Args'Length /= 0 then
-         Error ("warning: command '--version' does not accept any argument");
-      end if;
    end Perform_Action;
 
    --  Disp MSG on the standard output with the command name.
@@ -349,7 +357,7 @@ package body Ghdlmain is
                Decode_Option (Cmd, Arg.all, "", Res);
                case Res is
                   when Option_Unknown =>
-                     Error ("unknown option '" & Arg.all & "'");
+                     Error ("unknown command option '" & Arg.all & "'");
                      raise Option_Error;
                   when Option_Err =>
                      raise Option_Error;
@@ -425,6 +433,9 @@ package body Ghdlmain is
       --  Set program name for error message.
       Errorout.Console.Set_Program_Name (Command_Name);
       Errorout.Console.Install_Handler;
+
+      --  Initialize global structures.
+      Options.Initialize;
 
       --  Handle case of no argument
       if Argument_Count = 0 then

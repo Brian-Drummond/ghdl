@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) - VCD generator.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -60,14 +58,24 @@ package Grt.Vcd is
       Vcd_Bit, Vcd_Stdlogic,
 
       --  A bit vector type
-      Vcd_Bitvector, Vcd_Stdlogic_Vector
+      Vcd_Bitvector, Vcd_Stdlogic_Vector,
+
+      --  Any array (that is not a vector)
+      Vcd_Array,
+
+      --  Any record
+      Vcd_Struct
      );
 
    subtype Vcd_Var_Vectors is Vcd_Var_Type
      range Vcd_Bitvector .. Vcd_Stdlogic_Vector;
 
    --  Which value to be displayed: effective or driving (for out signals).
-   type Vcd_Value_Kind is (Vcd_Effective, Vcd_Driving, Vcd_Variable);
+   type Vcd_Value_Kind is
+     (Vcd_Effective, Vcd_Driving, Vcd_Variable, Vcd_Value_Bad);
+
+   subtype Vcd_Value_Valid is
+     Vcd_Value_Kind range Vcd_Effective .. Vcd_Variable;
 
    --  For signals.
    subtype Vcd_Value_Signals is Vcd_Value_Kind
@@ -82,10 +90,13 @@ package Grt.Vcd is
       case Vtype is
          when Vcd_Var_Vectors =>
             --  Vector bounds.
-            Irange : Ghdl_Range_Ptr;
+            Vec_Range : Ghdl_Range_Ptr;
          when Vcd_Enum8 =>
             --  Base type.
             Rti : Rtis.Ghdl_Rti_Access;
+         when Vcd_Array =>
+            Arr_Rti : Rtis.Ghdl_Rti_Access;
+            Arr_Bounds : System.Address;
          when others =>
             null;
       end case;

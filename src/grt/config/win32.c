@@ -1,20 +1,18 @@
 /*  GRT stack implementation for Win32 using fibers.
     Copyright (C) 2005 - 2014 Tristan Gingold.
 
-    GHDL is free software; you can redistribute it and/or modify it under
-    the terms of the GNU General Public License as published by the Free
-    Software Foundation; either version 2, or (at your option) any later
-    version.
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
 
-    GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
-    WARRANTY; without even the implied warranty of MERCHANTABILITY or
-    FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-    for more details.
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with GCC; see the file COPYING.  If not, write to the Free
-    Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-    02111-1307, USA.
+    along with this program.  If not, see <gnu.org/licenses>.
 
     As a special exception, if other files instantiate generics from this
     unit, or you link this unit with other files to produce an executable,
@@ -198,6 +196,14 @@ __ghdl_run_through_longjump (int (*func)(void))
 void
 grt_save_backtrace (struct backtrace_addrs *bt, int skip)
 {
+  /* FIXME
+  testsuite/gna/issue635 fails on GitHub Actions when executed with
+  LLVM backend on MINGW64 (MSYS2). GHDL returns '3', instead of '0'.
+  This dummy printf fixes it, surprisingly.
+  See https://github.com/ghdl/ghdl/pull/1516
+  */
+  printf("");
+
   CONTEXT ctxt;
 
   RtlCaptureContext (&ctxt);

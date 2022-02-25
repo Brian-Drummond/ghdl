@@ -1,20 +1,18 @@
 --  Error message handling.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Name_Table;
 with Files_Map; use Files_Map;
@@ -387,9 +385,9 @@ package body Errorout is
       Report_Handler.Message_Group.all (False);
    end Report_End_Group;
 
-   procedure Error_Msg_Option (Msg: String) is
+   procedure Error_Msg_Option (Msg: String; Args : Earg_Arr := No_Eargs) is
    begin
-      Report_Msg (Msgid_Error, Option, No_Source_Coord, Msg);
+      Report_Msg (Msgid_Error, Option, No_Source_Coord, Msg, Args);
    end Error_Msg_Option;
 
    procedure Warning_Msg_Option (Id : Msgid_Warnings; Msg: String) is
@@ -421,4 +419,14 @@ package body Errorout is
    begin
       return (Kind => Earg_Synth_Name, Val_Lang => V);
    end Make_Earg_Synth_Name;
+
+   function Make_Earg_Verilog_Node (V : Uns32) return Earg_Type is
+   begin
+      return (Kind => Earg_Verilog_Node, Val_Lang => V);
+   end Make_Earg_Verilog_Node;
+
+   function Make_Earg_Verilog_Token (V : Uns32) return Earg_Type is
+   begin
+      return (Kind => Earg_Verilog_Token, Val_Lang => V);
+   end Make_Earg_Verilog_Token;
 end Errorout;

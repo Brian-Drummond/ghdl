@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,9 +14,7 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Ada.Unchecked_Deallocation;
 
@@ -61,7 +59,6 @@ package Netlists.Utils is
                                return Instance;
 
    --  Return True iff ID describe a constant.
-   function Is_Const_Module (Id : Module_Id) return Boolean;
    function Is_Const_Net (N : Net) return Boolean;
 
    --  Assuming that N is a const net, return the value (for small values).
@@ -90,6 +87,10 @@ package Netlists.Utils is
    --  selection of the same net.
    function Same_Net (L, R : Net) return Boolean;
 
+   --  Like Same_Net but for a clock.  L and R must be both the output of
+   --  an edge detector.
+   function Same_Clock (L, R : Net) return Boolean;
+
    --  If N is the output of a signal or isignal, return the driver of the
    --  input.
    function Skip_Signal (N : Net) return Net;
@@ -97,7 +98,7 @@ package Netlists.Utils is
    function Clog2 (W : Width) return Width;
 
    --  Copy attribtues of SRC to DEST.
-   procedure Copy_Attributes (Dest : Instance; Src : Instance);
+   procedure Copy_Instance_Attributes (Dest : Instance; Src : Instance);
 
    --  Used at many places.
    package Net_Tables is new Dyn_Tables

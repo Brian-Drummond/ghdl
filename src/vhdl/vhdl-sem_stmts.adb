@@ -1,20 +1,18 @@
 --  Semantic analysis.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Errorout; use Errorout;
 with Types; use Types;
 with Flags; use Flags;
@@ -514,6 +512,7 @@ package body Vhdl.Sem_Stmts is
       Expr: Iir;
       We: Iir_Waveform_Element;
       Time, Last_Time : Int64;
+      Last_Unit, Unit : Iir;
    begin
       if Get_Kind (Waveform_Chain) = Iir_Kind_Unaffected_Waveform then
          --  Unaffected.
@@ -522,6 +521,8 @@ package body Vhdl.Sem_Stmts is
 
       --  Start with -1 to allow after 0 ns.
       Last_Time := -1;
+      Last_Unit := Null_Iir;
+
       We := Waveform_Chain;
       while We /= Null_Iir loop
          Expr := Get_We_Value (We);
@@ -576,18 +577,25 @@ package body Vhdl.Sem_Stmts is
                         Expr := Eval_Expr (Expr);
                         Set_Time (We, Expr);
                         Time := Get_Value (Expr);
+                        Unit := Null_Iir;
                      else
                         --  The expression is a physical literal (common case).
-                        --  Extract its value.
-                        Time := Get_Physical_Value (Expr);
+                        --  Do not try to extract the physical value to avoid
+                        --  overflow, but check the integer value and compare
+                        --  if the unit is the same (common case).
+                        Time := Get_Value (Expr);
+                        Unit := Get_Named_Entity (Get_Unit_Name (Expr));
+                        if Last_Unit = Null_Iir then
+                           Last_Unit := Unit;
+                        end if;
                      end if;
                      if Time < 0 then
                         Error_Msg_Sem
                           (+Expr, "waveform time expression must be >= 0");
-                     elsif Time <= Last_Time then
+                     elsif Unit = Last_Unit and then Time <= Last_Time then
                         Error_Msg_Sem
                           (+Expr,
-                           "time must be greather than previous transaction");
+                           "time must be greater than previous transaction");
                      else
                         Last_Time := Time;
                      end if;
@@ -871,6 +879,7 @@ package body Vhdl.Sem_Stmts is
       Target        : Iir;
       Target_Type   : Iir;
       Target_Object : Iir;
+      Target_Prefix : Iir;
       Expr          : Iir;
       Constrained   : Boolean;
    begin
@@ -886,6 +895,7 @@ package body Vhdl.Sem_Stmts is
 
       Target := Sem_Expression_Wildcard (Target, Wildcard_Any_Type);
       Target_Object := Null_Iir;
+      Target_Prefix := Null_Iir;
       Target_Type := Wildcard_Any_Type;
       if Target = Null_Iir then
          --  To avoid spurious errors, assume the target is fully
@@ -897,21 +907,22 @@ package body Vhdl.Sem_Stmts is
             Check_Target (Stmt, Target);
             Target_Type := Get_Type (Target);
             Target_Object := Check_Simple_Signal_Target_Object (Target);
+            Target_Prefix := Get_Object_Prefix (Target_Object);
             Constrained := Is_Object_Name_Fully_Constrained (Target_Object);
          else
             Constrained := False;
          end if;
       end if;
 
-      if Target_Object /= Null_Iir then
+      if Target_Prefix /= Null_Iir then
          --  LRM08 10.5.2 Simple signal assignments
          --  If the right-hand side of a simple force assignment or a simple
          --  release assignment does not specify a force mode, then a default
          --  force mode is used as follow:
          if not Get_Has_Force_Mode (Stmt) then
-            case Get_Kind (Target_Object) is
+            case Get_Kind (Target_Prefix) is
                when Iir_Kind_Interface_Signal_Declaration =>
-                  case Get_Mode (Target_Object) is
+                  case Get_Mode (Target_Prefix) is
                      when Iir_In_Mode =>
                         --  - If the target is a port or signal parameter of
                         --    mode IN, a force mode IN is used.
@@ -942,10 +953,10 @@ package body Vhdl.Sem_Stmts is
          else
             --  It is an error if a force mode of OUT is specified and the
             --  target is a port of mode IN.
-            case Get_Kind (Target_Object) is
+            case Get_Kind (Target_Prefix) is
                when Iir_Kind_Interface_Signal_Declaration =>
                   if Get_Force_Mode (Stmt) = Iir_Force_Out
-                    and then Get_Mode (Target_Object) = Iir_In_Mode
+                    and then Get_Mode (Target_Prefix) = Iir_In_Mode
                   then
                      Error_Msg_Sem
                        (+Stmt, "cannot use force OUT for IN port %n",
@@ -1010,7 +1021,9 @@ package body Vhdl.Sem_Stmts is
       for S in Resolve_Stages loop
          Done := False;
 
-         Target := Sem_Expression_Wildcard (Target, Stmt_Type);
+         if Target /= Null_Iir then
+            Target := Sem_Expression_Wildcard (Target, Stmt_Type);
+         end if;
          if Target = Null_Iir then
             Target_Type := Stmt_Type;
             --  To avoid spurious errors, assume the target is fully
@@ -1036,7 +1049,9 @@ package body Vhdl.Sem_Stmts is
                Expr := Sem_Expression_Wildcard
                  (Expr, Stmt_Type, Constrained);
                if Expr /= Null_Iir then
-                  if Is_Expr_Fully_Analyzed (Expr) then
+                  if Is_Expr_Fully_Analyzed (Expr)
+                    and then not Is_Error (Get_Type (Expr))
+                  then
                      Check_Read (Expr);
                      Expr := Eval_Expr_If_Static (Expr);
                   end if;
@@ -1062,7 +1077,9 @@ package body Vhdl.Sem_Stmts is
          exit when Done;
          if not Is_Defined_Type (Stmt_Type) then
             Error_Msg_Sem (+Stmt, "cannot resolve type");
-            if Get_Kind (Target) = Iir_Kind_Aggregate then
+            if Target /= Null_Iir
+              and then Get_Kind (Target) = Iir_Kind_Aggregate
+            then
                --  Try to give an advice.
                Error_Msg_Sem (+Stmt, "use a qualified expression for the RHS");
             end if;
@@ -1846,6 +1863,10 @@ package body Vhdl.Sem_Stmts is
       Comp_Name : Iir;
       Comp : Iir;
    begin
+      if Is_Error (Inst) then
+         return Null_Iir;
+      end if;
+
       if Get_Kind (Inst) in Iir_Kinds_Entity_Aspect then
          return Sem_Entity_Aspect (Inst);
       else
@@ -1854,12 +1875,13 @@ package body Vhdl.Sem_Stmts is
             --  Already analyzed before, while trying to separate
             --  concurrent procedure calls from instantiation stmts.
             pragma Assert (Get_Kind (Comp) = Iir_Kind_Component_Declaration);
+            Set_Use_Flag (Comp, True);
             return Comp;
          end if;
 
          --  Needs a denoting name
          if Get_Kind (Inst) not in Iir_Kinds_Denoting_Name then
-            Error_Msg_Sem (+Inst, "name for a component expected");
+            --  Error message already issued during parse.
             return Null_Iir;
          end if;
 
@@ -1867,10 +1889,15 @@ package body Vhdl.Sem_Stmts is
          Comp_Name := Sem_Denoting_Name (Inst);
          Set_Instantiated_Unit (Stmt, Comp_Name);
          Comp := Get_Named_Entity (Comp_Name);
+         if Is_Error (Comp) then
+            return Null_Iir;
+         end if;
          if Get_Kind (Comp) /= Iir_Kind_Component_Declaration then
             Error_Class_Match (Comp_Name, "component");
             return Null_Iir;
          end if;
+
+         Set_Use_Flag (Comp, True);
 
          return Comp;
       end if;
@@ -2232,13 +2259,19 @@ package body Vhdl.Sem_Stmts is
 
       Set_Is_Within_Flag (Proc, False);
 
-      if Get_Kind (Proc) = Iir_Kind_Sensitized_Process_Statement
-        and then Get_Callees_List (Proc) /= Null_Iir_List
-      then
-         --  Check there is no wait statement in subprograms called.
-         --  Also in the case of all-sensitized process, check that package
-         --  subprograms don't read signals.
-         Sem.Add_Analysis_Checks_List (Proc);
+      if Get_Kind (Proc) = Iir_Kind_Sensitized_Process_Statement then
+         if Get_Callees_List (Proc) /= Null_Iir_List then
+            --  Check there is no wait statement in subprograms called.
+            --  Also in the case of all-sensitized process, check that package
+            --  subprograms don't read signals.
+            Sem.Add_Analysis_Checks_List (Proc);
+         end if;
+      else
+         if not Get_Suspend_Flag (Proc) then
+            Warning_Msg_Sem
+              (Warnid_No_Wait, +Proc,
+               "infinite loop for this process without a wait statement");
+         end if;
       end if;
    end Sem_Process_Statement;
 
@@ -2546,6 +2579,7 @@ package body Vhdl.Sem_Stmts is
 
          case Get_Kind (Stmt) is
             when Iir_Kind_Psl_Declaration
+              | Iir_Kind_Psl_Default_Clock
               | Iir_Kind_Psl_Endpoint_Declaration =>
                --  Special case for in-lined PSL declarations.
                null;

@@ -1,20 +1,18 @@
 --  Extended locations for iir nodes
---  Copyright (C) 2017 Tristan Gingold
+--  Copyright (C) 2017-2021 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Tables;
 with Vhdl.Nodes_Priv;
@@ -211,6 +209,7 @@ package body Vhdl.Elocations is
            | Iir_Kind_Design_Unit
            | Iir_Kind_Use_Clause
            | Iir_Kind_Context_Reference
+           | Iir_Kind_PSL_Inherit_Spec
            | Iir_Kind_Integer_Literal
            | Iir_Kind_Floating_Point_Literal
            | Iir_Kind_Null_Literal
@@ -266,11 +265,13 @@ package body Vhdl.Elocations is
            | Iir_Kind_Physical_Type_Definition
            | Iir_Kind_Range_Expression
            | Iir_Kind_Wildcard_Type_Definition
+           | Iir_Kind_Foreign_Vector_Type_Definition
            | Iir_Kind_Subtype_Definition
            | Iir_Kind_Scalar_Nature_Definition
            | Iir_Kind_Array_Nature_Definition
            | Iir_Kind_Array_Subnature_Definition
            | Iir_Kind_Overload_List
+           | Iir_Kind_Foreign_Module
            | Iir_Kind_Vmode_Declaration
            | Iir_Kind_Vprop_Declaration
            | Iir_Kind_Vunit_Declaration
@@ -295,7 +296,6 @@ package body Vhdl.Elocations is
            | Iir_Kind_Guard_Signal_Declaration
            | Iir_Kind_Interface_Function_Declaration
            | Iir_Kind_Interface_Procedure_Declaration
-           | Iir_Kind_Anonymous_Signal_Declaration
            | Iir_Kind_Signal_Attribute_Declaration
            | Iir_Kind_Identity_Operator
            | Iir_Kind_Negation_Operator
@@ -356,6 +356,8 @@ package body Vhdl.Elocations is
            | Iir_Kind_Psl_Stable
            | Iir_Kind_Psl_Rose
            | Iir_Kind_Psl_Fell
+           | Iir_Kind_Psl_Onehot
+           | Iir_Kind_Psl_Onehot0
            | Iir_Kind_Psl_Expression
            | Iir_Kind_Concurrent_Assertion_Statement
            | Iir_Kind_Concurrent_Procedure_Call_Statement
@@ -455,6 +457,7 @@ package body Vhdl.Elocations is
             return Format_None;
          when Iir_Kind_Library_Clause
            | Iir_Kind_Association_Element_By_Expression
+           | Iir_Kind_Association_Element_By_Name
            | Iir_Kind_Association_Element_By_Individual
            | Iir_Kind_Association_Element_Open
            | Iir_Kind_Association_Element_Package

@@ -1,20 +1,18 @@
 --  Scanner token definitions.
 --  Copyright (C) 2002-2019 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 package Vhdl.Tokens is
    pragma Pure (Vhdl.Tokens);
@@ -23,6 +21,31 @@ package Vhdl.Tokens is
      (
       Tok_Invalid,     -- current_token is not valid.
 
+      Tok_Eof,                 -- End of file.
+      Tok_Newline,
+
+      Tok_Block_Comment_Start, --  Start of a block comment (/*)
+      Tok_Block_Comment_End,   --  End of a block comment (*/)
+
+      Tok_Block_Comment_Text,  --  Text within a block comment (no newline)
+      Tok_Line_Comment,        --  End of line comment (--)
+      Tok_Character,
+      Tok_Identifier,
+      Tok_Integer,
+      Tok_Real,
+      Tok_String,
+
+      --  This token corresponds to a base specifier followed by bit_value.
+      --  The base specifier is stored in Name_Buffer/Name_Length like an
+      --  identifier (in lowercase), the String8_Id contains the expanded bit
+      --  value.
+      Tok_Bit_String,
+
+      --  An integer immediately followed by a letter.  This is used by to
+      --  scan vhdl 2008 (and later) bit string with a length.
+      Tok_Integer_Letter,
+
+      --  Delimiters
       Tok_Left_Paren,          -- (
       Tok_Right_Paren,         -- )
       Tok_Left_Bracket,        -- [
@@ -39,26 +62,6 @@ package Vhdl.Tokens is
       Tok_Dot,                 -- .
 
       Tok_Equal_Equal,         -- == (AMS Vhdl)
-
-      Tok_Eof,                 -- End of file.
-      Tok_Newline,
-      Tok_Line_Comment,        --  End of line comment (--)
-      Tok_Block_Comment,       --  Block comment (/*  .. */)
-      Tok_Character,
-      Tok_Identifier,
-      Tok_Integer,
-      Tok_Real,
-      Tok_String,
-
-      --  This token corresponds to a base specifier followed by bit_value.
-      --  The base specifier is stored in Name_Buffer/Name_Length like an
-      --  identifier (in lowercase), the String8_Id contains the expanded bit
-      --  value.
-      Tok_Bit_String,
-
-      --  An integer immediately followed by a letter.  This is used by to
-      --  scan vhdl 2008 (and later) bit string with a length.
-      Tok_Integer_Letter,
 
    -- relational_operator
       Tok_Equal,               -- =
@@ -82,6 +85,7 @@ package Vhdl.Tokens is
       Tok_Ampersand,           -- &
 
    --  VHDL 2008
+      Tok_Question_Mark,       -- ?
       Tok_Condition,           -- ??
       Tok_Double_Less,         -- <<
       Tok_Double_Greater,      -- >>
@@ -249,6 +253,7 @@ package Vhdl.Tokens is
       Tok_Restrict,
       Tok_Restrict_Guarantee,
       Tok_Sequence,
+      Tok_Inherit,
       Tok_Vmode,
       Tok_Vprop,
       Tok_Vunit,
@@ -278,6 +283,8 @@ package Vhdl.Tokens is
 
       Tok_Within,
       Tok_Abort,
+      Tok_Async_Abort,
+      Tok_Sync_Abort,
       Tok_Before,
       Tok_Before_Em,
       Tok_Before_Un,
@@ -303,7 +310,9 @@ package Vhdl.Tokens is
       Tok_Prev,
       Tok_Stable,
       Tok_Fell,
-      Tok_Rose
+      Tok_Rose,
+      Tok_Onehot,
+      Tok_Onehot0
      );
 
    --  To ease interfacing
@@ -323,7 +332,20 @@ package Vhdl.Tokens is
    subtype Token_Multiplying_Operator_Type is Token_Type range
      Tok_Star .. Tok_Rem;
 
-   Tok_First_Keyword :  constant Tokens.Token_Type := Tokens.Tok_Mod;
+   --  These tokens represent text in the source whose exact meaning needs
+   --  extra data (like the value of an integer, the exact identifier...).
+   subtype Token_Source_Type is Token_Type range
+     Tok_Line_Comment ..
+   --Tok_Character
+   --Tok_Identifier
+   --Tok_Integer
+   --Tok_Real
+   --Tok_String
+   --Tok_Bit_String
+     Tok_Integer_Letter;
+
+   Tok_First_Delimiter : constant Token_Type := Tok_Left_Paren;
+   Tok_First_Keyword :   constant Token_Type := Tok_Mod;
 
    -- Return the name of the token.
    function Image (Token: Token_Type) return String;

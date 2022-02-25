@@ -1,20 +1,18 @@
 --  GHDL driver - compile commands.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Ada.Command_Line;
 
 with Ghdlmain; use Ghdlmain;
@@ -219,7 +217,7 @@ package body Ghdlcomp is
       end if;
    end Compile_Analyze_Init;
 
-   procedure Compile_Load_File (File : String)
+   procedure Compile_Load_Vhdl_File (File : String)
    is
       Res : Iir_Design_File;
       Design : Iir;
@@ -238,7 +236,7 @@ package body Ghdlcomp is
          Libraries.Add_Design_Unit_Into_Library (Design);
          Design := Next_Design;
       end loop;
-   end Compile_Load_File;
+   end Compile_Load_Vhdl_File;
 
    function Compile_Analyze_File (File : String) return Iir
    is
@@ -307,10 +305,15 @@ package body Ghdlcomp is
    procedure Common_Compile_Init (Analyze_Only : Boolean) is
    begin
       if Analyze_Only then
-         Setup_Libraries (True);
+         if not Setup_Libraries (True) then
+            raise Option_Error;
+         end if;
       else
-         Setup_Libraries (False);
-         Libraries.Load_Std_Library;
+         if not Setup_Libraries (False)
+           or else not Libraries.Load_Std_Library
+         then
+            raise Option_Error;
+         end if;
          --  WORK library is not loaded.  FIXME: why ?
       end if;
 
@@ -324,14 +327,19 @@ package body Ghdlcomp is
                                   Opt_Arg : out Natural;
                                   Config : out Iir)
    is
+      Lib_Id : Name_Id;
       Prim_Id : Name_Id;
       Sec_Id : Name_Id;
    begin
-      Extract_Elab_Unit (Cmd_Name, Args, Opt_Arg, Prim_Id, Sec_Id);
+      Extract_Elab_Unit
+        (Cmd_Name, True, Args, Opt_Arg, Lib_Id, Prim_Id, Sec_Id);
+      if Prim_Id = Null_Identifier then
+         raise Option_Error;
+      end if;
 
       Flags.Flag_Elaborate := True;
 
-      Config := Vhdl.Configuration.Configure (Prim_Id, Sec_Id);
+      Config := Vhdl.Configuration.Configure (Lib_Id, Prim_Id, Sec_Id);
       if Config = Null_Iir
         or else Errorout.Nbr_Errors > 0
       then
@@ -387,7 +395,7 @@ package body Ghdlcomp is
                      end if;
                      Libraries.Load_Work_Library (True);
                   else
-                     Compile_Load_File (Arg);
+                     Compile_Load_Vhdl_File (Arg);
                   end if;
                end;
             end loop;
@@ -727,6 +735,7 @@ package body Ghdlcomp is
    is
       pragma Unreferenced (Cmd);
 
+      Lib_Id : Name_Id;
       Prim_Id : Name_Id;
       Sec_Id : Name_Id;
       Files_List : Iir_List;
@@ -738,11 +747,17 @@ package body Ghdlcomp is
       Unit : Iir_Design_Unit;
       Lib : Iir_Library_Declaration;
    begin
-      Extract_Elab_Unit ("-m", Args, Next_Arg, Prim_Id, Sec_Id);
-      Setup_Libraries (True);
+      Extract_Elab_Unit ("-m", False, Args, Next_Arg, Lib_Id, Prim_Id, Sec_Id);
+      if not Setup_Libraries (True) then
+         return;
+      end if;
 
       --  Create list of files.
-      Files_List := Build_Dependence (Prim_Id, Sec_Id);
+      Files_List := Build_Dependence (Lib_Id, Prim_Id, Sec_Id);
+
+      if Errorout.Nbr_Errors /= 0 then
+         raise Errorout.Compilation_Error;
+      end if;
 
       --  Unmark all libraries.
       Lib := Libraries.Std_Library;
@@ -869,6 +884,7 @@ package body Ghdlcomp is
       use Name_Table;
 
       HT : constant Character := ASCII.HT;
+      Lib_Id : Name_Id;
       Prim_Id : Name_Id;
       Sec_Id : Name_Id;
       Files_List : Iir_List;
@@ -880,9 +896,12 @@ package body Ghdlcomp is
 
       Next_Arg : Natural;
    begin
-      Extract_Elab_Unit ("--gen-makefile", Args, Next_Arg, Prim_Id, Sec_Id);
-      Setup_Libraries (True);
-      Files_List := Build_Dependence (Prim_Id, Sec_Id);
+      Extract_Elab_Unit
+        ("--gen-makefile", False, Args, Next_Arg, Lib_Id, Prim_Id, Sec_Id);
+      if not Setup_Libraries (True) then
+         return;
+      end if;
+      Files_List := Build_Dependence (Lib_Id, Prim_Id, Sec_Id);
 
       Ghdllocal.Gen_Makefile_Disp_Header;
 

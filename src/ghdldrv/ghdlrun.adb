@@ -1,20 +1,18 @@
 --  GHDL driver - JIT commands.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with System; use System;
 
 with Ada.Unchecked_Conversion;
@@ -28,12 +26,11 @@ with Ghdlmain; use Ghdlmain;
 with Ghdllocal; use Ghdllocal;
 with Simple_IO; use Simple_IO;
 
-with Str_Table;
 with Hash;
 with Interning;
-with Files_Map;
 with Name_Table;
 with Flags;
+with Options;
 with Errorout; use Errorout;
 
 with Vhdl.Nodes; use Vhdl.Nodes;
@@ -41,7 +38,6 @@ with Vhdl.Std_Package;
 with Vhdl.Errors; use Vhdl.Errors;
 with Vhdl.Canon;
 with Vhdl.Ieee.Std_Logic_1164;
-with Vhdl.Lists;
 with Ortho_Jit;
 with Ortho_Nodes; use Ortho_Nodes;
 with Trans_Decls;
@@ -694,6 +690,10 @@ package body Ghdlrun is
            Grt.Std_Logic_1164.Ghdl_Std_Ulogic_Match_Lt'Address);
       Def (Trans_Decls.Ghdl_Std_Ulogic_Match_Le,
            Grt.Std_Logic_1164.Ghdl_Std_Ulogic_Match_Le'Address);
+      Def (Trans_Decls.Ghdl_Std_Ulogic_Match_Ge,
+           Grt.Std_Logic_1164.Ghdl_Std_Ulogic_Match_Ge'Address);
+      Def (Trans_Decls.Ghdl_Std_Ulogic_Match_Gt,
+           Grt.Std_Logic_1164.Ghdl_Std_Ulogic_Match_Gt'Address);
 
       Def (Trans_Decls.Ghdl_Std_Ulogic_Array_Match_Eq,
            Grt.Std_Logic_1164.Ghdl_Std_Ulogic_Array_Match_Eq'Address);
@@ -763,11 +763,7 @@ package body Ghdlrun is
       Ortho_Jit.Finish;
 
       Translation.Finalize;
-      Vhdl.Lists.Initialize;
-      Str_Table.Initialize;
-      Vhdl.Nodes.Initialize;
-      Files_Map.Initialize;
-      Name_Table.Finalize;
+      Options.Finalize;
 
       if Flag_Verbose then
          Put_Line ("Starting simulation");

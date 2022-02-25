@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,9 +14,7 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Ada.Unchecked_Deallocation;
 with Netlists.Gates; use Netlists.Gates;
@@ -138,9 +136,11 @@ package Netlists.Builders is
       I : Net; Step : Uns32; Max : Uns32; W : Width) return Net;
    function Build_Addidx (Ctxt : Context_Acc; L, R : Net) return Net;
 
-   function Build_Memory (Ctxt : Context_Acc; W : Width) return Instance;
-   function Build_Memory_Init (Ctxt : Context_Acc; W : Width; Init : Net)
-                              return Instance;
+   function Build_Memory
+     (Ctxt : Context_Acc; Name : Sname; W : Width) return Instance;
+   function Build_Memory_Init
+     (Ctxt : Context_Acc; Name : Sname; W : Width; Init : Net) return Instance;
+
    function Build_Mem_Rd
      (Ctxt : Context_Acc; Pport : Net; Addr : Net; Data_W : Width)
      return Instance;
@@ -196,9 +196,9 @@ package Netlists.Builders is
                         Clk : Net;
                         D : Net; Rst : Net; Rst_Val : Net) return Net;
    function Build_Iadff (Ctxt : Context_Acc;
-                        Clk : Net;
-                        D : Net; Rst : Net; Rst_Val : Net;
-                                            Init : Net) return Net;
+                         Clk : Net;
+                         D : Net; Rst : Net; Rst_Val : Net;
+                                             Init : Net) return Net;
 
    function Build_Mdff (Ctxt : Context_Acc;
                         Clk : Net;

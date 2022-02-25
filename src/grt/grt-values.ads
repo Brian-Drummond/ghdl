@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) - 'value subprograms.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -52,15 +50,15 @@ package Grt.Values is
    function Ghdl_Value_P32 (Str : Std_String_Ptr; Rti : Ghdl_Rti_Access)
                            return Ghdl_I32;
 
-   --  Convert S (INIT_POS .. LEN) to a signed integer.
-   function Value_I64
-     (S : Std_String_Basep; Len : Ghdl_Index_Type; Init_Pos : Ghdl_Index_Type)
-     return Ghdl_I64;
-
    --  Return the value of STR for enumerated type RTI.
    function Value_Enum
      (S : Std_String_Basep; Len : Ghdl_Index_Type; Rti : Ghdl_Rti_Access)
      return Ghdl_Index_Type;
+
+   --  Likewise but report any error.
+   function Value_I64
+     (S : Std_String_Basep; Len : Ghdl_Index_Type; Init_Pos : Ghdl_Index_Type)
+     return Ghdl_I64;
 private
    pragma Export (Ada, Ghdl_Value_B1, "__ghdl_value_b1");
    pragma Export (C, Ghdl_Value_E8, "__ghdl_value_e8");

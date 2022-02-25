@@ -1,23 +1,20 @@
 --  VHDL libraries handling.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Types; use Types;
 with Vhdl.Nodes; use Vhdl.Nodes;
-with Std_Names;
 
 package Libraries is
    -- This package defines the library manager.
@@ -41,7 +38,7 @@ package Libraries is
 
    --  Library declaration for the std library.
    --  This is also the first library of the libraries chain.
-   Std_Library : Iir_Library_Declaration := Null_Iir;
+   Std_Library : Iir_Library_Declaration;
 
    --  Library declaration for the work library.
    --  Note: the identifier of the work_library is work_library_name, which
@@ -49,7 +46,7 @@ package Libraries is
    Work_Library: Iir_Library_Declaration;
 
    --  Name of the WORK library.
-   Work_Library_Name : Name_Id := Std_Names.Name_Work;
+   Work_Library_Name : Name_Id;
 
    --  Directory of the work library.
    --  Set by default by INIT_PATHS to the local directory.
@@ -67,7 +64,10 @@ package Libraries is
 
    --  Initialize library paths table.
    --  Set the local path.
-   procedure Init_Paths;
+   procedure Initialize;
+
+   --  Free memory
+   procedure Finalize;
 
    --  Add PATH in the search path.
    procedure Add_Library_Path (Path : String);
@@ -94,7 +94,8 @@ package Libraries is
 
    --  Initialize the library manager and load the STD library.
    --  If BUILD_STANDARD is false, the std.standard library is not created.
-   procedure Load_Std_Library (Build_Standard : Boolean := True);
+   --  Return TRUE in case of success, FALSE in case of failure.
+   function Load_Std_Library (Build_Standard : Boolean := True) return Boolean;
 
    -- Save the work library as a host-dependent library.
    procedure Save_Work_Library;
@@ -164,7 +165,7 @@ package Libraries is
 
    --  Find an entity whose name is NAME in any library.
    --  If there is no such entity, return NULL_IIR.
-   --  If there are severals entities, return NULL_IIR;
+   --  If there are several entities, return NULL_IIR;
    function Find_Entity_For_Component (Name: Name_Id) return Iir_Design_Unit;
 
    --  Decode '--work=NAME' command line option and return the identifier
@@ -174,7 +175,7 @@ package Libraries is
    --  Return Null_Identifier if NAME is not a valid name.
    function Decode_Work_Option (Opt : String) return Name_Id;
 
-   --  Get the chain of libraries.  Can be used only to read (it musn't be
+   --  Get the chain of libraries.  Can be used only to read (it mustn't be
    --  modified).
    function Get_Libraries_Chain return Iir_Library_Declaration;
 end Libraries;

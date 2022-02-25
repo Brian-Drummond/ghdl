@@ -1,20 +1,18 @@
 --  Common types.
 --  Copyright (C) 2002 - 2015 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Interfaces;
 with System;
 with Ada.Unchecked_Conversion;
@@ -173,10 +171,14 @@ package Types is
    --  Unrecoverable error.  Just exit() with an error status.
    Fatal_Error : exception;
 
-   --  In some case, a low level subprogram can't handle error
-   --  (e.g eval_pos).  In this case it is easier to raise an exception and
-   --  let upper level subprograms handle the case.
-   Node_Error : exception;
+   --  List of languages
+   type Language_Type is
+     (
+      Language_Unknown,
+      Language_Vhdl,
+      Language_Psl,
+      Language_Verilog
+     );
 
    --  Result of a comparaison of two numeric values.
    type Order_Type is (Less, Equal, Greater);

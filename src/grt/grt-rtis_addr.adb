@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) -  RTI address handling.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -58,7 +56,8 @@ package body Grt.Rtis_Addr is
    begin
       case Ctxt.Block.Kind is
          when Ghdl_Rtik_Process
-           | Ghdl_Rtik_Block =>
+           | Ghdl_Rtik_Block
+           | Ghdl_Rtiks_Psl =>
             return (Base => Ctxt.Base - Blk.Loc,
                     Block => Blk.Parent);
          when Ghdl_Rtik_Architecture =>
@@ -280,6 +279,7 @@ package body Grt.Rtis_Addr is
 
    function Array_Layout_To_Bounds (Layout : Address) return Address is
    begin
+      --  Skip the 2 size fields (1 for objects size, 1 for signals size).
       return Layout + Ghdl_Index_Type'(Ghdl_Indexes_Type'Size / 8);
    end Array_Layout_To_Bounds;
 
@@ -311,7 +311,7 @@ package body Grt.Rtis_Addr is
       Idx_Def : Ghdl_Rti_Access;
    begin
       if Res'Length /= Def.Nbr_Dim or else Res'First /= 0 then
-         Internal_Error ("disp_rti.bound_to_range");
+         Internal_Error ("rtis_addr.bound_to_range");
       end if;
 
       Bounds := Bounds_Addr;
@@ -355,6 +355,25 @@ package body Grt.Rtis_Addr is
          end case;
       end loop;
    end Get_Base_Type;
+
+   function Get_Base_Array_Type (Atype : Ghdl_Rti_Access)
+                                return Ghdl_Rtin_Type_Array_Acc
+   is
+      Res : Ghdl_Rti_Access;
+   begin
+      Res := Atype;
+      loop
+         case Res.Kind is
+            when Ghdl_Rtik_Type_Array =>
+               return To_Ghdl_Rtin_Type_Array_Acc (Res);
+            when Ghdl_Rtik_Subtype_Array
+               | Ghdl_Rtik_Subtype_Unbounded_Array =>
+               Res := To_Ghdl_Rtin_Subtype_Composite_Acc (Res).Basetype;
+            when others =>
+               Internal_Error ("rtis_addr.get_base_array_type");
+         end case;
+      end loop;
+   end Get_Base_Array_Type;
 
    function Rti_Complex_Type (Atype : Ghdl_Rti_Access) return Boolean is
    begin

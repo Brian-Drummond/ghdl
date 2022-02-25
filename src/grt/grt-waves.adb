@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) - wave dumper (GHW) module.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -47,6 +45,7 @@ with Grt.Ghw; use Grt.Ghw;
 with Grt.Wave_Opt; use Grt.Wave_Opt;
 with Grt.Wave_Opt.File; use Grt.Wave_Opt.File;
 with Grt.Wave_Opt.Design; use Grt.Wave_Opt.Design;
+with Grt.Algos; use Grt.Algos;
 
 pragma Elaborate_All (Grt.Rtis_Utils);
 pragma Elaborate_All (Grt.Table);
@@ -855,6 +854,7 @@ package body Grt.Waves is
       --  If the signal number is 0, then assign a valid signal number.
       if Num = 0 then
          Nbr_Dumped_Signals := Nbr_Dumped_Signals + 1;
+         Sig.Dump_Table_Idx := Dump_Table_Index(Nbr_Dumped_Signals);
          Sig.Alink := To_Ghdl_Signal_Ptr
            (Integer_Address (Nbr_Dumped_Signals));
          Num := Nbr_Dumped_Signals;
@@ -1782,9 +1782,30 @@ package body Grt.Waves is
 
    procedure Wave_Cycle
    is
+      function Lt (Op1, Op2 : Natural) return Boolean is
+         Left : Ghdl_Signal_Ptr;
+         Right : Ghdl_Signal_Ptr;
+      begin
+         Left := Changed_Sig_Table.Table (Op1);
+         Right := Changed_Sig_Table.Table (Op2);
+         return Left.Dump_Table_Idx < Right.Dump_Table_Idx;
+      end Lt;
+      pragma Inline (Lt);
+
+      procedure Swap (From, To : Natural) is
+         Tmp : Ghdl_Signal_Ptr;
+      begin
+         Tmp := Changed_Sig_Table.Table (From);
+         Changed_Sig_Table.Table (From) := Changed_Sig_Table.Table (To);
+         Changed_Sig_Table.Table (To) := Tmp;
+      end Swap;
+      pragma Inline (Swap);
+
+      procedure Sort is new Grt.Algos.Heap_Sort (Lt => Lt, Swap => Swap);
+
       Diff : Std_Time;
       Sig : Ghdl_Signal_Ptr;
-      Last : Natural;
+      Last : Dump_Table_Index;
    begin
       if not In_Cyc then
          Wave_Section ("CYC" & NUL);
@@ -1798,15 +1819,19 @@ package body Grt.Waves is
 
       --  Dump signals.
       Last := 0;
-      for I in Dump_Table.First .. Dump_Table.Last loop
-         Sig := Dump_Table.Table (I);
-         if Sig.Flags.RO_Event then
-            Wave_Put_ULEB128 (Ghdl_U32 (I - Last));
-            Last := I;
-            Write_Signal_Value (Sig);
-            Sig.Flags.RO_Event := False;
-         end if;
-      end loop;
+      if Changed_Sig_Table.First <= Changed_Sig_Table.Last then
+         Sort (Changed_Sig_Table.Last);
+         for I in Changed_Sig_Table.First .. Changed_Sig_Table.Last loop
+            Sig := Changed_Sig_Table.Table(I);
+            if Sig.Flags.RO_Event then
+               Wave_Put_ULEB128 (Ghdl_U32 (Sig.Dump_Table_Idx - Last));
+               Last := Sig.Dump_Table_Idx;
+               Write_Signal_Value (Sig);
+               Sig.Flags.RO_Event := False;
+            end if;
+         end loop;
+         Changed_Sig_Table.Set_Last (0);
+      end if;
       Wave_Put_Byte (0);
    end Wave_Cycle;
 

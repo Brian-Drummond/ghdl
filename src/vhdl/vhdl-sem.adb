@@ -1,20 +1,18 @@
 --  Semantic analysis pass.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Errorout; use Errorout;
 with Libraries;
@@ -39,6 +37,7 @@ with Vhdl.Sem_Utils;
 with Vhdl.Sem_Stmts; use Vhdl.Sem_Stmts;
 with Vhdl.Nodes_Utils;
 with Vhdl.Xrefs; use Vhdl.Xrefs;
+with Vhdl.Elocations;
 
 package body Vhdl.Sem is
    -- Forward declarations.
@@ -479,138 +478,104 @@ package body Vhdl.Sem is
       Res := Sem_Generic_Association_Chain (Inter_Parent, Assoc_Parent);
    end Sem_Generic_Association_Chain;
 
-   --  LRM08 6.5.6.3 Port clauses
-   function Sem_Insert_Anonymous_Signal (Formal : Iir; Actual : Iir)
-                                        return Iir
-   is
-      Sig : Iir;
-      Res : Iir;
-   begin
-      --  LRM08 6.5.6.3 Port clauses
-      --  If a formal port of mode IN is associated with an expression that is
-      --  not globally static (see 9.4.1) and the formal is of an unconstrained
-      --  or partially constrained composite type requiring determination of
-      --  index ranges from the actual according to the rules of 5.3.2.2, then
-      --  the expression shall be one of the following:
-      --  - The name of an object whose subtype is globally static
-      --  - An indexed name whose prefix is one of the members of this list
-      --  - A slice name whose prefix is one of the members of this list and
-      --    whose discrete range is a globally static discrete range
-      --  - An aggregate, provided all choices are locally static and all
-      --    expressions in element associations are expressions described in
-      --    this list
-      --  - A function call whose return type mark denotes a globally static
-      --    subtype
-      --  - A qualified expression or type conversion whose type mark denotes
-      --    a globally static subtype
-      --  - An expression described in this list and enclosed in parentheses
-
-      --  GHDL: FIXME: could this be simplified simply by `subtype is globally
-      --  static` ?
-      --  FIXME: what about conversions ?
-
-      --  Create the anonymous signal.
-      Sig := Create_Iir (Iir_Kind_Anonymous_Signal_Declaration);
-      Location_Copy (Sig, Actual);
-      Set_Expression (Sig, Actual);
-      Set_Type (Sig, Get_Type (Formal));
-      Set_Expr_Staticness (Sig, None);
-
-      --  Declare it.
-      Add_Implicit_Declaration (Sig);
-
-      --  Return a reference to it.
-      --  FIXME: The referenced name is not a name.
-      Res := Create_Iir (Iir_Kind_Reference_Name);
-      Location_Copy (Res, Actual);
-      Set_Referenced_Name (Res, Sig);
-      Set_Named_Entity (Res, Sig);
-      Set_Type (Res, Get_Type (Sig));
-      Set_Expr_Staticness (Res, None);
-      return Res;
-   end Sem_Insert_Anonymous_Signal;
-
-   procedure Sem_Signal_Port_Association
-     (Assoc : Iir; Formal : Iir; Formal_Base : Iir)
+   function Sem_Signal_Port_Association
+     (Assoc : Iir; Formal : Iir; Formal_Base : Iir) return Iir
    is
       Actual : Iir;
+      N_Assoc : Iir;
       Prefix : Iir;
       Object : Iir;
    begin
-      if Get_Kind (Assoc) = Iir_Kind_Association_Element_By_Expression then
-         Actual := Get_Actual (Assoc);
-         --  There has been an error, exit from the loop.
-         if Actual = Null_Iir then
-            return;
+      Actual := Get_Actual (Assoc);
+      --  There has been an error, return now.
+      if Actual = Null_Iir then
+         return Assoc;
+      end if;
+      Object := Name_To_Object (Actual);
+
+      if Is_Valid (Object) and then Is_Signal_Object (Object) then
+         --  Port or signal.
+
+         --  Mutate to By_Name.
+         N_Assoc := Create_Iir (Iir_Kind_Association_Element_By_Name);
+         Location_Copy (N_Assoc, Assoc);
+         Set_Formal (N_Assoc, Get_Formal (Assoc));
+         Set_Chain (N_Assoc, Get_Chain (Assoc));
+         Set_Actual (N_Assoc, Actual);
+         Set_Actual_Conversion (N_Assoc, Get_Actual_Conversion (Assoc));
+         Set_Formal_Conversion (N_Assoc, Get_Formal_Conversion (Assoc));
+         Set_Whole_Association_Flag
+           (N_Assoc, Get_Whole_Association_Flag (Assoc));
+         pragma Assert (not Get_In_Formal_Flag (Assoc));
+         if Flag_Elocations then
+            declare
+               use Vhdl.Elocations;
+            begin
+               Create_Elocations (N_Assoc);
+               Set_Arrow_Location (N_Assoc, Get_Arrow_Location (Assoc));
+            end;
          end if;
-         Object := Name_To_Object (Actual);
-         if Is_Valid (Object) and then Is_Signal_Object (Object) then
-            --  Port or signal.
-            Set_Collapse_Signal_Flag
-              (Assoc, Can_Collapse_Signals (Assoc, Formal));
-            if Get_Name_Staticness (Object) < Globally then
-               Error_Msg_Sem (+Actual, "actual must be a static name");
-            end if;
-            Check_Port_Association_Bounds_Restrictions
-              (Formal, Actual, Assoc);
-            Prefix := Get_Object_Prefix (Object);
-            case Get_Kind (Prefix) is
-               when Iir_Kind_Interface_Signal_Declaration =>
-                  declare
-                     P : Boolean;
-                     pragma Unreferenced (P);
-                  begin
-                     P := Check_Port_Association_Mode_Restrictions
-                       (Formal_Base, Prefix, Assoc);
-                  end;
-               when Iir_Kind_Signal_Declaration =>
-                  Set_Use_Flag (Prefix, True);
-               when others =>
-                  --  FIXME: attributes ?
-                  null;
-            end case;
-         else
-            --  Expression.
-            Set_Collapse_Signal_Flag (Assoc, False);
+         Free_Iir (Assoc);
 
-            pragma Assert (Is_Null (Get_Actual_Conversion (Assoc)));
-            if Flags.Vhdl_Std >= Vhdl_93 then
-               --  LRM93 1.1.1.2 Ports
-               --  Moreover, the ports of a block may be associated
-               --  with an expression, in order to provide these ports
-               --  with constant driving values; such ports must be
-               --  of mode in.
-               if Get_Mode (Formal_Base) /= Iir_In_Mode then
-                  Error_Msg_Sem
-                    (+Assoc, "only 'in' ports may be associated with "
-                       & "expression");
-               end if;
+         Set_Collapse_Signal_Flag
+           (N_Assoc, Can_Collapse_Signals (N_Assoc, Formal));
+         if Get_Name_Staticness (Object) < Globally then
+            Error_Msg_Sem (+Actual, "actual must be a static name");
+         end if;
+         Check_Port_Association_Bounds_Restrictions
+           (Formal, Actual, N_Assoc);
+         Prefix := Get_Object_Prefix (Object);
+         case Get_Kind (Prefix) is
+            when Iir_Kind_Interface_Signal_Declaration =>
+               declare
+                  P : Boolean;
+                  pragma Unreferenced (P);
+               begin
+                  P := Check_Port_Association_Mode_Restrictions
+                    (Formal_Base, Prefix, N_Assoc);
+               end;
+            when Iir_Kind_Signal_Declaration =>
+               Set_Use_Flag (Prefix, True);
+            when others =>
+               --  FIXME: attributes ?
+               null;
+         end case;
+         return N_Assoc;
+      else
+         --  Expression.
+         Set_Collapse_Signal_Flag (Assoc, False);
 
-               --  Is it possible to have a globally static name that is
-               --  not readable ?
-               Check_Read (Actual);
-
-               --  LRM93 1.1.1.2 Ports
-               --  The actual, if an expression, must be a globally
-               --  static expression.
-               if Get_Expr_Staticness (Actual) < Globally then
-                  if Flags.Vhdl_Std >= Vhdl_08 then
-                     --  LRM08 6.5.6.3 Port clauses
-                     Actual := Sem_Insert_Anonymous_Signal (Formal, Actual);
-                     Set_Actual (Assoc, Actual);
-                     Set_Collapse_Signal_Flag (Assoc, True);
-                  else
-                     Error_Msg_Sem
-                       (+Actual,
-                        "actual expression must be globally static");
-                  end if;
-               end if;
-            else
+         pragma Assert (Is_Null (Get_Actual_Conversion (Assoc)));
+         if Flags.Vhdl_Std >= Vhdl_93 then
+            --  LRM93 1.1.1.2 Ports
+            --  Moreover, the ports of a block may be associated
+            --  with an expression, in order to provide these ports
+            --  with constant driving values; such ports must be
+            --  of mode in.
+            if Get_Mode (Formal_Base) /= Iir_In_Mode then
                Error_Msg_Sem
-                 (+Assoc,
-                  "cannot associate ports with expression in vhdl87");
+                 (+Assoc, "only 'in' ports may be associated with expression");
             end if;
+
+            --  Is it possible to have a globally static name that is
+            --  not readable ?
+            Check_Read (Actual);
+
+            --  LRM93 1.1.1.2 Ports
+            --  The actual, if an expression, must be a globally
+            --  static expression.
+            if Get_Expr_Staticness (Actual) < Globally then
+               if Flags.Vhdl_Std < Vhdl_08 then
+                  --  LRM08 6.5.6.3 Port clauses
+                  Error_Msg_Sem
+                    (+Actual, "actual expression must be globally static");
+               end if;
+            end if;
+         else
+            Error_Msg_Sem
+              (+Assoc, "cannot associate ports with expression in vhdl87");
          end if;
+         return Assoc;
       end if;
    end Sem_Signal_Port_Association;
 
@@ -620,6 +585,7 @@ package body Vhdl.Sem is
      (Inter_Parent : Iir; Assoc_Parent : Iir)
    is
       Assoc : Iir;
+      Prev_Assoc, N_Assoc : Iir;
       Match : Compatibility_Level;
       Assoc_Chain : Iir;
       Inter_Chain : Iir;
@@ -686,17 +652,33 @@ package body Vhdl.Sem is
       --  The actual, if an expression, must be a globally static expression.
       Assoc := Assoc_Chain;
       Inter := Get_Port_Chain (Inter_Parent);
+      Prev_Assoc := Null_Iir;
       while Assoc /= Null_Iir loop
          Formal := Get_Association_Formal (Assoc, Inter);
          Formal_Base := Get_Interface_Of_Formal (Formal);
 
          case Get_Kind (Formal_Base) is
             when Iir_Kind_Interface_Signal_Declaration =>
-               Sem_Signal_Port_Association (Assoc, Formal, Formal_Base);
+               if Get_Kind (Assoc) = Iir_Kind_Association_Element_By_Expression
+               then
+                  N_Assoc := Sem_Signal_Port_Association
+                    (Assoc, Formal, Formal_Base);
+
+                  --  Reinsert the new association (in case of mutation).
+                  if N_Assoc /= Assoc then
+                     if Prev_Assoc /= Null_Iir then
+                        Set_Chain (Prev_Assoc, N_Assoc);
+                     else
+                        Set_Port_Map_Aspect_Chain (Assoc_Parent, N_Assoc);
+                     end if;
+                     Assoc := N_Assoc;
+                  end if;
+               end if;
             when others =>
                null;
          end case;
 
+         Prev_Assoc := Assoc;
          Next_Association_Interface (Assoc, Inter);
       end loop;
    end Sem_Port_Association_Chain;
@@ -720,6 +702,7 @@ package body Vhdl.Sem is
       Entity_Unit : Iir_Design_Unit;
    begin
       Xref_Decl (Decl);
+      Set_Is_Within_Flag (Decl, True);
 
       --  LRM 1.3
       --  The entity name identifies the name of the entity declaration that
@@ -758,6 +741,7 @@ package body Vhdl.Sem is
 
       Sem_Block_Configuration (Get_Block_Configuration (Decl), Decl);
       Close_Declarative_Region;
+      Set_Is_Within_Flag (Decl, False);
    end Sem_Configuration_Declaration;
 
    --  Analyze the block specification of a block statement or of a generate
@@ -1142,7 +1126,7 @@ package body Vhdl.Sem is
             Error_Kind ("sem_block_configuration", Father);
       end case;
 
-      --  LRM93 §10.1
+      --  LRM93 10.1
       --  10. A block configuration
       Sem_Scopes.Open_Scope_Extension;
 
@@ -1367,6 +1351,21 @@ package body Vhdl.Sem is
       end loop;
    end Are_Trees_Chain_Equal;
 
+   function Are_Trees_List_Equal (Left, Right : Iir_Flist) return Boolean
+   is
+      El_Left, El_Right : Iir;
+   begin
+      pragma Assert (Flist_Last (Left) = Flist_Last (Right));
+      for I in Flist_First .. Flist_Last (Left) loop
+         El_Left := Get_Nth_Element (Left, I);
+         El_Right := Get_Nth_Element (Right, I);
+         if not Are_Trees_Equal (El_Left, El_Right) then
+            return False;
+         end if;
+      end loop;
+      return True;
+   end Are_Trees_List_Equal;
+
    --  Return TRUE iff LEFT and RIGHT are (in depth) equal.
    --  This corresponds to conformance rules, LRM93 2.7
    function Are_Trees_Equal (Left, Right : Iir) return Boolean
@@ -1444,7 +1443,9 @@ package body Vhdl.Sem is
             then
                return False;
             end if;
-            if not Are_Trees_Equal (Get_Type (Left), Get_Type (Right)) then
+            if not Are_Trees_Equal (Get_Subtype_Indication (Left),
+                                    Get_Subtype_Indication (Right))
+            then
                return False;
             end if;
             El_Left := Get_Default_Value (Left);
@@ -1489,46 +1490,21 @@ package body Vhdl.Sem is
             then
                return False;
             end if;
-            declare
-               L_Left : constant Iir_Flist := Get_Index_Subtype_List (Left);
-               L_Right : constant Iir_Flist := Get_Index_Subtype_List (Right);
-            begin
-               if Get_Nbr_Elements (L_Left) /= Get_Nbr_Elements (L_Right) then
-                  return False;
-               end if;
-               for I in Flist_First .. Flist_Last (L_Left) loop
-                  El_Left := Get_Nth_Element (L_Left, I);
-                  El_Right := Get_Nth_Element (L_Right, I);
-                  if not Are_Trees_Equal (El_Left, El_Right) then
-                     return False;
-                  end if;
-               end loop;
-            end;
+            if not Are_Trees_List_Equal (Get_Index_Subtype_List (Left),
+                                         Get_Index_Subtype_List (Right))
+            then
+               return False;
+            end if;
             return True;
          when Iir_Kind_Record_Subtype_Definition =>
             if Get_Base_Type (Left) /= Get_Base_Type (Right) then
                return False;
             end if;
-            if not Are_Trees_Equal (Get_Resolution_Indication (Left),
+            return Are_Trees_Equal (Get_Resolution_Indication (Left),
                                     Get_Resolution_Indication (Right))
-            then
-               return False;
-            end if;
-            declare
-               L_Left : constant Iir_Flist :=
-                 Get_Elements_Declaration_List (Left);
-               L_Right : constant Iir_Flist :=
-                 Get_Elements_Declaration_List (Right);
-            begin
-               for I in Flist_First .. Flist_Last (L_Left) loop
-                  El_Left := Get_Nth_Element (L_Left, I);
-                  El_Right := Get_Nth_Element (L_Right, I);
-                  if not Are_Trees_Equal (El_Left, El_Right) then
-                     return False;
-                  end if;
-               end loop;
-            end;
-            return True;
+              and then
+              Are_Trees_List_Equal (Get_Elements_Declaration_List (Left),
+                                    Get_Elements_Declaration_List (Right));
 
          when Iir_Kind_Integer_Literal =>
             if Get_Value (Left) /= Get_Value (Right) then
@@ -1596,6 +1572,18 @@ package body Vhdl.Sem is
               Are_Trees_Equal (Get_Expression (Left),
                                Get_Expression (Right));
 
+         when Iir_Kind_Indexed_Name =>
+            return Are_Trees_Equal (Get_Prefix (Left),
+                                    Get_Prefix (Right))
+              and then
+              Are_Trees_List_Equal (Get_Index_List (Left),
+                                    Get_Index_List (Right));
+         when Iir_Kind_Slice_Name =>
+            return Are_Trees_Equal (Get_Prefix (Left),
+                                    Get_Prefix (Right))
+              and then Are_Trees_Equal (Get_Suffix (Left),
+                                        Get_Suffix (Right));
+
          when Iir_Kind_Access_Type_Definition
            | Iir_Kind_Record_Type_Definition
            | Iir_Kind_Array_Type_Definition
@@ -1609,14 +1597,10 @@ package body Vhdl.Sem is
             then
                return False;
             end if;
-            if not Are_Trees_Equal (Get_Left_Limit (Left),
+            return Are_Trees_Equal (Get_Left_Limit (Left),
                                     Get_Left_Limit (Right))
-              or else not Are_Trees_Equal (Get_Right_Limit (Left),
-                                           Get_Right_Limit (Right))
-            then
-               return False;
-            end if;
-            return True;
+              and then Are_Trees_Equal (Get_Right_Limit (Left),
+                                        Get_Right_Limit (Right));
 
          when Iir_Kind_High_Type_Attribute
            | Iir_Kind_Low_Type_Attribute
@@ -1661,21 +1645,9 @@ package body Vhdl.Sem is
             if not Are_Trees_Equal (Get_Type (Left), Get_Type (Right)) then
                return False;
             end if;
-            declare
-               El_L, El_R : Iir;
-            begin
-               El_L := Get_Association_Choices_Chain (Left);
-               El_R := Get_Association_Choices_Chain (Right);
-               loop
-                  exit when El_L = Null_Iir and El_R = Null_Iir;
-                  if not Are_Trees_Equal (El_L, El_R) then
-                     return False;
-                  end if;
-                  El_L := Get_Chain (El_L);
-                  El_R := Get_Chain (El_R);
-               end loop;
-               return True;
-            end;
+            return Are_Trees_Chain_Equal
+              (Get_Association_Choices_Chain (Left),
+               Get_Association_Choices_Chain (Right));
 
          when Iir_Kind_Choice_By_None
               | Iir_Kind_Choice_By_Others =>
@@ -3527,6 +3499,8 @@ package body Vhdl.Sem is
                Sem_Context_Declaration (Library_Unit);
             when Iir_Kinds_Verification_Unit =>
                Sem_Psl.Sem_Psl_Verification_Unit (Library_Unit);
+            when Iir_Kind_Foreign_Module =>
+               raise Internal_Error;
          end case;
       end if;
 

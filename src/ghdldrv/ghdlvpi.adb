@@ -1,20 +1,18 @@
---  GHDL driver - compile and link wrappers for VPI.
+--  GHDL driver - compile and link wrappers for VPI and VHPI.
 --  Copyright (C) 2016 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with GNAT.OS_Lib; use GNAT.OS_Lib;
 with Ada.Command_Line; use Ada.Command_Line;
@@ -39,7 +37,9 @@ package body Ghdlvpi is
       --  Compute install path
       Ghdllocal.Set_Exec_Prefix_From_Program_Name;
 
-      return Ghdllocal.Exec_Prefix.all & Directory_Separator & "include";
+      return Ghdllocal.Exec_Prefix.all
+        & Directory_Separator & "include"
+        & Directory_Separator & "ghdl";
    end Get_Vpi_Include_Dir;
 
    --  Return the lib directory.
@@ -90,8 +90,7 @@ package body Ghdlvpi is
          --  On linux/unix, add rpath.
          --  No such concept on windows.
          Nbr := Nbr + 1;
-         Extra_Args (Nbr) := new String'
-           ("-Wl,-rpath," & Get_Vpi_Lib_Dir);
+         Extra_Args (Nbr) := new String'("-Wl,-rpath," & Get_Vpi_Lib_Dir);
       end if;
 
       return Extra_Args (1 .. Nbr);
@@ -223,7 +222,7 @@ package body Ghdlvpi is
               ("--vpi-compile"),
             Help_Str => new String'
               ("--vpi-compile CMD ARGS"
-              & ASCII.LF & "  Compile with VPI include path"),
+              & ASCII.LF & "  Compile with VPI/VHPI include path"),
             Extra_Args => Get_Vpi_Cflags'Access));
       Register_Command
         (new Command_Spawn_Type'
@@ -233,7 +232,7 @@ package body Ghdlvpi is
               ("--vpi-link"),
             Help_Str => new String'
               ("--vpi-link CMD ARGS"
-              & ASCII.LF & "  Link with VPI library"),
+              & ASCII.LF & "  Link with VPI/VHPI library"),
             Extra_Args => Get_Vpi_Ldflags'Access));
 
       Register_Command
@@ -243,7 +242,7 @@ package body Ghdlvpi is
               ("--vpi-cflags"),
             Help_Str => new String'
               ("--vpi-cflags"
-              & ASCII.LF & "  Display VPI compile flags"),
+              & ASCII.LF & "  Display VPI/VHPI compile flags"),
             Flags => Get_Vpi_Cflags'Access));
       Register_Command
         (new Command_Vpi_Flags'
@@ -252,7 +251,7 @@ package body Ghdlvpi is
               ("--vpi-ldflags"),
             Help_Str => new String'
               ("--vpi-ldflags"
-              & ASCII.LF & "  Display VPI link flags"),
+              & ASCII.LF & "  Display VPI/VHPI link flags"),
             Flags => Get_Vpi_Ldflags'Access));
 
       Register_Command
@@ -262,7 +261,7 @@ package body Ghdlvpi is
               ("--vpi-include-dir"),
             Help_Str => new String'
               ("--vpi-include-dir"
-              & ASCII.LF & "  Display VPI include directory"),
+              & ASCII.LF & "  Display VPI/VHPI include directory"),
             Disp => Get_Vpi_Include_Dir'Access));
       Register_Command
         (new Command_Str_Disp'
@@ -271,7 +270,7 @@ package body Ghdlvpi is
               ("--vpi-library-dir"),
             Help_Str => new String'
               ("--vpi-library-dir"
-              & ASCII.LF & "  Display VPI library directory"),
+              & ASCII.LF & "  Display VPI/VHPI library directory"),
             Disp => Get_Vpi_Lib_Dir'Access));
       Register_Command
         (new Command_Str_Disp'
@@ -280,7 +279,7 @@ package body Ghdlvpi is
               ("--vpi-library-dir-unix"),
             Help_Str => new String'
               ("--vpi-library-dir-unix"
-              & ASCII.LF & "  Display VPI library directory (unix form)"),
+              & ASCII.LF & "  Display VPI/VHPI library directory (unix form)"),
             Disp => Get_Vpi_Lib_Dir_Unix'Access));
 
    end Register_Commands;

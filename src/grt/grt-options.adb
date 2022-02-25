@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) -  command line options.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -85,6 +83,8 @@ package body Grt.Options is
       P ("                   files opened in write or append mode (TEXTIO).");
       P (" --read-wave-opt=FILENAME  read a wave option file.");
       P (" --write-wave-opt=FILENAME  write a wave option file.");
+      P (" --psl-report-uncovered Reports all uncovered PSL cover points as");
+      P ("                        warning at the end of simulation");
       --  P (" --threads=N       use N threads for simulation");
       P ("Additional features:");
       P (" --has-feature=X   test presence of feature X");
@@ -239,6 +239,9 @@ package body Grt.Options is
       Status := Decode_Option_Ok;
       if Option = "--" then
          Status := Decode_Option_Last;
+      elsif Option (1) = '+' then
+         --  For VPI/VHPI - plusargs.
+         null;
       elsif Option = "--help" or else Option = "-h" then
          Help;
          Status := Decode_Option_Stop;
@@ -431,8 +434,10 @@ package body Grt.Options is
       then
          Wave_Opt.File.Start
            (Option (18 .. Option'Last), To_Be_Created => True);
+      elsif Option = "--psl-report-uncovered" then
+         Flag_Psl_Report_Uncovered := True;
       elsif not Grt.Hooks.Call_Option_Hooks (Option) then
-         Error_S ("unknown option '");
+         Error_S ("unknown run option '");
          Diag_C (Option);
          Error_E ("', try --help");
       end if;

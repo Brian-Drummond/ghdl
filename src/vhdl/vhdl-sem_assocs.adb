@@ -1,20 +1,18 @@
 --  Semantic analysis.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Vhdl.Evaluation; use Vhdl.Evaluation;
 with Errorout; use Errorout;
 with Vhdl.Errors; use Vhdl.Errors;
@@ -534,6 +532,17 @@ package body Vhdl.Sem_Assocs is
       begin
          if Get_Kind (Src) not in Iir_Kinds_Scalar_Type_And_Subtype_Definition
          then
+            --  It's only for scalar types.
+            return True;
+         end if;
+         if Get_Kind (Dest) not in Iir_Kinds_Scalar_Type_And_Subtype_Definition
+         then
+            --  Avoid a crash in case of errors.
+            return True;
+         end if;
+         if Get_Kind (Src) = Iir_Kind_Foreign_Vector_Type_Definition
+           or else Get_Kind (Dest) = Iir_Kind_Foreign_Vector_Type_Definition
+         then
             return True;
          end if;
 
@@ -877,6 +886,7 @@ package body Vhdl.Sem_Assocs is
 
       Prev := Get_Associated_Expr (Res_Iass);
       if Prev = Null_Iir then
+         --  It is the first one, add it.
          Set_Associated_Expr (Res_Iass, Assoc);
       end if;
    end Add_Individual_Association;
@@ -908,8 +918,7 @@ package body Vhdl.Sem_Assocs is
          El_Type := Get_Element_Subtype (Atype);
          El := Chain;
          while El /= Null_Iir loop
-            Finish_Individual_Association1
-              (Get_Associated_Expr (El), El_Type);
+            Finish_Individual_Association1 (Get_Associated_Expr (El), El_Type);
             El := Get_Chain (El);
          end loop;
       end if;
@@ -1213,10 +1222,12 @@ package body Vhdl.Sem_Assocs is
       Clean_Individual_Association (Assoc);
    end Finish_Individual_Association;
 
-   --  Sem individual associations of ASSOCS:
-   --  Add an Iir_Kind_Association_Element_By_Individual before each
-   --  group of individual association for the same formal, and call
-   --  Finish_Individual_Association with each of these added nodes.
+   --  Analyze all individual associations of ASSOCS:
+   --  Create an Iir_Kind_Association_Element_By_Individual node before each
+   --  group of individual association for the same formal, call
+   --  and call Add_Individual_Association for each individual association for
+   --  the same formal, and finally call Finish_Individual_Association at the
+   --  end of each group.
    --
    --  The purpose of By_Individual association is to have the type of the
    --  actual (might be an array subtype), and also to be sure that all
@@ -1224,10 +1235,37 @@ package body Vhdl.Sem_Assocs is
    --  rooted by the top Association_Element_By_Individual, which contains a
    --  chain of choices (like the aggregate).  The child of a choice is either
    --  an Association_Element written by the user, or a new subtree rooted
-   --  by another Association_Element_By_Individual.  The tree doesn't
-   --  follow all the ownership rules: the formal of sub association_element
-   --  are directly set to the association, and the associated_expr of the
-   --  choices are directly set to formals.
+   --  by another Association_Element_By_Individual.
+   --
+   --  Eg:
+   --    formal (1, 0).ela => act1,
+   --    formal (1, 0).elb => act2,
+   --    formal (1, 1)     => act3,
+   --    formal (2, 0)     => act4,
+   --    formal (2, 1)     => act5,
+   --
+   --  Association_Element_By_Individual (Root)
+   --  +- Choice_By_Expression (1)
+   --  |  +- Association_Element_By_Individual
+   --  |     +- Choice_By_Expression (0)
+   --  |     |  +- Association_Element_By_Individual
+   --  |     |     +- Choice_By_Name (ela)
+   --  |     |        +- Association_Element_By_Expression (act1)
+   --  |     |     +- Choice_By_Name (elb)
+   --  |     |        +- Association_Element_By_Expression (act2)
+   --  |     +- Choice_By_Expression (1)
+   --  |        +- Association_Element_By_Expression (act3)
+   --  +- Choice_By_Expression (2)
+   --     +- Association_Element_By_Individual
+   --        +- Choice_By_Expression (0)
+   --        |  +- Association_Element_By_Expression (act4)
+   --        +- Choice_By_Expression (1)
+   --           +- Association_Element_By_Expression (act5)
+   --
+   --  The tree doesn't follow all the ownership rules: the formal of
+   --  sub association_element are directly set to the association,
+   --  and the associated_expr of the choices are directly set to
+   --  formals.
    --
    --  This tree is temporary (used only during analysis of the individual
    --  association) and removed once the check is done.
@@ -1949,6 +1987,23 @@ package body Vhdl.Sem_Assocs is
          Formal_Type := Get_Type (Inter);
       end if;
 
+      --  If the formal type is an interface type of the same interface list,
+      --  use the associated type of the formal type to analyze the actual.
+      if Get_Kind (Formal_Type) = Iir_Kind_Interface_Type_Definition
+        and then (Get_Parent (Get_Type_Declarator (Formal_Type))
+                    = Get_Parent (Inter))
+      then
+         Formal_Type := Get_Associated_Type (Formal_Type);
+         if Formal_Type = Null_Iir then
+            --  Interface type are only allowed within generic map aspect,
+            --  which are analyzed in one step (so Finish is true).
+            pragma Assert (Finish);
+            Error_Msg_Sem (+Assoc, "expression associated before its type");
+            Match := Not_Compatible;
+            return;
+         end if;
+      end if;
+
       --  Extract conversion from actual.
       --  LRM08 6.5.7.1 Association lists
       Actual := Get_Actual (Assoc);
@@ -2097,8 +2152,14 @@ package body Vhdl.Sem_Assocs is
             --  Use the type of the formal to analyze the actual.  In
             --  particular, the formal may be constrained while the actual is
             --  not.
+            --  (but not when the formal_type is an interface type, as it
+            --  will bring nothing more and could have been substitued by
+            --  its associated type).
             Formal_Type := Get_Type (Formal);
-            if Out_Conv = Null_Iir and In_Conv = Null_Iir then
+            if (Out_Conv = Null_Iir and In_Conv = Null_Iir)
+              and then
+              Get_Kind (Formal_Type) /= Iir_Kind_Interface_Type_Definition
+            then
                Res_Type := Formal_Type;
             end if;
          end;
@@ -2259,6 +2320,15 @@ package body Vhdl.Sem_Assocs is
       Match := Fully_Compatible;
       First_Named_Assoc := Null_Iir;
       Has_Individual := False;
+
+      --  Clear associated type of interface type.
+      Inter := Interface_Chain;
+      while Inter /= Null_Iir loop
+         if Get_Kind (Inter) = Iir_Kind_Interface_Type_Declaration then
+            Set_Associated_Type (Get_Type (Inter), Null_Iir);
+         end if;
+         Inter := Get_Chain (Inter);
+      end loop;
 
       --  Loop on every assoc element, try to match it.
       Inter := Interface_Chain;
@@ -2657,11 +2727,6 @@ package body Vhdl.Sem_Assocs is
                   return;
                end if;
             end if;
-         end if;
-
-         --  Clear associated type of interface type.
-         if Get_Kind (Inter) = Iir_Kind_Interface_Type_Declaration then
-            Set_Associated_Type (Get_Type (Inter), Null_Iir);
          end if;
 
          Inter := Get_Chain (Inter);

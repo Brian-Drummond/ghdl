@@ -1,20 +1,18 @@
 --  Nodes recognizer for ieee.numeric_std and ieee.numeric_bit.
 --  Copyright (C) 2016 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Types; use Types;
 with Vhdl.Std_Package;
@@ -544,11 +542,11 @@ package body Vhdl.Ieee.Numeric is
      (Type_Signed   => Iir_Predefined_Ieee_Numeric_Std_Shf_Right_Sgn_Nat,
       Type_Unsigned => Iir_Predefined_Ieee_Numeric_Std_Shf_Right_Uns_Nat);
 
-   Rol_Patterns : constant Shift_Pattern_Type :=
+   Rotate_Left_Patterns : constant Shift_Pattern_Type :=
      (Type_Signed   => Iir_Predefined_Ieee_Numeric_Std_Rot_Left_Sgn_Nat,
       Type_Unsigned => Iir_Predefined_Ieee_Numeric_Std_Rot_Left_Uns_Nat);
 
-   Ror_Patterns : constant Shift_Pattern_Type :=
+   Rotate_Right_Patterns : constant Shift_Pattern_Type :=
      (Type_Signed   => Iir_Predefined_Ieee_Numeric_Std_Rot_Right_Sgn_Nat,
       Type_Unsigned => Iir_Predefined_Ieee_Numeric_Std_Rot_Right_Uns_Nat);
 
@@ -567,6 +565,14 @@ package body Vhdl.Ieee.Numeric is
    Sra_Patterns : constant Shift_Pattern_Type :=
      (Type_Signed   => Iir_Predefined_Ieee_Numeric_Std_Sra_Sgn_Int,
       Type_Unsigned => Iir_Predefined_Ieee_Numeric_Std_Sra_Uns_Int);
+
+   Rol_Patterns : constant Shift_Pattern_Type :=
+     (Type_Signed   => Iir_Predefined_Ieee_Numeric_Std_Rol_Sgn_Int,
+      Type_Unsigned => Iir_Predefined_Ieee_Numeric_Std_Rol_Uns_Int);
+
+   Ror_Patterns : constant Shift_Pattern_Type :=
+     (Type_Signed   => Iir_Predefined_Ieee_Numeric_Std_Ror_Sgn_Int,
+      Type_Unsigned => Iir_Predefined_Ieee_Numeric_Std_Ror_Uns_Int);
 
    Leftmost_Patterns : constant Shift_Pattern_Type :=
      (Type_Signed   => Iir_Predefined_Ieee_Numeric_Std_Find_Leftmost_Sgn,
@@ -973,10 +979,14 @@ package body Vhdl.Ieee.Numeric is
                         Handle_Shift (Sla_Patterns, Type_Signed);
                      when Name_Sra =>
                         Handle_Shift (Sra_Patterns, Type_Signed);
+                     when Name_Rol =>
+                        Handle_Shift (Rol_Patterns, Type_Signed);
+                     when Name_Ror =>
+                        Handle_Shift (Ror_Patterns, Type_Signed);
                      when Name_Rotate_Left =>
-                        Handle_Shift (Rol_Patterns, Type_Unsigned);
+                        Handle_Shift (Rotate_Left_Patterns, Type_Unsigned);
                      when Name_Rotate_Right =>
-                        Handle_Shift (Ror_Patterns, Type_Unsigned);
+                        Handle_Shift (Rotate_Right_Patterns, Type_Unsigned);
                      when Name_Find_Leftmost =>
                         Handle_Find (Leftmost_Patterns);
                      when Name_Find_Rightmost =>

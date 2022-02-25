@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) - RTI dumper.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -912,6 +910,20 @@ package body Grt.Disp_Rti is
       Put (": ");
    end Disp_Obj_Header;
 
+   procedure Disp_Psl_Header (Psl_Dir : Ghdl_Rtin_Psl_Directive_Acc;
+                              Indent : Natural)
+   is
+   begin
+      Disp_Indent (Indent);
+      Disp_Kind (Psl_Dir.Common.Kind);
+      Disp_Depth (Psl_Dir.Common.Depth);
+      Put (", ");
+      Disp_Linecol (Psl_Dir.Linecol);
+      Put ("; ");
+      Disp_Name (Psl_Dir.Name);
+      Put (": ");
+   end Disp_Psl_Header;
+
    procedure Disp_Object (Obj : Ghdl_Rtin_Object_Acc;
                           Is_Sig : Boolean;
                           Ctxt : Rti_Context;
@@ -932,29 +944,29 @@ package body Grt.Disp_Rti is
       New_Line;
    end Disp_Object;
 
-   procedure Disp_Psl_Directive (Obj : Ghdl_Rtin_Object_Acc;
+   procedure Disp_Psl_Directive (Psl_Dir : Ghdl_Rtin_Psl_Directive_Acc;
                                  Ctxt : Rti_Context;
                                  Indent : Natural)
    is
       Addr : Address;
    begin
-      Disp_Obj_Header (Obj, Indent);
+      Disp_Psl_Header(Psl_Dir, Indent);
       Put ("count = ");
-      Addr := Loc_To_Addr (Obj.Common.Depth, Obj.Loc, Ctxt);
+      Addr := Loc_To_Addr (Psl_Dir.Common.Depth, Psl_Dir.Loc, Ctxt);
       Put_U32 (stdout, Ghdl_U32 (To_Ghdl_Index_Ptr (Addr).all));
       New_Line;
    end Disp_Psl_Directive;
 
-   procedure Disp_Psl_Endpoint_Directive (Obj : Ghdl_Rtin_Object_Acc;
-                                          Ctxt : Rti_Context;
-                                          Indent : Natural)
+   procedure Disp_Psl_Endpoint (Psl_Dir : Ghdl_Rtin_Psl_Directive_Acc;
+                                Ctxt : Rti_Context;
+                                Indent : Natural)
    is
       Addr : Address;
       C : Character;
    begin
-      Disp_Obj_Header (Obj, Indent);
+      Disp_Psl_Header(Psl_Dir, Indent);
       Put ("endpoint = ");
-      Addr := Loc_To_Addr (Obj.Common.Depth, Obj.Loc, Ctxt);
+      Addr := Loc_To_Addr (Psl_Dir.Common.Depth, Psl_Dir.Loc, Ctxt);
       if To_Ghdl_Value_Ptr (Addr).B1 then
          C := 'T';
       else
@@ -962,7 +974,7 @@ package body Grt.Disp_Rti is
       end if;
       Put (stdout, C);
       New_Line;
-   end Disp_Psl_Endpoint_Directive;
+   end Disp_Psl_Endpoint;
 
    procedure Disp_Attribute (Obj : Ghdl_Rtin_Object_Acc;
                              Ctxt : Rti_Context;
@@ -1372,10 +1384,11 @@ package body Grt.Disp_Rti is
          when Ghdl_Rtik_Psl_Cover
            | Ghdl_Rtik_Psl_Assume
            | Ghdl_Rtik_Psl_Assert =>
-            Disp_Psl_Directive (To_Ghdl_Rtin_Object_Acc (Rti), Ctxt, Indent);
+            Disp_Psl_Directive (To_Ghdl_Rtin_Psl_Directive_Acc (Rti),
+                                Ctxt, Indent);
          when Ghdl_Rtik_Psl_Endpoint =>
-            Disp_Psl_Endpoint_Directive
-              (To_Ghdl_Rtin_Object_Acc (Rti), Ctxt, Indent);
+            Disp_Psl_Endpoint (To_Ghdl_Rtin_Psl_Directive_Acc (Rti),
+                               Ctxt, Indent);
          when others =>
             Disp_Indent (Indent);
             Disp_Kind (Rti.Kind);

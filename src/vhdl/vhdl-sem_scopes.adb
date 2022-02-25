@@ -1,20 +1,18 @@
 --  Semantic analysis.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Logging; use Logging;
 with Tables;
 with Flags; use Flags;
@@ -913,7 +911,7 @@ package body Vhdl.Sem_Scopes is
       else
          --  There is already a declaration in the current scope.
          if Potentially then
-            -- LRM93 §10.4 item #1
+            -- LRM93 10.4 item #1
             -- Discard the new and potentially visible declaration.
             -- However, add the type.
             -- FIXME: Add_In_Visible_List (Ident, Decl);
@@ -950,7 +948,7 @@ package body Vhdl.Sem_Scopes is
 
                -- None of the two declarations are potentially visible, ie
                -- both are visible.
-               -- LRM §10.3:
+               -- LRM 10.3:
                --  Two declarations that occur immediately within the same
                --  declarative region must not be homographs,
                -- FIXME: unless one of them is the implicit declaration of a
@@ -965,7 +963,7 @@ package body Vhdl.Sem_Scopes is
                return;
             else
                --  Homograph, not in the same scope.
-               --  LRM §10.3:
+               --  LRM93 10.3:
                --  A declaration is said to be hidden within (part of) an inner
                --  declarative region if the inner region contains an homograph
                --  of this declaration; the outer declaration is the hidden
@@ -1115,8 +1113,7 @@ package body Vhdl.Sem_Scopes is
            | Iir_Kind_Disconnection_Specification =>
             null;
          when Iir_Kinds_Signal_Attribute
-           | Iir_Kind_Signal_Attribute_Declaration
-           | Iir_Kind_Anonymous_Signal_Declaration =>
+           | Iir_Kind_Signal_Attribute_Declaration =>
             null;
 
          when Iir_Kind_Protected_Type_Body =>
@@ -1245,7 +1242,8 @@ package body Vhdl.Sem_Scopes is
          --  anonymous and there is no need to iterate.
          exit when Id = Null_Identifier;
 
-         Add_Name (El, Id, False);
+         Add_Declaration (El, False);
+
          El := Get_Chain (El);
       end loop;
    end Add_Declarations_From_Interface_Chain;
@@ -1424,9 +1422,9 @@ package body Vhdl.Sem_Scopes is
 
       --  LRM08 12.4 Use clauses
       --  - The implicit declarations of predefined operations for the type
-      --    that are not hidden by homographs explicitely declared immediately
+      --    that are not hidden by homographs explicitly declared immediately
       --    within the package denoted by the prefix of the selected name
-      --  - The declarations of homographs, explicitely declared immediately
+      --  - The declarations of homographs, explicitly declared immediately
       --    within the package denotes by the prefix of the selected name,
       --    that hide implicit declarations of predefined operations for the
       --    type
@@ -1454,7 +1452,7 @@ package body Vhdl.Sem_Scopes is
             end if;
          end loop;
 
-         --  Explicitely declared homograph.
+         --  Explicitly declared homograph.
          if Has_Override then
             while El /= Null_Iir loop
                if Get_Kind (El) in Iir_Kinds_Subprogram_Declaration
@@ -1561,6 +1559,28 @@ package body Vhdl.Sem_Scopes is
          exit when Cl = Null_Iir;
       end loop;
    end Add_Use_Clause;
+
+   procedure Add_Inherit_Spec (Spec : Iir)
+   is
+      Name : constant Iir := Get_Name (Spec);
+      Unit : Iir;
+      Item : Iir;
+   begin
+      if Name = Null_Iir then
+         return;
+      end if;
+      Unit := Get_Named_Entity (Name);
+      Item := Get_Vunit_Item_Chain (Unit);
+      while Item /= Null_Iir loop
+         case Get_Kind (Item) is
+            when Iir_Kind_Psl_Declaration =>
+               Potentially_Add_Name (Item);
+            when others =>
+               Error_Kind ("add_inherit_spec", Item);
+         end case;
+         Item := Get_Chain (Item);
+      end loop;
+   end Add_Inherit_Spec;
 
    --  Debugging subprograms.
    procedure Disp_All_Names;

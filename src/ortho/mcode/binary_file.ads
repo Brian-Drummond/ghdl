@@ -1,20 +1,18 @@
 --  Binary file handling.
 --  Copyright (C) 2006 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with System;
 with Interfaces; use Interfaces;
 with Ada.Unchecked_Deallocation;
@@ -130,6 +128,7 @@ package Binary_File is
    procedure Prealloc (L : Pc_Type);
 
    --  Add bits in the current section.
+   --  Space must be pre-allocated.
    procedure Gen_8 (B : Byte);
    procedure Gen_8 (B0, B1 : Byte);
 
@@ -138,6 +137,7 @@ package Binary_File is
    procedure Gen_64 (B : Unsigned_64);
 
    --  Add bits in the current section, but as stand-alone data.
+   --  Displayed if Dump_Asm.
    procedure Gen_Data_8 (B : Unsigned_8);
    procedure Gen_Data_16 (B : Unsigned_32);
    procedure Gen_Data_32 (Sym : Symbol; Offset : Integer_32);

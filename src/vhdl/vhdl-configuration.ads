@@ -1,20 +1,18 @@
 --  Configuration generation.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Types; use Types;
 with Vhdl.Nodes; use Vhdl.Nodes;
 with Tables;
@@ -35,7 +33,8 @@ package Vhdl.Configuration is
    --  creates a list of design unit.
    --  and return the top configuration.
    --  Note: this set the Elab_Flag on units.
-   function Configure (Primary_Id : Name_Id; Secondary_Id : Name_Id)
+   function Configure
+     (Library_Id : Name_Id; Primary_Id : Name_Id; Secondary_Id : Name_Id)
      return Iir;
 
    --  Add design unit UNIT (with its dependences) in the design_units table.
@@ -63,8 +62,19 @@ package Vhdl.Configuration is
    --  LOC is used to report errors.
    function Find_Top_Entity (From : Iir; Loc : Location_Type) return Iir;
 
+   --  Hook for Find_Top_Entity to deal with foreign units.
+   --  When called for a foreign module N, the procedure must walk N to find
+   --  all the module instantiations.  For each instantiation, it must look
+   --  for the definition in the VHDL scope table and set the Elab flag.
+   type Mark_Instantiated_Units_Access is access procedure (N : Int32);
+   Mark_Foreign_Module : Mark_Instantiated_Units_Access;
+
+   type Apply_Foreign_Override_Access is access procedure
+     (Top : Int32; Gen : String; Value : String);
+   Apply_Foreign_Override : Apply_Foreign_Override_Access;
+
    --  Add an override for generic ID.
-   procedure Add_Generic_Override (Id : Name_Id; Value : String);
+   procedure Add_Generic_Override (Name : String; Value : String);
 
    --  Apply generic overrides to entity ENT.
    procedure Apply_Generic_Override (Ent : Iir);

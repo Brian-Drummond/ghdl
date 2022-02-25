@@ -1,20 +1,18 @@
 --  Mcode back-end for ortho - Expressions and control handling.
 --  Copyright (C) 2006 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Ada.Text_IO;
 with Ada.Unchecked_Deallocation;
 with Tables;
@@ -895,15 +893,13 @@ package body Ortho_Code.Exprs is
    end Extract_Pow2;
 
    function New_Index_Slice_Element
-     (Arr : O_Lnode; Index : O_Enode; Res_Type : O_Tnode)
+     (Arr : O_Lnode; Index : O_Enode; Res_Type : O_Tnode; El_Type : O_Tnode)
      return O_Lnode
    is
-      El_Type : O_Tnode;
       In_Type : O_Tnode;
       Sz : O_Enode;
       El_Size : Uns32;
    begin
-      El_Type := Get_Type_Array_Element (Get_Enode_Type (O_Enode (Arr)));
       In_Type := Get_Enode_Type (Index);
 
       if Flag_Debug_Assert then
@@ -955,7 +951,7 @@ package body Ortho_Code.Exprs is
       if Flag_Debug_Hli then
          return New_Hli_Index_Slice (OE_Index_Ref, El_Type, Arr, Index);
       else
-         return New_Index_Slice_Element (Arr, Index, El_Type);
+         return New_Index_Slice_Element (Arr, Index, El_Type, El_Type);
       end if;
    end New_Indexed_Element;
 
@@ -971,7 +967,8 @@ package body Ortho_Code.Exprs is
       if Flag_Debug_Hli then
          return New_Hli_Index_Slice (OE_Slice_Ref, Res_Type, Arr, Index);
       else
-         return New_Index_Slice_Element (Arr, Index, Res_Type);
+         return New_Index_Slice_Element
+           (Arr, Index, Res_Type, Get_Type_Array_Element (Res_Type));
       end if;
    end New_Slice;
 

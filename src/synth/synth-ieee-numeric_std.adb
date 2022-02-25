@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,11 +14,12 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Types_Utils; use Types_Utils;
+
+with Elab.Memtype; use Elab.Memtype;
+
 with Synth.Errors; use Synth.Errors;
 with Synth.Ieee.Std_Logic_1164; use Synth.Ieee.Std_Logic_1164;
 
@@ -873,11 +874,11 @@ package body Synth.Ieee.Numeric_Std is
 
       for I in 1 .. Size loop
          if I <= Old_Size then
-            B := Read_Std_Logic (Val.Mem, I - 1);
+            B := Read_Std_Logic (Val.Mem, Old_Size - I);
          else
             B := Pad;
          end if;
-         Write_Std_Logic (Res.Mem, I - 1, B);
+         Write_Std_Logic (Res.Mem, Size - I, B);
       end loop;
 
       return Res;

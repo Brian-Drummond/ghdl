@@ -1,20 +1,18 @@
 --  PSL - Nodes definition
 --  Copyright (C) 2002-2016 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Types; use Types;
 with PSL.Types; use PSL.Types;
@@ -64,6 +62,8 @@ package PSL.Nodes is
       N_Next_Event_A,
       N_Next_Event_E,
       N_Abort,
+      N_Async_Abort,
+      N_Sync_Abort,
       N_Until,
       N_Before,
       N_Or_Prop,
@@ -83,8 +83,8 @@ package PSL.Nodes is
 
       N_Star_Repeat_Seq,
       N_Goto_Repeat_Seq,
-      N_Plus_Repeat_Seq, -- [+]
-      N_Equal_Repeat_Seq,
+      N_Plus_Repeat_Seq,   -- [+]
+      N_Equal_Repeat_Seq,  -- [= ]
 
       --  Boolean layer.
       N_Paren_Bool,
@@ -101,6 +101,7 @@ package PSL.Nodes is
 
       N_Name,
       N_Name_Decl,
+      N_Inf,
       N_Number
      );
    for Nkind'Size use 8;
@@ -255,6 +256,8 @@ package PSL.Nodes is
    --
    --   Get/Set_Chain (Field2)
 
+   -- N_Inf (Short)
+
    -- N_Number (Short)
    --
    --   Get/Set_Value (Field1)
@@ -278,11 +281,18 @@ package PSL.Nodes is
    --   Get/Set_Right (Field2)
 
    -- N_Star_Repeat_Seq (Short)
-   -- N_Goto_Repeat_Seq (Short)
-   -- N_Equal_Repeat_Seq (Short)
    --
    --  Note: can be null_node for star_repeat_seq.
    --   Get/Set_Sequence (Field3)
+   --
+   --   Get/Set_Low_Bound (Field1)
+   --
+   --   Get/Set_High_Bound (Field2)
+
+   -- N_Equal_Repeat_Seq (Short)
+   -- N_Goto_Repeat_Seq (Short)
+   --
+   --   Get/Set_Boolean (Field3)
    --
    --   Get/Set_Low_Bound (Field1)
    --
@@ -372,6 +382,8 @@ package PSL.Nodes is
    --   Get/Set_Boolean (Field3)
 
    -- N_Abort (Short)
+   -- N_Async_Abort (Short)
+   -- N_Sync_Abort (Short)
    --
    --   Get/Set_Property (Field4)
    --

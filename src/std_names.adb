@@ -1,20 +1,18 @@
 --  Well known name table entries.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Name_Table;
 with Ada.Exceptions;
 
@@ -164,6 +162,7 @@ package body Std_Names is
       Def ("restrict",           Name_Restrict);
       Def ("restrict_guarantee", Name_Restrict_Guarantee);
       Def ("sequence",           Name_Sequence);
+      Def ("inherit",            Name_Inherit);
       Def ("vmode",              Name_Vmode);
       Def ("vprop",              Name_Vprop);
       Def ("vunit",              Name_Vunit);
@@ -615,17 +614,18 @@ package body Std_Names is
       Def ("built_in",              Name_Built_In);
       Def ("none",                  Name_None);
 
-      Def ("ieee",               Name_Ieee);
-      Def ("std_logic_1164",     Name_Std_Logic_1164);
-      Def ("vital_timing",       Name_VITAL_Timing);
-      Def ("numeric_std",        Name_Numeric_Std);
-      Def ("numeric_bit",        Name_Numeric_Bit);
-      Def ("std_logic_arith",    Name_Std_Logic_Arith);
-      Def ("std_logic_signed",   Name_Std_Logic_Signed);
-      Def ("std_logic_unsigned", Name_Std_Logic_Unsigned);
-      Def ("std_logic_textio",   Name_Std_Logic_Textio);
-      Def ("std_logic_misc",     Name_Std_Logic_Misc);
-      Def ("math_real",          Name_Math_Real);
+      Def ("ieee",                  Name_Ieee);
+      Def ("std_logic_1164",        Name_Std_Logic_1164);
+      Def ("vital_timing",          Name_VITAL_Timing);
+      Def ("numeric_std",           Name_Numeric_Std);
+      Def ("numeric_bit",           Name_Numeric_Bit);
+      Def ("numeric_std_unsigned",  Name_Numeric_Std_Unsigned);
+      Def ("std_logic_arith",       Name_Std_Logic_Arith);
+      Def ("std_logic_signed",      Name_Std_Logic_Signed);
+      Def ("std_logic_unsigned",    Name_Std_Logic_Unsigned);
+      Def ("std_logic_textio",      Name_Std_Logic_Textio);
+      Def ("std_logic_misc",        Name_Std_Logic_Misc);
+      Def ("math_real",             Name_Math_Real);
 
       Def ("std_ulogic",         Name_Std_Ulogic);
       Def ("std_ulogic_vector",  Name_Std_Ulogic_Vector);
@@ -672,6 +672,7 @@ package body Std_Names is
       Def ("log2",               Name_Log2);
       Def ("sin",                Name_Sin);
       Def ("cos",                Name_Cos);
+      Def ("arctan",             Name_Arctan);
       Def ("shl",                Name_Shl);
       Def ("shr",                Name_Shr);
       Def ("ext",                Name_Ext);
@@ -683,6 +684,10 @@ package body Std_Names is
       Def ("allseq",             Name_Allseq);
       Def ("anyconst",           Name_Anyconst);
       Def ("anyseq",             Name_Anyseq);
+      Def ("gclk",               Name_Gclk);
+      Def ("loc",                Name_Loc);
+      Def ("keep",               Name_Keep);
+      Def ("syn_black_box",      Name_Syn_Black_Box);
 
       --  Verilog directives
       Def ("define",          Name_Define);
@@ -790,7 +795,7 @@ package body Std_Names is
       Def ("valueof",        Name_Valueof);
       Def ("valueOf",        Name_uValueof);
 
-      --  VHDL special comments
+      --  Special comments
       Def ("psl",                   Name_Psl);
       Def ("pragma",                Name_Pragma);
       Def ("synthesis",             Name_Synthesis);
@@ -801,6 +806,8 @@ package body Std_Names is
       Def ("synthesis_off",         Name_Synthesis_Off);
       Def ("synthesis_on",          Name_Synthesis_On);
       Def ("off",                   Name_Off);
+      Def ("full_case",             Name_Full_Case);
+      Def ("parallel_case",         Name_Parallel_Case);
 
       --  PSL keywords
       Def ("a",                  Name_A);
@@ -808,8 +815,8 @@ package body Std_Names is
       Def ("ag",                 Name_Ag);
       Def ("ax",                 Name_Ax);
       Def ("abort",              Name_Abort);
-      Def ("assume",             Name_Assume);
       Def ("assume_guarantee",   Name_Assume_Guarantee);
+      Def ("async_abort",        Name_Async_Abort);
       Def ("before",             Name_Before);
       Def ("clock",              Name_Clock);
       Def ("const",              Name_Const);
@@ -824,17 +831,19 @@ package body Std_Names is
       Def ("forall",             Name_Forall);
       Def ("g",                  Name_G);
       Def ("inf",                Name_Inf);
-      Def ("inherit",            Name_Inherit);
       Def ("never",              Name_Never);
       Def ("next_a",             Name_Next_A);
       Def ("next_e",             Name_Next_E);
       Def ("next_event",         Name_Next_Event);
       Def ("next_event_a",       Name_Next_Event_A);
       Def ("next_event_e",       Name_Next_Event_E);
+      Def ("onehot",             Name_Onehot);
+      Def ("onehot0",            Name_Onehot0);
       Def ("property",           Name_Property);
       Def ("prev",               Name_Prev);
       Def ("rose",               Name_Rose);
       Def ("strong",             Name_Strong);
+      Def ("sync_abort",         Name_Sync_Abort);
       Def ("union",              Name_Union);
       Def ("w",                  Name_W);
       Def ("whilenot",           Name_Whilenot);

@@ -1,20 +1,18 @@
 --  Iir to ortho translator.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Ada.Unchecked_Deallocation;
 with Interfaces; use Interfaces;
 with Ortho_Nodes; use Ortho_Nodes;
@@ -174,6 +172,7 @@ package Trans is
    Wki_Base          : O_Ident;
    Wki_Bounds        : O_Ident;
    Wki_Locvars       : O_Ident;
+   Wki_Flag          : O_Ident;
 
    --  ALLOCATION_KIND defines the type of memory storage.
    --  ALLOC_STACK means the object is allocated on the local stack and
@@ -740,6 +739,7 @@ package Trans is
       Kind_Package_Instance,
       Kind_Config,
       Kind_Assoc,
+      Kind_Inertial_Assoc,
       Kind_Design_File,
       Kind_Library,
       Kind_Expr_Eval
@@ -1205,6 +1205,7 @@ package Trans is
    subtype Field_Info_Acc is Ortho_Info_Acc (Kind_Field);
    subtype Config_Info_Acc is Ortho_Info_Acc (Kind_Config);
    subtype Assoc_Info_Acc is Ortho_Info_Acc (Kind_Assoc);
+   subtype Inertial_Info_Acc is Ortho_Info_Acc (Kind_Inertial_Assoc);
    subtype Inter_Info_Acc is Ortho_Info_Acc (Kind_Interface);
    subtype Design_File_Info_Acc is Ortho_Info_Acc (Kind_Design_File);
    subtype Library_Info_Acc is Ortho_Info_Acc (Kind_Library);
@@ -1945,8 +1946,16 @@ package Trans is
             --  State vector variable.
             Psl_Vect_Var : Var_Type;
 
-            --  Counter variable (nbr of failures or coverage)
-            Psl_Count_Var : Var_Type;
+            --  Simplified Assertion state (for dumping)
+            Psl_State_Var : Var_Type;
+
+            --  Number of times assertion finished
+            --  For cover points: Number of coveres
+            --  For assertions: Number of failures
+            Psl_Finish_Count_Var : Var_Type;
+
+            -- Number of times assertion was started
+            Psl_Start_Count_Var : Var_Type;
 
             --  RTI for the process.
             Psl_Rti_Const : O_Dnode := O_Dnode_Null;
@@ -2109,6 +2118,11 @@ package Trans is
             --  Association informations.
             Assoc_In  : Assoc_Conv_Info;
             Assoc_Out : Assoc_Conv_Info;
+
+         when Kind_Inertial_Assoc =>
+            Inertial_Proc : O_Dnode;
+            Inertial_Inst : O_Dnode;
+            Inertial_Block : Iir;
 
          when Kind_Design_File =>
             Design_Filename : O_Dnode;

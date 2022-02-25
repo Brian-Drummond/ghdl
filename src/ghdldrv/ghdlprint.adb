@@ -1,24 +1,23 @@
 --  GHDL driver - print commands.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Ada.Characters.Latin_1;
 with Ada.Text_IO; use Ada.Text_IO;
 with GNAT.Directory_Operations;
 with GNAT.OS_Lib; use GNAT.OS_Lib;
+
 with Tables;
 with Types; use Types;
 with Flags;
@@ -27,20 +26,22 @@ with Files_Map;
 with Libraries;
 with Options; use Options;
 with Errorout; use Errorout;
+with Version;
+
 with Vhdl.Errors; use Vhdl.Errors;
 with Vhdl.Utils; use Vhdl.Utils;
 with Vhdl.Tokens;
 with Vhdl.Scanner;
 with Vhdl.Parse;
 with Vhdl.Canon;
-with Version;
 with Vhdl.Xrefs;
 with Vhdl.Sem_Lib; use Vhdl.Sem_Lib;
+with Vhdl.Prints;
+with Vhdl.Formatters; use Vhdl.Formatters;
+with Vhdl.Elocations;
+
 with Ghdlmain; use Ghdlmain;
 with Ghdllocal; use Ghdllocal;
-with Vhdl.Prints;
-with Vhdl.Formatters;
-with Vhdl.Elocations;
 
 package body Ghdlprint is
    type Html_Format_Type is (Html_2, Html_Css);
@@ -371,16 +372,41 @@ package body Ghdlprint is
                Line := Line + 1;
                Disp_Ln;
             when Tok_Line_Comment
-              | Tok_Block_Comment =>
+              | Tok_Block_Comment_Start =>
                Disp_Spaces;
                case Html_Format is
                   when Html_2 =>
                      Put ("<font color=green>");
-                     Disp_Text;
-                     Put ("</font>");
                   when Html_Css =>
                      Put ("<tt>");
-                     Disp_Text;
+               end case;
+               Disp_Text;
+               if Current_Token = Tok_Block_Comment_Start then
+                  loop
+                     Scan_Block_Comment;
+                     Bef_Tok := Get_Token_Position;
+                     Aft_Tok := Get_Position;
+                     case Current_Token is
+                        when Tok_Newline =>
+                           New_Line;
+                           Line := Line + 1;
+                           Disp_Ln;
+                        when Tok_Eof =>
+                           exit;
+                        when Tok_Block_Comment_Text =>
+                           Disp_Text;
+                        when Tok_Block_Comment_End =>
+                           Disp_Text;
+                           exit;
+                        when others =>
+                           raise Internal_Error;
+                     end case;
+                  end loop;
+               end if;
+               case Html_Format is
+                  when Html_2 =>
+                     Put ("</font>");
+                  when Html_Css =>
                      Put ("</tt>");
                end case;
             when Tok_Mod .. Tok_Vunit =>
@@ -397,6 +423,8 @@ package body Ghdlprint is
                | Tok_Inf
                | Tok_Within
                | Tok_Abort
+               | Tok_Async_Abort
+               | Tok_Sync_Abort
                | Tok_Before
                | Tok_Before_Em
                | Tok_Before_Un
@@ -421,7 +449,9 @@ package body Ghdlprint is
                | Tok_Prev
                | Tok_Stable
                | Tok_Rose
-               | Tok_Fell =>
+               | Tok_Fell
+               | Tok_Onehot
+               | Tok_Onehot0 =>
                Disp_Spaces;
                Disp_Text;
             when Tok_String
@@ -450,10 +480,13 @@ package body Ghdlprint is
               | Tok_Integer
               | Tok_Integer_Letter
               | Tok_Real
-              | Tok_Equal .. Tok_Slash
-              | Tok_Invalid =>
+              | Tok_Equal .. Tok_Slash =>
                Disp_Spaces;
                Disp_Text;
+            when Tok_Invalid
+              | Tok_Block_Comment_Text
+              | Tok_Block_Comment_End =>
+               raise Internal_Error;
          end case;
          Last_Tok := Aft_Tok;
          Prev_Tok := Current_Token;
@@ -692,7 +725,9 @@ package body Ghdlprint is
       Flags.Bootstrap := True;
       Flags.Flag_Elocations := True;
       --  Load word library.
-      Libraries.Load_Std_Library;
+      if not Libraries.Load_Std_Library then
+         raise Option_Error;
+      end if;
       Libraries.Load_Work_Library;
 
       --  First loop: parse source file, check destination file does not
@@ -974,7 +1009,8 @@ package body Ghdlprint is
    type Command_Reprint is new Command_Lib with record
       Flag_Sem : Boolean := True;
       Flag_Format : Boolean := False;
-      Flag_Indent : Boolean := False;
+      Level : Format_Level := Format_Indent;
+      Flag_Realign : Boolean := False;
       Flag_Force : Boolean := False;
       First_Line : Positive := 1;
       Last_Line : Positive := Positive'Last;
@@ -1017,16 +1053,11 @@ package body Ghdlprint is
       if Option = "--no-sem" then
          Cmd.Flag_Sem := False;
          Res := Option_Ok;
-      elsif Option = "--format" then
-         Cmd.Flag_Format := True;
-         Cmd.Flag_Indent := False;
-         Res := Option_Ok;
-      elsif Option = "--indent" then
-         Cmd.Flag_Format := False;
-         Cmd.Flag_Indent := True;
-         Res := Option_Ok;
       elsif Option = "--force" then
          Cmd.Flag_Force := True;
+         Res := Option_Ok;
+      elsif Option = "--realign" then
+         Cmd.Flag_Realign := True;
          Res := Option_Ok;
       elsif Option'Length > 8 and then Option (1 .. 8) = "--range=" then
          declare
@@ -1066,7 +1097,10 @@ package body Ghdlprint is
       Id : Name_Id;
    begin
       if Cmd.Flag_Sem then
-         Setup_Libraries (True);
+         -- Libraries are required for semantic analysis.
+         if not Setup_Libraries (True) then
+            return;
+         end if;
       end if;
 
       --  Keep parenthesis during parse.
@@ -1102,7 +1136,7 @@ package body Ghdlprint is
             end if;
 
             Next_Unit := Get_Chain (Unit);
-            if not (Cmd.Flag_Format or Cmd.Flag_Indent)
+            if not Cmd.Flag_Format
               and then (Errorout.Nbr_Errors = 0 or Cmd.Flag_Force)
             then
                Vhdl.Prints.Disp_Vhdl (Unit);
@@ -1122,12 +1156,70 @@ package body Ghdlprint is
          end if;
 
          if Cmd.Flag_Format then
-            Vhdl.Formatters.Format (Design_File);
-         elsif Cmd.Flag_Indent then
-            Vhdl.Formatters.Indent (Design_File,
+            Vhdl.Formatters.Format (Design_File,
+                                    Cmd.Level,
+                                    Cmd.Flag_Realign,
                                     Cmd.First_Line, Cmd.Last_Line);
          end if;
       end loop;
+   end Perform_Action;
+
+   --  Command Format
+   type Command_Format is new Command_Reprint with null record;
+   function Decode_Command (Cmd : Command_Format; Name : String)
+                           return Boolean;
+   function Get_Short_Help (Cmd : Command_Format) return String;
+   procedure Decode_Option (Cmd : in out Command_Format;
+                            Option : String;
+                            Arg : String;
+                            Res : out Option_State);
+   procedure Perform_Action (Cmd : in out Command_Format;
+                             Args : Argument_List);
+
+   function Decode_Command (Cmd : Command_Format; Name : String)
+                           return Boolean
+   is
+      pragma Unreferenced (Cmd);
+   begin
+      return Name = "fmt"
+        or else Name = "--format";
+   end Decode_Command;
+
+   function Get_Short_Help (Cmd : Command_Format) return String
+   is
+      pragma Unreferenced (Cmd);
+   begin
+      return "fmt [OPTS] FILEs"
+        & ASCII.LF & "  Format FILEs"
+        & ASCII.LF & "  alias: --format";
+   end Get_Short_Help;
+
+   procedure Decode_Option (Cmd : in out Command_Format;
+                            Option : String;
+                            Arg : String;
+                            Res : out Option_State)
+   is
+      pragma Assert (Option'First = 1);
+   begin
+      if Option = "--level=indent" then
+         Cmd.Level := Format_Indent;
+         Res := Option_Ok;
+      elsif Option = "--level=none" then
+         Cmd.Level := Format_None;
+         Res := Option_Ok;
+      elsif Option = "--level=space" then
+         Cmd.Level := Format_Space;
+         Res := Option_Ok;
+      else
+         Decode_Option (Command_Reprint (Cmd), Option, Arg, Res);
+      end if;
+   end Decode_Option;
+
+   procedure Perform_Action (Cmd : in out Command_Format;
+                             Args : Argument_List) is
+   begin
+      Cmd.Flag_Format := True;
+      Perform_Action (Command_Reprint (Cmd), Args);
    end Perform_Action;
 
    --  Command compare tokens.
@@ -1437,7 +1529,9 @@ package body Ghdlprint is
       Flags.Flag_Xref := True;
 
       --  Load work library.
-      Setup_Libraries (True);
+      if not Setup_Libraries (True) then
+         return;
+      end if;
 
       Output_Dir := Cmd.Output_Dir;
       if Output_Dir = null then
@@ -1690,7 +1784,9 @@ package body Ghdlprint is
       Files : File_Data_Array;
    begin
       --  Load work library.
-      Setup_Libraries (True);
+      if not Setup_Libraries (True) then
+         return;
+      end if;
 
       Vhdl.Xrefs.Init;
       Flags.Flag_Xref := True;
@@ -1883,6 +1979,7 @@ package body Ghdlprint is
       Register_Command (new Command_Chop);
       Register_Command (new Command_Lines);
       Register_Command (new Command_Reprint);
+      Register_Command (new Command_Format);
       Register_Command (new Command_Compare_Tokens);
       Register_Command (new Command_PP_Html);
       Register_Command (new Command_Xref_Html);

@@ -1,20 +1,18 @@
 --  Iir to ortho translator.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Vhdl.Errors; use Vhdl.Errors;
 with Vhdl.Utils; use Vhdl.Utils;
@@ -61,13 +59,14 @@ package body Trans.Chap5 is
    is
       Spec_Expr : constant Iir := Get_Expression (Spec);
       Spec_Type : constant Iir := Get_Type (Spec_Expr);
-      Attr   : constant Iir_Attribute_Declaration :=
+      Attr      : constant Iir_Attribute_Declaration :=
         Get_Named_Entity (Get_Attribute_Designator (Spec));
-      Mark   : Id_Mark_Type;
-      Mark2  : Id_Mark_Type;
-      Info   : Object_Info_Acc;
-      Val    : Iir;
-      Num    : Natural;
+      Mark      : Id_Mark_Type;
+      Mark2     : Id_Mark_Type;
+      Info      : Object_Info_Acc;
+      Val       : Iir;
+      Num       : Natural;
+      Vtype     : O_Tnode;
    begin
       Push_Identifier_Prefix_Uniq (Mark);
       if Is_Anonymous_Type_Definition (Spec_Type) then
@@ -80,10 +79,19 @@ package body Trans.Chap5 is
       Val := Get_Attribute_Value_Spec_Chain (Spec);
       while Is_Valid (Val) loop
          Info := Add_Info (Val, Kind_Object);
-         Info.Object_Var := Create_Var
-           (Create_Var_Identifier (Attr, "V", Num),
-            Chap4.Get_Object_Type (Get_Info (Spec_Type), Mode_Value),
-            Global_Storage);
+         Vtype := Chap4.Get_Object_Type (Get_Info (Spec_Type), Mode_Value);
+         if Get_Static_Attribute_Flag (Spec)
+           and then Get_Expr_Staticness (Spec_Expr) = Locally
+         then
+            --  Create a global var so that the attribute can be referenced
+            --  from outside.  This is possible only if the attribute is
+            --  locally static.
+            Info.Object_Var := Create_Global_Var
+              (Create_Identifier (Attr, "V"), Vtype, Global_Storage);
+         else
+            Info.Object_Var := Create_Var
+              (Create_Var_Identifier (Attr, "V", Num), Vtype, Global_Storage);
+         end if;
 
          --  Create only one object if the expression is static.
          exit when Get_Expr_Staticness (Spec_Expr) /= None;
@@ -378,7 +386,7 @@ package body Trans.Chap5 is
       Mode        : Connect_Mode;
    begin
       pragma Assert
-        (Get_Kind (Assoc) = Iir_Kind_Association_Element_By_Expression);
+        (Get_Kind (Assoc) in Iir_Kinds_Association_Element_By_Actual);
 
       Open_Temp;
       if Get_Actual_Conversion (Assoc) = Null_Iir
@@ -574,7 +582,7 @@ package body Trans.Chap5 is
             --  Actual type is unconstrained, but as this is an object reads
             --  bounds from the object.
             return Chap3.Get_Composite_Bounds
-              (Chap6.Translate_Name (Actual, Mode_Signal));
+              (Chap6.Translate_Name (Actual, Mode_Value));
          end if;
       end Get_Actual_Bounds;
 
@@ -640,7 +648,8 @@ package body Trans.Chap5 is
    begin
       Open_Temp;
       case Iir_Kinds_Association_Element_Parameters (Get_Kind (Assoc)) is
-         when Iir_Kind_Association_Element_By_Expression =>
+         when Iir_Kind_Association_Element_By_Expression
+            | Iir_Kind_Association_Element_By_Name =>
             pragma Assert (Get_Whole_Association_Flag (Assoc));
             Bounds := Get_Unconstrained_Port_Bounds (Assoc, Port);
          when Iir_Kind_Association_Element_Open =>
@@ -719,7 +728,8 @@ package body Trans.Chap5 is
                  | Iir_Kind_Association_Element_Open =>
                   pragma Assert (Get_Whole_Association_Flag (Assoc));
                   Chap4.Elab_Signal_Declaration_Storage (Formal, False);
-               when Iir_Kind_Association_Element_By_Expression =>
+               when Iir_Kind_Association_Element_By_Expression
+                  | Iir_Kind_Association_Element_By_Name =>
                   if Get_Whole_Association_Flag (Assoc) then
                      Chap4.Elab_Signal_Declaration_Storage
                        (Formal, Get_Collapse_Signal_Flag (Assoc));
@@ -730,7 +740,8 @@ package body Trans.Chap5 is
             --  Create or copy signals.
             Open_Temp;
             case Iir_Kinds_Association_Element_Parameters (Get_Kind (Assoc)) is
-               when Iir_Kind_Association_Element_By_Expression =>
+               when Iir_Kind_Association_Element_By_Expression
+                 | Iir_Kind_Association_Element_By_Name =>
                   if Get_Whole_Association_Flag (Assoc) then
                      if Get_Collapse_Signal_Flag (Assoc) then
                         Value := Get_Default_Value (Formal_Base);
@@ -749,9 +760,17 @@ package body Trans.Chap5 is
                         --  Create non-collapsed signals.
                         Chap4.Elab_Signal_Declaration_Object
                           (Formal, Block_Parent, False);
-                        --  And associate.
-                        Elab_Port_Map_Aspect_Assoc
-                          (Assoc, Formal, False, Formal_Env, Actual_Env);
+                        --  And associate (if not an inertial association).
+                        if (Get_Kind (Assoc)
+                              = Iir_Kind_Association_Element_By_Name)
+                          or else (Get_Expr_Staticness (Get_Actual (Assoc))
+                                     /= None)
+                        then
+                           Elab_Port_Map_Aspect_Assoc
+                             (Assoc, Formal, False, Formal_Env, Actual_Env);
+                        else
+                           Chap9.Elab_Inertial_Association (Assoc, Formal);
+                        end if;
                      end if;
                   else
                      --  By sub-element.

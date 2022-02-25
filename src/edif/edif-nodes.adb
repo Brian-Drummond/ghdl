@@ -1,20 +1,18 @@
 --  EDIF nodes. This is in fact -*- Ada -*-
 --  Copyright (C) 2019 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Ada.Unchecked_Conversion;
 with Tables;
@@ -134,10 +132,10 @@ package body Edif.Nodes is
    function Int32_To_Node is new Ada.Unchecked_Conversion
      (Source => Int32, Target => Node);
 
-   function Bit2_Type_To_Direction_Type is new Ada.Unchecked_Conversion
-     (Bit2_Type, Direction_Type);
-   function Direction_Type_To_Bit2_Type is new Ada.Unchecked_Conversion
-     (Direction_Type, Bit2_Type);
+   function Bit2_Type_To_Dir_Type is new Ada.Unchecked_Conversion
+     (Bit2_Type, Dir_Type);
+   function Dir_Type_To_Bit2_Type is new Ada.Unchecked_Conversion
+     (Dir_Type, Bit2_Type);
 
 
    function Node_To_Location_Type (N : Node) return Location_Type is
@@ -865,20 +863,20 @@ package body Edif.Nodes is
       Set_Field4 (N, View);
    end Set_View;
 
-   function Get_Direction (N : Node) return Direction_Type is
+   function Get_Direction (N : Node) return Dir_Type is
    begin
       pragma Assert (N /= Null_Node);
       pragma Assert (Has_Direction (Get_Kind (N)),
                      "no field Direction");
-      return Bit2_Type_To_Direction_Type (Get_State1 (N));
+      return Bit2_Type_To_Dir_Type (Get_State1 (N));
    end Get_Direction;
 
-   procedure Set_Direction (N : Node; Dir : Direction_Type) is
+   procedure Set_Direction (N : Node; Dir : Dir_Type) is
    begin
       pragma Assert (N /= Null_Node);
       pragma Assert (Has_Direction (Get_Kind (N)),
                      "no field Direction");
-      Set_State1 (N, Direction_Type_To_Bit2_Type (Dir));
+      Set_State1 (N, Dir_Type_To_Bit2_Type (Dir));
    end Set_Direction;
 
    function Get_Boolean (N : Node) return Boolean is

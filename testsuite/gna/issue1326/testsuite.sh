@@ -4,15 +4,15 @@
 
 analyze mytestbench.vhdl
 elab mytestbench
+if ghdl_has_feature mytestbench ghw; then
+  elab_simulate mytestbench --wave=dump.ghw | tee mytestbench.out
 
-simulate mytestbench --wave=dump.ghw | tee mytestbench.out
+  # We're just checking that ghwdump doesn't crash on a zero length signal.
+  ghw_dump dump
 
-gcc ../../../src/grt/ghwdump.c ../../../src/grt/ghwlib.c -I../../../src/grt/ -o ghwdump
+  rm -f mytestbench.out dump.txt dump.ghw
+fi
 
-# We're just checking that ghwdump doesn't crash on a zero length signal.
-./ghwdump -ths dump.ghw > dump.txt
-
-rm -f mytestbench.out ghwdump dump.txt dump.ghw
 clean
 
-echo "Test passed"
+echo "Test successful"

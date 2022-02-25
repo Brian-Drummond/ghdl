@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) - Resizable array
 --  Copyright (C) 2008 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -41,7 +39,8 @@ package body Grt.Table is
    pragma Import (C, Free);
 
    --  Resize and reallocate the table according to LAST_VAL.
-   procedure Resize is
+   procedure Resize
+   is
       function Realloc (T : Table_Ptr; Size : size_t) return Table_Ptr;
       pragma Import (C, Realloc);
 
@@ -51,8 +50,10 @@ package body Grt.Table is
          Max := Max + (Max - Table_Low_Bound + 1);
       end loop;
 
-      New_Size := size_t ((Max - Table_Low_Bound + 1) *
-                            (Table_Type'Component_Size / Storage_Unit));
+      --  Do the multiplication using size_t to avoid overflow if the bounds
+      --  are a 32bit type on a 64bit machine.
+      New_Size := (size_t (Max - Table_Low_Bound + 1)
+                     * size_t (Table_Type'Component_Size / Storage_Unit));
 
       Table := Realloc (Table, New_Size);
 
@@ -115,6 +116,6 @@ begin
    Last_Val := Table_Index_Type'Pred (Table_Low_Bound);
    Max := Table_Low_Bound + Table_Index_Type (Table_Initial) - 1;
 
-   Table := Malloc (size_t (Table_Initial *
-                              (Table_Type'Component_Size / Storage_Unit)));
+   Table := Malloc (size_t (Table_Initial)
+                      * size_t (Table_Type'Component_Size / Storage_Unit));
 end Grt.Table;

@@ -1,20 +1,18 @@
 --  Evaluation of static expressions.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Ada.Unchecked_Deallocation;
 with Ada.Characters.Handling;
@@ -25,12 +23,16 @@ with Str_Table;
 with Flags; use Flags;
 with Std_Names;
 with Errorout; use Errorout;
+
 with Vhdl.Scanner;
 with Vhdl.Errors; use Vhdl.Errors;
 with Vhdl.Utils; use Vhdl.Utils;
 with Vhdl.Std_Package; use Vhdl.Std_Package;
 with Vhdl.Ieee.Std_Logic_1164;
+
+with Grt.Types;
 with Grt.Fcvt;
+with Grt.To_Strings;
 
 package body Vhdl.Evaluation is
    --  If FORCE is true, always return a literal.
@@ -41,6 +43,8 @@ package body Vhdl.Evaluation is
    function Eval_Enum_To_String (Lit : Iir; Orig : Iir) return Iir;
    function Eval_Integer_Image (Val : Int64; Orig : Iir) return Iir;
    function Eval_Floating_Image (Val : Fp64; Orig : Iir) return Iir;
+   function Eval_Floating_To_String_Format (Val : Fp64; Fmt : Iir; Orig : Iir)
+                                           return Iir;
 
    function Eval_Scalar_Compare (Left, Right : Iir) return Compare_Type;
 
@@ -57,13 +61,11 @@ package body Vhdl.Evaluation is
             Unit := Get_Physical_Literal
               (Get_Named_Entity (Get_Unit_Name (Expr)));
             pragma Assert (Get_Kind (Unit) = Iir_Kind_Integer_Literal);
-            case Kind is
+            case Iir_Kinds_Physical_Literal (Kind) is
                when Iir_Kind_Physical_Int_Literal =>
                   return Get_Value (Expr) * Get_Value (Unit);
                when Iir_Kind_Physical_Fp_Literal =>
                   return Int64 (Get_Fp_Value (Expr) * Fp64 (Get_Value (Unit)));
-               when others =>
-                  raise Program_Error;
             end case;
          when Iir_Kind_Integer_Literal =>
             return Get_Value (Expr);
@@ -161,6 +163,19 @@ package body Vhdl.Evaluation is
       return Res;
    end Build_String;
 
+   function Build_String (Str : String; Orig : Iir) return Iir
+   is
+      use Str_Table;
+      Id : String8_Id;
+   begin
+      Id := Create_String8;
+      for I in Str'Range loop
+         Append_String8_Char (Str (I));
+      end loop;
+      return Build_String (Id, Int32 (Str'Length), Orig);
+   end Build_String;
+
+
    --  Build a simple aggregate composed of EL_LIST from ORIGIN.  STYPE is the
    --  type of the aggregate.  DEF_TYPE should be either Null_Iir or STYPE.  It
    --  is set only when a new subtype has been created for the aggregate.
@@ -232,6 +247,17 @@ package body Vhdl.Evaluation is
          when Iir_Kind_Simple_Aggregate =>
             Res := Create_Iir (Iir_Kind_Simple_Aggregate);
             Set_Simple_Aggregate_List (Res, Get_Simple_Aggregate_List (Val));
+
+         when Iir_Kind_Aggregate =>
+            --  FIXME: ownership violation: both RES and VAL are parents of
+            --   association_choices_chain and aggregate_info.
+            --  But this aggregate is always temporary.
+            --  TODO: add maybe_ref_chain.
+            Res := Create_Iir (Iir_Kind_Aggregate);
+            Set_Association_Choices_Chain
+              (Res, Get_Association_Choices_Chain (Val));
+            Set_Aggregate_Info (Res, Get_Aggregate_Info (Val));
+            Set_Aggregate_Expand_Flag (Res, Get_Aggregate_Expand_Flag (Val));
 
          when Iir_Kind_Overflow_Literal =>
             Res := Create_Iir (Iir_Kind_Overflow_Literal);
@@ -316,6 +342,24 @@ package body Vhdl.Evaluation is
       end case;
    end Build_Extreme_Value;
 
+   --  Check VAL fits in the base type.
+   function Build_Integer_Check (Val : Int64; Origin : Iir)
+     return Iir_Integer_Literal
+   is
+      Atype : constant Iir := Get_Base_Type (Get_Type (Origin));
+      subtype Rng_32 is Int64 range Int64 (Int32'First) .. Int64 (Int32'Last);
+   begin
+      if Get_Scalar_Size (Atype) = Scalar_32
+        and then Val not in Rng_32
+      then
+         Warning_Msg_Sem (Warnid_Runtime_Error, +Origin,
+                          "arithmetic overflow in static expression");
+         return Build_Overflow (Origin);
+      end if;
+
+      return Build_Integer (Val, Origin);
+   end Build_Integer_Check;
+
    --  A_RANGE is a range expression, whose type, location, expr_staticness,
    --  left_limit and direction are set.
    --  Type of A_RANGE must have a range_constraint.
@@ -342,13 +386,71 @@ package body Vhdl.Evaluation is
          Error_Msg_Sem (+A_Range, "range length is beyond subtype length");
          Right := Left;
       else
-         -- FIXME: what about nul range?
          Right := Build_Discrete (Pos, A_Range);
          Set_Literal_Origin (Right, Null_Iir);
          Set_Right_Limit_Expr (A_Range, Right);
       end if;
       Set_Right_Limit (A_Range, Right);
    end Set_Right_Limit_By_Length;
+
+   --  LRM08 9.3.2 Literals
+   --  If there is a value to the left of the nominal leftmost bound (given by
+   --  the 'LEFTOF) attribute, then the leftmost bound is the nominal leftmost
+   --  bound, and the rightmost bound is the value to the left of the nominal
+   --  leftmost bound.  Otherwise, the leftmost bound is the value to the
+   --  right of the nominal leftmost bound, and the rightmost bound is the
+   --  nominal leftmost bound.
+   procedure Set_Enumeration_Null_Range_Limits (A_Range : Iir)
+   is
+      A_Type : constant Iir := Get_Type (A_Range);
+      Btype : constant Iir := Get_Base_Type (A_Type);
+      Enum_List : constant Iir_Flist := Get_Enumeration_Literal_List (Btype);
+      Last_Enum : constant Natural := Flist_Last (Enum_List);
+      Left : constant Iir := Get_Left_Limit (A_Range);
+      Right : Iir;
+      Pos : Int64;
+      Invert : Boolean;
+   begin
+      pragma Assert (Get_Expr_Staticness (A_Range) = Locally);
+
+      if Last_Enum = 0 then
+         Error_Msg_Sem
+           (+A_Range, "null range not supported for enumeration type %n",
+            +A_Type);
+         Right := Left;
+      else
+         Pos := Eval_Pos (Left);
+         Invert := False;
+         case Get_Direction (A_Range) is
+            when Dir_To =>
+               if Pos = 0 then
+                  Pos := Pos + 1;
+                  Invert := True;
+               else
+                  Pos := Pos - 1;
+               end if;
+            when Dir_Downto =>
+               if Pos = Int64 (Last_Enum) then
+                  Pos := Pos - 1;
+                  Invert := True;
+               else
+                  Pos := Pos + 1;
+               end if;
+         end case;
+
+         Right := Build_Discrete (Pos, A_Range);
+         Set_Literal_Origin (Right, Null_Iir);
+
+         if Invert then
+            Set_Left_Limit_Expr (A_Range, Right);
+            Set_Left_Limit (A_Range, Right);
+            Set_Right_Limit (A_Range, Left);
+         else
+            Set_Right_Limit_Expr (A_Range, Right);
+            Set_Right_Limit (A_Range, Right);
+         end if;
+      end if;
+   end Set_Enumeration_Null_Range_Limits;
 
    --  Create a range of type A_TYPE whose length is LEN.
    --  Note: only two nodes are created:
@@ -373,7 +475,14 @@ package body Vhdl.Evaluation is
       Set_Type (Constraint, A_Type);
       Set_Left_Limit (Constraint, Get_Left_Limit (Index_Constraint));
       Set_Direction (Constraint, Get_Direction (Index_Constraint));
-      Set_Right_Limit_By_Length (Constraint, Len);
+      if Len = 0
+        and then (Get_Kind (Get_Base_Type (A_Type))
+                    = Iir_Kind_Enumeration_Type_Definition)
+      then
+         Set_Enumeration_Null_Range_Limits (Constraint);
+      else
+         Set_Right_Limit_By_Length (Constraint, Len);
+      end if;
       return Constraint;
    end Create_Range_By_Length;
 
@@ -621,7 +730,7 @@ package body Vhdl.Evaluation is
 
       Func : Iir_Predefined_Functions;
    begin
-      if Get_Kind (Operand) = Iir_Kind_Overflow_Literal then
+      if Is_Overflow_Literal (Operand) then
          --  Propagate overflow.
          return Build_Overflow (Orig);
       end if;
@@ -1079,7 +1188,7 @@ package body Vhdl.Evaluation is
             El := Get_Right (Op);
          end if;
          Ops_Val (I) := Eval_Static_Expr (El);
-         if Get_Kind (Ops_Val (I)) = Iir_Kind_Overflow_Literal then
+         if Is_Overflow_Literal (Ops_Val (I)) then
             Err_Orig := El;
          else
             case Iir_Predefined_Concat_Functions (Def) is
@@ -1102,7 +1211,7 @@ package body Vhdl.Evaluation is
          Left_Op := Get_Left (Op);
       end if;
       Left_Val := Eval_Static_Expr (Left_Op);
-      if Get_Kind (Left_Val) = Iir_Kind_Overflow_Literal then
+      if Is_Overflow_Literal (Left_Val) then
          Err_Orig := Left_Op;
       else
          Left_Def := Def;
@@ -1447,6 +1556,125 @@ package body Vhdl.Evaluation is
       end if;
    end Eval_Logic_Match_Equality;
 
+   function Eval_Logic_Or (L, R : Iir_Index32) return Iir_Index32
+   is
+      use Vhdl.Ieee.Std_Logic_1164;
+   begin
+      if L = Std_Logic_1_Pos or L = Std_Logic_H_Pos
+        or R = Std_Logic_1_Pos or R = Std_Logic_H_Pos
+      then
+         return Std_Logic_1_Pos;
+      elsif (L = Std_Logic_0_Pos or L = Std_Logic_L_Pos)
+        and (R = Std_Logic_0_Pos or R = Std_Logic_L_Pos)
+      then
+         return Std_Logic_0_Pos;
+      elsif L = Std_Logic_U_Pos or R = Std_Logic_U_Pos then
+         return Std_Logic_U_Pos;
+      else
+         return Std_Logic_X_Pos;
+      end if;
+   end Eval_Logic_Or;
+
+   function Eval_Logic_Not (X : Iir_Index32) return Iir_Index32
+   is
+      use Vhdl.Ieee.Std_Logic_1164;
+   begin
+      if X = Std_Logic_0_Pos or X = Std_Logic_L_Pos then
+         return Std_Logic_1_Pos;
+      elsif X = Std_Logic_1_Pos or X = Std_Logic_H_Pos then
+         return Std_Logic_0_Pos;
+      elsif X = Std_Logic_U_Pos then
+         return Std_Logic_U_Pos;
+      else
+         return Std_Logic_X_Pos;
+      end if;
+   end Eval_Logic_Not;
+
+   function Eval_Logic_Match_Inequality (L, R : Iir_Int32; Loc : Iir)
+                                         return Iir_Index32
+   is
+      E : Iir_Index32;
+   begin
+      --  Defined as the not operator applied to the equal operator
+      E := Eval_Logic_Match_Equality (L, R, Loc);
+      return Eval_Logic_Not (E);
+   end Eval_Logic_Match_Inequality;
+
+   function Eval_Logic_Match_Less (L, R : Iir_Int32; Loc : Iir)
+                                   return Iir_Index32
+   is
+      use Vhdl.Ieee.Std_Logic_1164;
+   begin
+      --  LRM19 9.2.3 table
+      --  '-' always returns 'X'
+      if L = Std_Logic_D_Pos or R = Std_Logic_D_Pos then
+         Warning_Msg_Sem
+           (Warnid_Analyze_Assert, +Loc,
+            "STD_LOGIC_1164: '-' operand for matching ordering operator");
+         return Std_Logic_X_Pos;
+      end if;
+
+      --  'U' always returns 'U'
+      if L = Std_Logic_U_Pos or R = Std_Logic_U_Pos then
+         return Std_Logic_U_Pos;
+      end if;
+
+      --  Only when R is '1' or 'H' will we ever return '1'
+      if R = Std_Logic_1_Pos or R = Std_Logic_H_Pos then
+         if L = Std_Logic_0_Pos or L = Std_Logic_L_Pos then
+            --  L = [0,L] R = [1,H]
+            return Std_Logic_1_Pos;
+         elsif L = Std_Logic_1_Pos or L = Std_Logic_H_Pos then
+            --  L = [1,H] R = [1,H]
+            return Std_Logic_0_Pos;
+         else
+            --  Everything else is 'X'
+            return Std_Logic_X_Pos;
+         end if;
+      elsif R = Std_Logic_0_Pos or R = Std_Logic_L_Pos then
+         --  R = [0,1]
+         return Std_Logic_0_Pos;
+      else
+         --  Everything else is 'X'
+         return Std_Logic_X_Pos;
+      end if;
+   end Eval_Logic_Match_Less;
+
+   function Eval_Logic_Match_Less_Equal (L, R : Iir_Int32; Loc : Iir)
+                                         return Iir_Index32
+   is
+      Less : Iir_Index32;
+      Equal : Iir_Index32;
+   begin
+      --  LRM19 9.2.3
+      --  ?<= is defined as (< or =)
+      Less := Eval_Logic_Match_Less (L, R, Loc);
+      Equal := Eval_Logic_Match_Equality (L, R, Loc);
+      return Eval_Logic_Or (Less, Equal);
+   end Eval_Logic_Match_Less_Equal;
+
+   function Eval_Logic_Match_Greater (L, R : Iir_Int32; Loc : Iir)
+                                      return Iir_Index32
+   is
+      Le : Iir_Index32;
+   begin
+      --  LRM19 9.2.3
+      --  ?> is defined as not(?<=)
+      Le := Eval_Logic_Match_Less_Equal (L, R, Loc);
+      return Eval_Logic_Not (Le);
+   end Eval_Logic_Match_Greater;
+
+   function Eval_Logic_Match_Greater_Equal (L, R : Iir_Int32; Loc : Iir)
+                                            return Iir_Index32
+   is
+      Less : Iir_Index32;
+   begin
+      --  LRM19 9.2.3
+      --  ?>= is defined as not(?<)
+      Less := Eval_Logic_Match_Less (L, R, Loc);
+      return Eval_Logic_Not (Less);
+   end Eval_Logic_Match_Greater_Equal;
+
    function Eval_Equality (Left, Right : Iir) return Boolean;
 
    --  CHOICES is a chain of choice from a record aggregate; FEL is an Flist
@@ -1481,7 +1709,6 @@ package body Vhdl.Evaluation is
          Ch := Get_Chain (Ch);
       end loop;
    end Fill_Flist_From_Record_Aggregate;
-
 
    function Eval_Record_Equality (Left, Right : Iir) return Boolean
    is
@@ -1574,42 +1801,43 @@ package body Vhdl.Evaluation is
       Func : constant Iir_Predefined_Functions :=
         Get_Implicit_Definition (Imp);
    begin
-      if Get_Kind (Left) = Iir_Kind_Overflow_Literal
-        or else Get_Kind (Right) = Iir_Kind_Overflow_Literal
-      then
+      if Is_Overflow_Literal (Left) or else Is_Overflow_Literal (Right) then
          return Build_Overflow (Orig);
       end if;
 
       case Func is
          when Iir_Predefined_Integer_Plus =>
-            return Build_Integer (Get_Value (Left) + Get_Value (Right), Orig);
+            return Build_Integer_Check
+              (Get_Value (Left) + Get_Value (Right), Orig);
          when Iir_Predefined_Integer_Minus =>
-            return Build_Integer (Get_Value (Left) - Get_Value (Right), Orig);
+            return Build_Integer_Check
+              (Get_Value (Left) - Get_Value (Right), Orig);
          when Iir_Predefined_Integer_Mul =>
-            return Build_Integer (Get_Value (Left) * Get_Value (Right), Orig);
+            return Build_Integer_Check
+              (Get_Value (Left) * Get_Value (Right), Orig);
          when Iir_Predefined_Integer_Div =>
             if Check_Integer_Division_By_Zero (Orig, Right) then
-               return Build_Integer
+               return Build_Integer_Check
                  (Get_Value (Left) / Get_Value (Right), Orig);
             else
                return Build_Overflow (Orig);
             end if;
          when Iir_Predefined_Integer_Mod =>
             if Check_Integer_Division_By_Zero (Orig, Right) then
-               return Build_Integer
+               return Build_Integer_Check
                  (Get_Value (Left) mod Get_Value (Right), Orig);
             else
                return Build_Overflow (Orig);
             end if;
          when Iir_Predefined_Integer_Rem =>
             if Check_Integer_Division_By_Zero (Orig, Right) then
-               return Build_Integer
+               return Build_Integer_Check
                  (Get_Value (Left) rem Get_Value (Right), Orig);
             else
                return Build_Overflow (Orig);
             end if;
          when Iir_Predefined_Integer_Exp =>
-            return Build_Integer
+            return Build_Integer_Check
               (Get_Value (Left) ** Integer (Get_Value (Right)), Orig);
 
          when Iir_Predefined_Integer_Equality =>
@@ -1767,6 +1995,13 @@ package body Vhdl.Evaluation is
               (Int64 (Fp64 (Get_Physical_Value (Left))
                           / Get_Fp_Value (Right)), Orig);
 
+         when Iir_Predefined_Physical_Mod =>
+            return Build_Physical
+              (Get_Physical_Value (Left) mod Get_Value (Right), Orig);
+         when Iir_Predefined_Physical_Rem =>
+            return Build_Physical
+              (Get_Physical_Value (Left) rem Get_Value (Right), Orig);
+
          when Iir_Predefined_Physical_Minimum =>
             return Build_Physical (Int64'Min (Get_Physical_Value (Left),
                                                   Get_Physical_Value (Right)),
@@ -1902,6 +2137,10 @@ package body Vhdl.Evaluation is
          when Iir_Predefined_Record_Inequality =>
             return Build_Boolean (not Eval_Record_Equality (Left, Right));
 
+         when Iir_Predefined_Real_To_String_Format =>
+            return Eval_Floating_To_String_Format
+              (Get_Fp_Value (Left), Right, Orig);
+
          when Iir_Predefined_Boolean_Not
            | Iir_Predefined_Boolean_Rising_Edge
            | Iir_Predefined_Boolean_Falling_Edge
@@ -1954,22 +2193,40 @@ package body Vhdl.Evaluation is
               (Eval_Logic_Match_Equality (Get_Enum_Pos (Left),
                                           Get_Enum_Pos (Right), Orig),
                Orig);
-         when Iir_Predefined_Std_Ulogic_Match_Inequality
-           | Iir_Predefined_Std_Ulogic_Match_Less
-           | Iir_Predefined_Std_Ulogic_Match_Less_Equal
-           | Iir_Predefined_Std_Ulogic_Match_Greater
-           | Iir_Predefined_Std_Ulogic_Match_Greater_Equal =>
-            -- TODO
-            raise Internal_Error;
 
-         when Iir_Predefined_Enum_To_String
-           | Iir_Predefined_Integer_To_String
-           | Iir_Predefined_Floating_To_String
-           | Iir_Predefined_Real_To_String_Digits
-           | Iir_Predefined_Real_To_String_Format
-           | Iir_Predefined_Physical_To_String
+         when Iir_Predefined_Std_Ulogic_Match_Inequality =>
+            return Build_Enumeration
+              (Eval_Logic_Match_Inequality (Get_Enum_Pos (Left),
+                                            Get_Enum_Pos (Right), Orig),
+               Orig);
+
+         when Iir_Predefined_Std_Ulogic_Match_Less =>
+            return Build_Enumeration
+              (Eval_Logic_Match_Less (Get_Enum_Pos (Left),
+                                      Get_Enum_Pos (Right), Orig),
+               Orig);
+
+         when Iir_Predefined_Std_Ulogic_Match_Greater =>
+            return Build_Enumeration
+              (Eval_Logic_Match_Greater (Get_Enum_Pos (Left),
+                                         Get_Enum_Pos (Right), Orig),
+               Orig);
+
+         when Iir_Predefined_Std_Ulogic_Match_Greater_Equal =>
+            return Build_Enumeration
+              (Eval_Logic_Match_Greater_Equal (Get_Enum_Pos (Left),
+                                               Get_Enum_Pos (Right), Orig),
+               Orig);
+
+         when Iir_Predefined_Std_Ulogic_Match_Less_Equal =>
+            return Build_Enumeration
+              (Eval_Logic_Match_Less_Equal (Get_Enum_Pos (Left),
+                                            Get_Enum_Pos (Right), Orig),
+               Orig);
+
+         when Iir_Predefined_Real_To_String_Digits
            | Iir_Predefined_Time_To_String_Unit =>
-            --  TODO
+            --  TODO: to_string with a format parameter
             raise Internal_Error;
 
          when Iir_Predefined_TF_Array_Element_And
@@ -2004,7 +2261,15 @@ package body Vhdl.Evaluation is
             --  TODO
             raise Internal_Error;
 
+         when Iir_Predefined_Enum_To_String
+           | Iir_Predefined_Integer_To_String
+           | Iir_Predefined_Floating_To_String
+           | Iir_Predefined_Physical_To_String =>
+            --  Not dyadic
+            raise Internal_Error;
+
          when Iir_Predefined_Explicit =>
+            --  Not static
             raise Internal_Error;
       end case;
    exception
@@ -2045,7 +2310,8 @@ package body Vhdl.Evaluation is
            | Iir_Kind_Function_Call
            | Iir_Kind_Attribute_Value
            | Iir_Kind_Attribute_Name
-           | Iir_Kind_Subtype_Attribute =>
+           | Iir_Kind_Subtype_Attribute
+           | Iir_Kind_Element_Attribute =>
             Prefix_Type := Get_Type (Prefix);
          when Iir_Kinds_Subtype_Definition =>
             Prefix_Type := Prefix;
@@ -2064,11 +2330,9 @@ package body Vhdl.Evaluation is
 
    function Eval_Integer_Image (Val : Int64; Orig : Iir) return Iir
    is
-      use Str_Table;
       Img : String (1 .. 24); --  23 is enough, 24 is rounded.
       L : Natural;
       V : Int64;
-      Id : String8_Id;
    begin
       V := Val;
       L := Img'Last;
@@ -2082,18 +2346,11 @@ package body Vhdl.Evaluation is
          Img (L) := '-';
          L := L - 1;
       end if;
-      Id := Create_String8;
-      for I in L + 1 .. Img'Last loop
-         Append_String8_Char (Img (I));
-      end loop;
-      return Build_String (Id, Nat32 (Img'Last - L), Orig);
+      return Build_String (Img (L + 1 .. Img'Last), Orig);
    end Eval_Integer_Image;
 
    function Eval_Floating_Image (Val : Fp64; Orig : Iir) return Iir
    is
-      use Str_Table;
-      Id : String8_Id;
-
       --  Sign (1) + digit (1) + dot (1) + digits (15) + 'e' (1) + sign (1)
       --  + exp_digits (4) -> 24.
       Str : String (1 .. 25);
@@ -2105,25 +2362,51 @@ package body Vhdl.Evaluation is
 
       Grt.Fcvt.Format_Image (Str, P, Interfaces.IEEE_Float_64 (Val));
 
-      Id := Create_String8;
-      for I in 1 .. P loop
-         Append_String8_Char (Str (I));
-      end loop;
-      Res := Build_String (Id, Int32 (P), Orig);
+      Res := Build_String (Str (1 .. P), Orig);
       --  FIXME: this is not correct since the type is *not* constrained.
       Set_Type (Res, Create_Unidim_Array_By_Length
                 (Get_Type (Orig), Int64 (P), Orig));
       return Res;
    end Eval_Floating_Image;
 
+   function Eval_Floating_To_String_Format (Val : Fp64; Fmt : Iir; Orig : Iir)
+                                           return Iir
+   is
+      pragma Assert (Get_Kind (Fmt) = Iir_Kind_String_Literal8);
+      Fmt_Len : constant Int32 := Get_String_Length (Fmt);
+   begin
+      if Fmt_Len > 32 then
+         Warning_Msg_Sem (Warnid_Runtime_Error, +Orig,
+                          "format parameter too long");
+         return Build_Overflow (Orig);
+      end if;
+      declare
+         use Str_Table;
+         use Grt.Types;
+         use Grt.To_Strings;
+         Fmt_Id : constant String8_Id := Get_String8_Id (Fmt);
+         Fmt_Str : String (1 .. Natural (Fmt_Len) + 1);
+
+         Res : String_Real_Format;
+         Last : Natural;
+      begin
+         for I in 1 .. Fmt_Len loop
+            Fmt_Str (Positive (I)) := Char_String8 (Fmt_Id, I);
+         end loop;
+         Fmt_Str (Fmt_Str'Last) := ASCII.NUL;
+
+         Grt.To_Strings.To_String
+           (Res, Last, Ghdl_F64 (Val), To_Ghdl_C_String (Fmt_Str'Address));
+
+         return Build_String (Res (1 .. Last), Orig);
+      end;
+   end Eval_Floating_To_String_Format;
+
    function Eval_Enumeration_Image (Lit : Iir; Orig : Iir) return Iir
    is
-      use Str_Table;
       Name : constant String := Image_Identifier (Lit);
-      Image_Id : constant String8_Id := Str_Table.Create_String8;
    begin
-      Append_String8_String (Name);
-      return Build_String (Image_Id, Name'Length, Orig);
+      return Build_String (Name, Orig);
    end Eval_Enumeration_Image;
 
    function Build_Enumeration_Value (Val : String; Enum, Expr : Iir) return Iir
@@ -2485,16 +2768,32 @@ package body Vhdl.Evaluation is
          Last := Last - 1;
       end loop;
 
+      --  TODO: do not use 'value, use the same function as the scanner.
       declare
          Value1 : String renames Value (First .. Last);
       begin
          case Get_Kind (Base_Type) is
             when Iir_Kind_Integer_Type_Definition =>
-               return Build_Discrete (Int64'Value (Value1), Orig);
+               declare
+                  use Grt.To_Strings;
+                  use Grt.Types;
+                  Res : Value_I64_Result;
+               begin
+                  Res := Value_I64 (To_Std_String_Basep (Value1'Address),
+                                    Value1'Length, 0);
+                  if Res.Status = Value_Ok then
+                     return Build_Discrete (Int64 (Res.Val), Orig);
+                  else
+                     Warning_Msg_Sem
+                       (Warnid_Runtime_Error, +Get_Parameter (Orig),
+                        "incorrect parameter for value attribute");
+                     return Build_Overflow (Orig);
+                  end if;
+               end;
             when Iir_Kind_Enumeration_Type_Definition =>
                return Build_Enumeration_Value (Value1, Base_Type, Orig);
             when Iir_Kind_Floating_Type_Definition =>
-               return Build_Floating (Fp64'value (Value1), Orig);
+               return Build_Floating (Fp64'Value (Value1), Orig);
             when Iir_Kind_Physical_Type_Definition =>
                return Build_Physical_Value (Value1, Base_Type, Orig);
             when others =>
@@ -2547,7 +2846,7 @@ package body Vhdl.Evaluation is
    begin
       Prefix := Get_Prefix (Expr);
       Prefix := Eval_Static_Expr (Prefix);
-      if Get_Kind (Prefix) = Iir_Kind_Overflow_Literal then
+      if Is_Overflow_Literal (Prefix) then
          return Build_Overflow (Expr, Get_Type (Expr));
       end if;
 
@@ -3355,7 +3654,8 @@ package body Vhdl.Evaluation is
                   case Iir_Kinds_Association_Element_Parameters
                     (Get_Kind (Assoc))
                   is
-                     when Iir_Kind_Association_Element_By_Expression =>
+                     when Iir_Kind_Association_Element_By_Expression
+                        | Iir_Kind_Association_Element_By_Name =>
                         Assoc_Expr := Get_Actual (Assoc);
                         if not Can_Eval_Value (Assoc_Expr, False) then
                            return False;
@@ -3652,6 +3952,9 @@ package body Vhdl.Evaluation is
            | Iir_Kind_Protected_Type_Declaration =>
             return True;
 
+         when Iir_Kind_Foreign_Vector_Type_Definition =>
+            return True;
+
          when Iir_Kind_Error =>
             return True;
 
@@ -3700,11 +4003,18 @@ package body Vhdl.Evaluation is
            | Iir_Kind_Enumeration_Subtype_Definition
            | Iir_Kind_Enumeration_Type_Definition =>
             declare
+               L_Expr : constant Iir := Get_Left_Limit (Range_Constraint);
+               R_Expr : constant Iir := Get_Right_Limit (Range_Constraint);
                L, R : Int64;
             begin
+               if Is_Overflow_Literal (L_Expr)
+                 or else Is_Overflow_Literal (R_Expr)
+               then
+                  return False;
+               end if;
                --  Check for null range.
-               L := Eval_Pos (Get_Left_Limit (Range_Constraint));
-               R := Eval_Pos (Get_Right_Limit (Range_Constraint));
+               L := Eval_Pos (L_Expr);
+               R := Eval_Pos (R_Expr);
                case Get_Direction (Range_Constraint) is
                   when Dir_To =>
                      if L > R then
@@ -3761,11 +4071,19 @@ package body Vhdl.Evaluation is
    is
       --  We don't want to deal with very large ranges here.
       pragma Suppress (Overflow_Check);
+      Left_Expr : constant Iir := Get_Left_Limit (Constraint);
+      Right_Expr : constant Iir := Get_Right_Limit (Constraint);
       Res : Int64;
       Left, Right : Int64;
    begin
-      Left := Eval_Pos (Get_Left_Limit (Constraint));
-      Right := Eval_Pos (Get_Right_Limit (Constraint));
+      if Is_Overflow_Literal (Left_Expr)
+        or else Is_Overflow_Literal (Right_Expr)
+      then
+         return -1;
+      end if;
+
+      Left := Eval_Pos (Left_Expr);
+      Right := Eval_Pos (Right_Expr);
       case Get_Direction (Constraint) is
          when Dir_To =>
             if Right < Left then

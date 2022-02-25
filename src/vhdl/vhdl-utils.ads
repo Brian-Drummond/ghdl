@@ -1,20 +1,18 @@
 --  Common operations on nodes.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Types; use Types;
 with Vhdl.Nodes; use Vhdl.Nodes;
 with PSL.Types; use PSL.Types;
@@ -54,9 +52,9 @@ package Vhdl.Utils is
    --  Convert an operator node to a name.
    function Get_Operator_Name (Op : Iir) return Name_Id;
 
-   -- Get the longuest static prefix of EXPR.
-   -- See LRM §8.1
-   function Get_Longuest_Static_Prefix (Expr: Iir) return Iir;
+   -- Get the longest static prefix of EXPR.
+   -- See LRM93 8.1
+   function Get_Longest_Static_Prefix (Expr: Iir) return Iir;
 
    --  Get the prefix of NAME, ie the declaration at the base of NAME.
    --  Return NAME itself if NAME is not an object or a subelement of
@@ -120,7 +118,7 @@ package Vhdl.Utils is
    --  True if EXPR can be built statically.  This is the case of literals
    --  (except overflow), and the case of some aggregates.
    --  This is different from locally static expression, particularly for
-   --  agregate: the analyzer may choose to dynamically create a locally
+   --  aggregate: the analyzer may choose to dynamically create a locally
    --  static aggregate if it is sparse.
    function Is_Static_Construct (Expr : Iir) return Boolean;
 
@@ -176,6 +174,9 @@ package Vhdl.Utils is
 
    --  Return TRUE iff DEF is a fully constrained type (or subtype) definition.
    function Is_Fully_Constrained_Type (Def : Iir) return Boolean;
+
+   --  Return TRUE iff DEF is an array type (or subtype) definition.
+   function Is_Array_Type (Def : Iir) return Boolean;
 
    --  Return True iff OBJ can be the target of an aggregate with an others
    --  choice (cf LRM08 9.3.3.3).
@@ -282,7 +283,7 @@ package Vhdl.Utils is
    --  Return true iff FUNC is an operation for ATYPE.
    --
    --  LRM08 5.1 Types
-   --  The set of operations of a type includes the explicitely declared
+   --  The set of operations of a type includes the explicitly declared
    --  subprograms that have a parameter or result of the type. The remaining
    --  operations of a type are the base operations and the predefined
    --  operations.
@@ -397,6 +398,7 @@ package Vhdl.Utils is
 
    --  Return True IFF kind of N is K1 or K2.
    function Kind_In (N : Iir; K1, K2 : Iir_Kind) return Boolean;
+   function Kind_In (N : Iir; K1, K2, K3 : Iir_Kind) return Boolean;
    pragma Inline (Kind_In);
 
    subtype Parameter_Index is Natural range 1 .. 4;
@@ -418,6 +420,12 @@ package Vhdl.Utils is
    procedure Get_File_Signature (Def : Iir;
                                  Res : in out String;
                                  Off : in out Natural);
+
+   --  Like Get_Identifier but return a Name_Id for the same casing as it
+   --  appears in the source file.
+   --  Not useful for analysis as VHDL is case insensitive, but could be
+   --  useful for error messages or tooling.
+   function Get_Source_Identifier (Decl : Iir) return Name_Id;
 
    --  IIR wrapper around Get_HDL_Node/Set_HDL_Node.
    function Get_HDL_Node (N : PSL_Node) return Iir;

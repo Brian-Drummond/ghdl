@@ -1,20 +1,18 @@
 --  Ortho code compiler.
 --  Copyright (C) 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Ada.Unchecked_Deallocation;
 with Ortho_Nodes; use Ortho_Nodes;
 with Ortho_Ident; use Ortho_Ident;
@@ -221,7 +219,7 @@ package body Ortho_Front is
 
    Token_Number : Unsigned_64;
    Token_Float : IEEE_Float_64;
-   Token_Ident : String (1 .. 256);
+   Token_Ident : String (1 .. 2048);
    Token_Idlen : Natural;
    Token_Hash : Hash_Type;
    Token_Sym : Syment_Acc;
@@ -2116,13 +2114,16 @@ package body Ortho_Front is
                declare
                   V : O_Enode;
                   Bt : Node_Acc;
+                  El_Type : Node_Acc;
                   Res_Type : Node_Acc;
                begin
                   Next_Token;
                   if N_Type.Kind = Type_Subarray then
                      Bt := N_Type.Subarray_Base;
+                     El_Type := N_Type.Subarray_El;
                   else
                      Bt := N_Type;
+                     El_Type := N_Type.Array_Element;
                   end if;
                   if Bt.Kind /= Type_Array then
                      Parse_Error ("type of prefix is not an array");
@@ -2133,7 +2134,7 @@ package body Ortho_Front is
                      Next_Token;
                   else
                      N := New_Indexed_Element (N, V);
-                     N_Type := Bt.Array_Element;
+                     N_Type := El_Type;
                   end if;
                   Expect (Tok_Right_Brack);
                   Next_Token;
@@ -3071,6 +3072,13 @@ package body Ortho_Front is
          when Tok_File_Name =>
             if Flag_Renumber = False then
                New_Debug_Filename_Decl (Token_Ident (1 .. Token_Idlen));
+            end if;
+            Next_Token;
+            return;
+         when Tok_Line_Number =>
+            Next_Expect (Tok_Num);
+            if Flag_Renumber = False then
+               New_Debug_Line_Decl (Natural (Token_Number));
             end if;
             Next_Token;
             return;

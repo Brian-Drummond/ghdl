@@ -1,20 +1,18 @@
 --  Semantic analysis.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Flags; use Flags;
 with Name_Table;
 with Libraries;
@@ -551,6 +549,8 @@ package body Vhdl.Sem_Names is
    is
       Prefix : Iir;
       Obj : Iir;
+      Obj_Alias : Iir;
+      Obj_Type : Iir;
    begin
       if Get_Kind (Name) /= Iir_Kind_Selected_Name then
          return;
@@ -558,18 +558,29 @@ package body Vhdl.Sem_Names is
 
       Prefix := Get_Prefix (Name);
       Obj := Get_Named_Entity (Prefix);
-      if Obj /= Null_Iir
-        and then Kind_In (Obj, Iir_Kind_Variable_Declaration,
-                          Iir_Kind_Interface_Variable_Declaration)
-        and then Get_Type (Obj) /= Null_Iir
+      if Obj = Null_Iir then
+         return;
+      end if;
+      if Get_Kind (Obj) = Iir_Kind_Object_Alias_Declaration then
+         Obj_Alias := Get_Named_Entity (Get_Name (Obj));
+      else
+         Obj_Alias := Obj;
+      end if;
+
+      if Kind_In (Obj_Alias, Iir_Kind_Variable_Declaration,
+                  Iir_Kind_Interface_Variable_Declaration)
       then
-         if Get_Kind (Get_Type (Obj)) /= Iir_Kind_Protected_Type_Declaration
+         Obj_Type := Get_Type (Obj_Alias);
+         if Obj_Type = Null_Iir then
+            return;
+         end if;
+         if Get_Kind (Obj_Type) /= Iir_Kind_Protected_Type_Declaration
          then
             Error_Msg_Sem
               (+Prefix, "type of the prefix should be a protected type");
             return;
          end if;
-         Set_Method_Object (Call, Obj);
+         Set_Method_Object (Call, Obj_Alias);
          Set_Use_Flag (Obj, True);
       end if;
    end Name_To_Method_Object;
@@ -639,7 +650,7 @@ package body Vhdl.Sem_Names is
    begin
       Expr_Staticness := Locally;
 
-      -- LRM93 §6.4: there must be one such expression for each index
+      -- LRM93 6.4: there must be one such expression for each index
       -- position of the array and each expression must be of the
       -- type of the corresponding index.
       -- Loop on the indexes.
@@ -908,6 +919,7 @@ package body Vhdl.Sem_Names is
    is
       Atype : Iir;
       Res : Iir;
+      Decl : Iir;
    begin
       --  The name must not have been analyzed.
       pragma Assert (Get_Type (Name) = Null_Iir);
@@ -953,6 +965,15 @@ package body Vhdl.Sem_Names is
       end if;
 
       Set_Type (Res, Atype);
+
+      if Get_Kind (Res) in Iir_Kinds_Denoting_Name then
+         Decl := Get_Named_Entity (Res);
+         if Kind_In (Decl,
+                     Iir_Kind_Type_Declaration, Iir_Kind_Subtype_Declaration)
+         then
+            Set_Use_Flag (Decl, True);
+         end if;
+      end if;
 
       return Res;
    end Sem_Type_Mark;
@@ -1993,6 +2014,7 @@ package body Vhdl.Sem_Names is
             return Res;
          when Iir_Kinds_Type_Attribute
             | Iir_Kind_Subtype_Attribute
+            | Iir_Kind_Element_Attribute
             | Iir_Kind_Base_Attribute =>
             pragma Assert (Get_Kind (Name) = Iir_Kind_Attribute_Name);
             Free_Iir (Name);
@@ -2140,7 +2162,6 @@ package body Vhdl.Sem_Names is
          if not Keep_Alias
            and then Get_Kind (Res) = Iir_Kind_Non_Object_Alias_Declaration
          then
-            Set_Alias_Declaration (Name, Res);
             Res := Get_Named_Entity (Get_Name (Res));
          end if;
       else
@@ -2178,7 +2199,7 @@ package body Vhdl.Sem_Names is
       Set_Named_Entity (Name, Res);
    end Sem_Simple_Name;
 
-   --  LRM93 §6.3
+   --  LRM93 6.3
    --  Selected Names.
    procedure Sem_Selected_Name
      (Name: Iir; Keep_Alias : Boolean := False; Soft : Boolean := False)
@@ -2336,6 +2357,15 @@ package body Vhdl.Sem_Names is
                --  Not a synopsys package.
                return;
          end case;
+         if Get_Identifier
+           (Get_Library (Get_Design_File (Sem.Get_Current_Design_Unit)))
+           = Name_Ieee
+         then
+            --  No error when referenced from an ieee package.  That could
+            --  happen only for synopsys packages, so an error will be
+            --  emitted when the user references the first synopsys package.
+            return;
+         end if;
          Error_Msg_Sem
            (+Name, "use of synopsys package %i needs the -fsynopsys option",
             +Suffix);
@@ -2426,7 +2456,9 @@ package body Vhdl.Sem_Names is
                   Check_Synopsys_Package (Prefix);
                end if;
                Sem.Add_Dependence (Res);
-               Res := Get_Library_Unit (Res);
+               if Get_Kind (Res) = Iir_Kind_Design_Unit then
+                  Res := Get_Library_Unit (Res);
+               end if;
             elsif not Soft then
                Error_Msg_Sem
                  (+Name, "unit %i not found in %n", (+Suffix, +Prefix));
@@ -2443,7 +2475,7 @@ package body Vhdl.Sem_Names is
            | Iir_Kind_For_Generate_Statement
            | Iir_Kind_Block_Statement
            | Iir_Kind_For_Loop_Statement =>
-            --  LRM93 §6.3
+            --  LRM93 6.3
             --  An expanded name denotes a named entity declared immediatly
             --  within a named construct if the prefix that is an entity
             --  interface, an architecture, a subprogram, a block statement,
@@ -3046,6 +3078,11 @@ package body Vhdl.Sem_Names is
             end if;
             return;
 
+         when Iir_Kind_Type_Declaration
+           | Iir_Kind_Subtype_Declaration =>
+            Error_Msg_Sem
+              (+Name, "subprogram name is a type mark (missing apostrophe)");
+
          when Iir_Kinds_Scalar_Type_Attribute
             | Iir_Kind_Image_Attribute
             | Iir_Kind_Value_Attribute =>
@@ -3056,30 +3093,25 @@ package body Vhdl.Sem_Names is
                  (Res, Sem_As_Indexed_Or_Slice_Name (Prefix, True));
             elsif Actual /= Null_Iir then
                Finish_Sem_Scalar_Type_Attribute (Prefix_Name, Prefix, Actual);
-               Set_Named_Entity (Name, Prefix);
-               return;
+               Res := Prefix;
             else
                Error_Msg_Sem (+Name, "bad attribute parameter");
-               Set_Named_Entity (Name, Error_Mark);
-               return;
+               Res := Error_Mark;
             end if;
-
-         when Iir_Kind_Type_Declaration
-           | Iir_Kind_Subtype_Declaration =>
-            Error_Msg_Sem
-              (+Name, "subprogram name is a type mark (missing apostrophe)");
 
          when Iir_Kind_Stable_Attribute
            | Iir_Kind_Quiet_Attribute
            | Iir_Kind_Delayed_Attribute =>
-            if Actual /= Null_Iir then
+            if Get_Parameter (Prefix) /= Null_Iir then
+               --  Attribute is complete, so it is now index or slice.
+               Add_Result (Res, Sem_As_Indexed_Or_Slice_Name (Prefix, True));
+            elsif Actual /= Null_Iir then
                Finish_Sem_Signal_Attribute_Signal (Prefix, Actual);
-               Set_Named_Entity (Name, Prefix);
+               Res := Prefix;
             else
                Error_Msg_Sem (+Name, "bad attribute parameter");
-               Set_Named_Entity (Name, Error_Mark);
+               Res := Error_Mark;
             end if;
-            return;
 
          when Iir_Kind_Ramp_Attribute
            | Iir_Kind_Quantity_Slew_Attribute
@@ -3301,7 +3333,8 @@ package body Vhdl.Sem_Names is
                              & "an attribute");
             return Error_Mark;
          when Iir_Kind_Function_Call
-           | Iir_Kind_Type_Conversion =>
+           | Iir_Kind_Type_Conversion
+           | Iir_Kinds_Attribute =>
             Error_Msg_Sem (+Attr, "invalid prefix for user defined attribute");
             return Error_Mark;
          when Iir_Kinds_Object_Declaration
@@ -3315,7 +3348,7 @@ package body Vhdl.Sem_Names is
            | Iir_Kind_Unit_Declaration
            | Iir_Kind_Component_Declaration
            | Iir_Kinds_Library_Unit =>
-            --  FIXME: to complete
+            --  FIXME: complete
             null;
          when Iir_Kinds_Sequential_Statement
            | Iir_Kinds_Concurrent_Statement =>
@@ -3340,6 +3373,15 @@ package body Vhdl.Sem_Names is
       end if;
 
       Xref_Ref (Attr, Value);
+
+      if Get_Static_Attribute_Flag (Get_Attribute_Specification (Value))
+        and then not Get_Is_Within_Flag (Prefix)
+        and then Get_Expr_Staticness (Value) /= Locally
+      then
+         Error_Msg_Sem
+           (+Attr, "non-locally static attribute cannot be referenced here");
+         return Error_Mark;
+      end if;
 
       return Value;
    end Sem_User_Attribute;
@@ -3678,9 +3720,7 @@ package body Vhdl.Sem_Names is
       --  LRM08 16.2 Predefined attributes
       --  Prefix: Any prefix O that is appropriate for an object, or an alias
       --  thereof
-      if (Get_Kind (Get_Base_Name (Prefix_Name))
-          not in Iir_Kinds_Object_Declaration)
-      then
+      if not Is_Object_Name (Prefix_Name) then
          Error_Msg_Sem (+Attr, "prefix must denote an object");
          return Error_Mark;
       end if;
@@ -3703,6 +3743,57 @@ package body Vhdl.Sem_Names is
 
       return Res;
    end Sem_Subtype_Attribute;
+
+   --  For 'Element
+   function Sem_Element_Attribute (Attr : Iir_Attribute_Name) return Iir
+   is
+      Prefix_Name  : Iir;
+      Attr_Type    : Iir;
+      Attr_Subtype : Iir;
+      Res          : Iir;
+   begin
+      Prefix_Name := Get_Prefix (Attr);
+      Prefix_Name := Finish_Sem_Name (Prefix_Name);
+      Set_Prefix (Attr, Prefix_Name);
+
+      --  LRM08 16.2 Predefined attributes
+      --  Prefix: Any prefix A that is appropriate for an array object, or an
+      --  alias thereof, or that denotes an array subtype
+      if (Get_Kind (Get_Base_Name (Prefix_Name))
+          in Iir_Kinds_Object_Declaration)
+      then
+         Attr_Type := Get_Type (Prefix_Name);
+      elsif (Get_Kind (Get_Base_Name (Prefix_Name))
+          in Iir_Kinds_Type_Declaration)
+      then
+         Attr_Type := Get_Type (Get_Base_Name (Prefix_Name));
+      else
+         Error_Msg_Sem (+Attr, "prefix must denote an object or a type");
+      end if;
+
+      if False and not Is_Array_Type (Attr_Type) then
+         Error_Msg_Sem (+Attr, "prefix must denote an array");
+      end if;
+
+      --  The type defined by 'element is always constrained.  Create
+      --  a subtype if it is not.
+      Attr_Subtype := Get_Element_Subtype (Attr_Type);
+      if False and not Is_Fully_Constrained_Type (Attr_Subtype) then
+         Attr_Subtype :=
+             Sem_Types.Build_Constrained_Subtype (Attr_Subtype, Attr);
+      end if;
+
+      Res := Create_Iir (Iir_Kind_Element_Attribute);
+      Location_Copy (Res, Attr);
+      Set_Prefix (Res, Prefix_Name);
+      Set_Type (Res, Attr_Subtype);
+
+      Set_Base_Name (Res, Res);
+      Set_Name_Staticness (Res, Get_Name_Staticness (Prefix_Name));
+      Set_Type_Staticness (Res, Get_Type_Staticness (Attr_Subtype));
+
+      return Res;
+   end Sem_Element_Attribute;
 
    --  For 'Across or 'Through
    function Sem_Nature_Type_Attribute (Attr : Iir_Attribute_Name) return Iir
@@ -4342,6 +4433,13 @@ package body Vhdl.Sem_Names is
                Res := Sem_User_Attribute (Attr);
             end if;
 
+         when Name_Element =>
+            if Flags.Vhdl_Std >= Vhdl_08 then
+               Res := Sem_Element_Attribute (Attr);
+            else
+               Res := Sem_User_Attribute (Attr);
+            end if;
+
          when Name_Across
            | Name_Through =>
             if Flags.AMS_Vhdl then
@@ -4393,7 +4491,7 @@ package body Vhdl.Sem_Names is
       Set_Named_Entity (Attr, Res);
    end Sem_Attribute_Name;
 
-   --  LRM93 §6
+   --  LRM93 6
    procedure Sem_Name (Name : Iir; Keep_Alias : Boolean := False) is
    begin
       --  Exit now if NAME was already analyzed.
@@ -4734,6 +4832,10 @@ package body Vhdl.Sem_Names is
                   end if;
                end if;
 
+               if Get_Kind (Expr) = Iir_Kind_Enumeration_Literal then
+                  Set_Use_Flag (Expr, True);
+               end if;
+
                return Res;
             end if;
          when Iir_Kind_Function_Call
@@ -4893,6 +4995,7 @@ package body Vhdl.Sem_Names is
            | Iir_Kind_Package_Instantiation_Declaration
            | Iir_Kind_Interface_Package_Declaration
            | Iir_Kind_Library_Declaration
+           | Iir_Kind_Foreign_Module
            | Iir_Kinds_Subprogram_Declaration
            | Iir_Kind_Component_Declaration =>
             Res := Finish_Sem_Name (Name, Res);

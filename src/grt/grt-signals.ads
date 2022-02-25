@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) - signals management.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -357,6 +355,8 @@ package Grt.Signals is
       Nbr_Ports : Ghdl_Index_Type;
       Ports : Signal_Arr_Ptr;
 
+      Dump_Table_Idx : Dump_Table_Index;
+
       --  Mode of the signal (in, out ...)
       --Mode_Signal : Mode_Signal_Type;
       S : Ghdl_Signal_Data;
@@ -367,6 +367,13 @@ package Grt.Signals is
      (Table_Component_Type => Ghdl_Signal_Ptr,
       Table_Index_Type => Sig_Table_Index,
       Table_Low_Bound => 0,
+      Table_Initial => 128);
+
+   -- Signals with RO_Event set. Cleared in Grt.Wave.Wave_Cycle.
+   package Changed_Sig_Table is new Grt.Table
+     (Table_Component_Type => Ghdl_Signal_Ptr,
+      Table_Index_Type => Natural,
+      Table_Low_Bound => 1,
       Table_Initial => 128);
 
    --  Read the value pointed by VALUE_PTR.  It cannot be simply deferred as

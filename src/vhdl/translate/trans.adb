@@ -1,20 +1,18 @@
 --  Iir to ortho translator.
 --  Copyright (C) 2002-2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Name_Table; -- use Name_Table;
 with Vhdl.Nodes_Priv;
@@ -184,7 +182,7 @@ package body Trans is
    package body Chap10 is
       --  Identifiers.
       --  The following functions are helpers to create ortho identifiers.
-      Identifier_Buffer : String (1 .. 512);
+      Identifier_Buffer : String (1 .. 4096);
       Identifier_Len    : Natural := 0;
       Identifier_Start  : Natural := 1;
 
@@ -2084,7 +2082,7 @@ package body Trans is
          end if;
 
          if Temp_Level.No_Stack2_Mark then
-            --  Stack2 mark and release was explicitely disabled.
+            --  Stack2 mark and release was explicitly disabled.
             return;
          end if;
 

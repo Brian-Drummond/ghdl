@@ -1,20 +1,18 @@
 --  VHDL lexical scanner.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Ada.Characters.Latin_1; use Ada.Characters.Latin_1;
 with Errorout; use Errorout;
 with Name_Table;
@@ -1048,6 +1046,8 @@ package body Vhdl.Scanner is
                null;
             when '_' =>
                if Source (P + 1) = '_' then
+                  --  Need to set the current position for the error message.
+                  Pos := P + 1;
                   Error_Msg_Scan ("two underscores can't be consecutive");
                end if;
             when ' ' | ')' | '.' | ';' | ':' =>
@@ -1096,6 +1096,7 @@ package body Vhdl.Scanner is
             C := '_';
          else
             --  Eat the trailing underscore.
+            Pos := P - 1;
             Error_Msg_Scan ("an identifier cannot finish with '_'");
          end if;
       end if;
@@ -1298,6 +1299,10 @@ package body Vhdl.Scanner is
                            Current_Token := Tok_Rose;
                         when Name_Fell =>
                            Current_Token := Tok_Fell;
+                        when Name_Onehot =>
+                           Current_Token := Tok_Onehot;
+                        when Name_Onehot0 =>
+                           Current_Token := Tok_Onehot0;
                         when Name_Sequence =>
                            Current_Token := Tok_Sequence;
                         when Name_Property =>
@@ -1318,6 +1323,8 @@ package body Vhdl.Scanner is
                            Current_Token := Tok_Vprop;
                         when Name_Vunit =>
                            Current_Token := Tok_Vunit;
+                        when Name_Inherit =>
+                           Current_Token := Tok_Inherit;
                         when others =>
                            Current_Token := Tok_Identifier;
                      end case;
@@ -1380,6 +1387,10 @@ package body Vhdl.Scanner is
                Current_Token := Tok_Rose;
             when Name_Fell =>
                Current_Token := Tok_Fell;
+            when Name_Onehot =>
+               Current_Token := Tok_Onehot;
+            when Name_Onehot0 =>
+               Current_Token := Tok_Onehot0;
             when Name_Clock =>
                Current_Token := Tok_Psl_Clock;
             when Name_Const =>
@@ -1408,6 +1419,10 @@ package body Vhdl.Scanner is
                Current_Token := Tok_Within;
             when Name_Abort =>
                Current_Token := Tok_Abort;
+            when Name_Async_Abort =>
+               Current_Token := Tok_Async_Abort;
+            when Name_Sync_Abort =>
+               Current_Token := Tok_Sync_Abort;
             when Name_Before =>
                Scan_Psl_Keyword_Em_Un (Tok_Before, Tok_Before_Em,
                                        Tok_Before_Un, Tok_Before_Em_Un);
@@ -1867,7 +1882,7 @@ package body Vhdl.Scanner is
             Warning_Msg_Scan
               (Warnid_Pragma, "incomplete pragma directive ignored");
          when Name_Translate =>
-            Scan_Comment_Identifier (Id, True);
+            Scan_Comment_Identifier (Id, False);
             case Id is
                when Name_On =>
                   Scan_Translate_On;
@@ -1977,6 +1992,74 @@ package body Vhdl.Scanner is
                       +Source (Pos));
    end Error_Bad_Character;
 
+   procedure Scan_Block_Comment is
+   begin
+      Current_Context.Prev_Pos := Pos;
+      Current_Context.Token_Pos := Pos;
+
+      loop
+         case Source (Pos) is
+            when '/' =>
+               --  LRM08 15.9
+               --  Moreover, an occurrence of a solidus character
+               --  immediately followed by an asterisk character
+               --  within a delimited comment is not interpreted as
+               --  the start of a nested delimited comment.
+               if Source (Pos + 1) = '*' then
+                  Warning_Msg_Scan (Warnid_Nested_Comment,
+                                    "'/*' found within a block comment");
+               end if;
+               Pos := Pos + 1;
+            when '*' =>
+               if Source (Pos + 1) = '/' then
+                  if Pos > Current_Context.Token_Pos then
+                     --  There are characters before the end of comment, so
+                     --  first return them.
+                     Current_Token := Tok_Block_Comment_Text;
+                  else
+                     Pos := Pos + 2;
+                     Current_Token := Tok_Block_Comment_End;
+                  end if;
+                  return;
+               else
+                  Pos := Pos + 1;
+               end if;
+            when CR =>
+               if Pos > Current_Context.Token_Pos then
+                  --  There are characters before the CR, so
+                  --  first return them.
+                  Current_Token := Tok_Block_Comment_Text;
+               else
+                  Scan_CR_Newline;
+                  Current_Token := Tok_Newline;
+               end if;
+               return;
+            when LF =>
+               if Pos > Current_Context.Token_Pos then
+                  --  There are characters before the LF, so
+                  --  first return them.
+                  Current_Token := Tok_Block_Comment_Text;
+               else
+                  Scan_LF_Newline;
+                  Current_Token := Tok_Newline;
+               end if;
+               return;
+            when Files_Map.EOT =>
+               if Pos >= Current_Context.File_Len then
+                  --  Point at the start of the comment.
+                  Error_Msg_Scan
+                    (+Get_Token_Location,
+                     "block comment not terminated at end of file");
+                  Current_Token := Tok_Eof;
+                  return;
+               end if;
+               Pos := Pos + 1;
+            when others =>
+               Pos := Pos + 1;
+         end case;
+      end loop;
+   end Scan_Block_Comment;
+
    -- Get a new token.
    procedure Scan is
    begin
@@ -2074,7 +2157,8 @@ package body Vhdl.Scanner is
                           or Vhdl_Std >= Vhdl_02)
                     and then Characters_Kind (Source (Pos)) = Invalid
                   then
-                     Error_Msg_Scan ("invalid character, even in a comment");
+                     Error_Msg_Scan ("invalid character, even in a comment "
+                                       & "(turn off with -C)");
                   end if;
                   Pos := Pos + 1;
                end loop;
@@ -2123,48 +2207,16 @@ package body Vhdl.Scanner is
                --  Skip '/*'.
                Pos := Pos + 2;
 
-               loop
-                  case Source (Pos) is
-                     when '/' =>
-                        --  LRM08 15.9
-                        --  Moreover, an occurrence of a solidus character
-                        --  immediately followed by an asterisk character
-                        --  within a delimited comment is not interpreted as
-                        --  the start of a nested delimited comment.
-                        if Source (Pos + 1) = '*' then
-                           Warning_Msg_Scan
-                             (Warnid_Nested_Comment,
-                              "'/*' found within a block comment");
-                        end if;
-                        Pos := Pos + 1;
-                     when '*' =>
-                        if Source (Pos + 1) = '/' then
-                           Pos := Pos + 2;
-                           exit;
-                        else
-                           Pos := Pos + 1;
-                        end if;
-                     when CR =>
-                        Scan_CR_Newline;
-                     when LF =>
-                        Scan_LF_Newline;
-                     when Files_Map.EOT =>
-                        if Pos >= Current_Context.File_Len then
-                           --  Point at the start of the comment.
-                           Error_Msg_Scan
-                             (+Get_Token_Location,
-                              "block comment not terminated at end of file");
-                           exit;
-                        end if;
-                        Pos := Pos + 1;
-                     when others =>
-                        Pos := Pos + 1;
-                  end case;
-               end loop;
                if Flag_Comment then
-                  Current_Token := Tok_Block_Comment;
+                  Current_Token := Tok_Block_Comment_Start;
                   return;
                end if;
+
+               loop
+                  Scan_Block_Comment;
+                  exit when Current_Token = Tok_Block_Comment_End
+                    or else Current_Token = Tok_Eof;
+               end loop;
                goto Again;
             else
                Current_Token := Tok_Slash;
@@ -2510,9 +2562,8 @@ package body Vhdl.Scanner is
                   Current_Token := Tok_Match_Not_Equal;
                   Pos := Pos + 3;
                else
-                  Error_Msg_Scan ("unknown matching operator");
+                  Current_Token := Tok_Question_Mark;
                   Pos := Pos + 1;
-                  goto Again;
                end if;
             end if;
             return;

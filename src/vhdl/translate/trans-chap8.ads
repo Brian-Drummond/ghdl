@@ -1,20 +1,18 @@
 --  Iir to ortho translator.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 package Trans.Chap8 is
    --  If TRUE, generate extra-code to catch at run-time incoherent state
@@ -75,13 +73,6 @@ package Trans.Chap8 is
    --  Translate a case statement or a selected signal assignment.
    procedure Translate_Case (N : Iir; Handler : in out Case_Handler'Class);
 
-   --  Inc or dec by VAL ITERATOR according to DIR.
-   --  Used for loop statements.
-   procedure Gen_Update_Iterator (Iterator : O_Dnode;
-                                  Dir      : Direction_Type;
-                                  Val      : Unsigned_64;
-                                  Itype    : Iir);
-
    --  Create declarations for a for-loop statement.
    procedure Translate_For_Loop_Statement_Declaration (Stmt : Iir);
 
@@ -92,4 +83,8 @@ package Trans.Chap8 is
 
    function Translate_Subprogram_Call
      (Call : Iir; Assoc_Chain : Iir; Obj : Iir) return O_Enode;
+
+   --  Signal assignment for an inertial association.
+   procedure Translate_Inertial_Assignment
+     (Targ : Mnode; Targ_Type : Iir; Val : Mnode; Assoc : Iir);
 end Trans.Chap8;

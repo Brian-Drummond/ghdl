@@ -1,20 +1,18 @@
 --  Semantic analysis.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with Flags; use Flags;
 with Std_Names;
 with Str_Table;
@@ -515,6 +513,8 @@ package body Vhdl.Sem_Specs is
                null;
             when Iir_Kind_Anonymous_Type_Declaration =>
                null;
+            when Iir_Kind_Psl_Default_Clock =>
+               null;
             when others =>
                Error_Kind ("sem_named_entity", Ent);
          end case;
@@ -836,8 +836,9 @@ package body Vhdl.Sem_Specs is
          --  GHDL: test based on the entity_class.
          case Get_Entity_Class (Spec) is
             when Tok_Entity
-              | Tok_Architecture
-              | Tok_Configuration =>
+               | Tok_Architecture
+               | Tok_Configuration =>
+               Set_Static_Attribute_Flag (Spec, True);
                if Get_Expr_Staticness (Expr) /= Locally then
                   Error_Msg_Sem_Relaxed
                     (Spec, Warnid_Attribute,
@@ -1255,57 +1256,71 @@ package body Vhdl.Sem_Specs is
       end if;
    end Sem_Step_Limit_Specification;
 
+   function Sem_Entity_Aspect_Entity (Aspect : Iir) return Iir
+   is
+      Entity_Name : Iir;
+      Entity : Iir;
+      Arch_Name : Iir;
+      Arch_Unit : Iir;
+   begin
+      --  The entity.
+      Entity_Name := Get_Entity_Name (Aspect);
+      if Is_Error (Entity_Name) then
+         return Null_Iir;
+      end if;
+      Entity_Name := Sem_Denoting_Name (Get_Entity_Name (Aspect));
+      Set_Entity_Name (Aspect, Entity_Name);
+      Entity := Get_Named_Entity (Entity_Name);
+      if Entity = Error_Mark then
+         return Null_Iir;
+      end if;
+      Arch_Name := Get_Architecture (Aspect);
+      case Get_Kind (Entity) is
+         when Iir_Kind_Entity_Declaration =>
+            --  Continue below.
+            null;
+         when Iir_Kind_Foreign_Module =>
+            --  There is no architecture.
+            if Arch_Name /= Null_Iir then
+               Error_Msg_Sem (+Aspect, "architecture not allowed for %n",
+                              +Entity);
+            end if;
+            return Entity;
+         when others =>
+            Error_Class_Match (Entity_Name, "entity");
+            return Null_Iir;
+      end case;
+      --  Note: dependency is added by Sem_Denoting_Name.
+
+      --  Check architecture.
+      if Arch_Name /= Null_Iir then
+         Arch_Unit := Libraries.Find_Secondary_Unit
+           (Get_Design_Unit (Entity), Get_Identifier (Arch_Name));
+         if Arch_Unit /= Null_Iir then
+            --  The architecture is known.
+            if Get_Date_State (Arch_Unit) >= Date_Parse then
+               --  And loaded!
+               Arch_Unit := Get_Library_Unit (Arch_Unit);
+            end if;
+            Set_Named_Entity (Arch_Name, Arch_Unit);
+            Xref_Ref (Arch_Name, Arch_Unit);
+         end if;
+
+         --  FIXME: may emit a warning if the architecture does not
+         --  exist.
+         --  Note: the design needs the architecture.
+         Add_Dependence (Aspect);
+      end if;
+      return Entity;
+   end Sem_Entity_Aspect_Entity;
+
    --  Analyze entity aspect ASPECT and return the entity declaration.
    --  Return NULL_IIR if not found.
    function Sem_Entity_Aspect (Aspect : Iir) return Iir is
    begin
       case Get_Kind (Aspect) is
          when Iir_Kind_Entity_Aspect_Entity =>
-            declare
-               Entity_Name : Iir;
-               Entity : Iir;
-               Arch_Name : Iir;
-               Arch_Unit : Iir;
-            begin
-               --  The entity.
-               Entity_Name := Get_Entity_Name (Aspect);
-               if Is_Error (Entity_Name) then
-                  return Null_Iir;
-               end if;
-               Entity_Name := Sem_Denoting_Name (Get_Entity_Name (Aspect));
-               Set_Entity_Name (Aspect, Entity_Name);
-               Entity := Get_Named_Entity (Entity_Name);
-               if Entity = Error_Mark then
-                  return Null_Iir;
-               end if;
-               if Get_Kind (Entity) /= Iir_Kind_Entity_Declaration then
-                  Error_Class_Match (Entity_Name, "entity");
-                  return Null_Iir;
-               end if;
-               --  Note: dependency is added by Sem_Denoting_Name.
-
-               --  Check architecture.
-               Arch_Name := Get_Architecture (Aspect);
-               if Arch_Name /= Null_Iir then
-                  Arch_Unit := Libraries.Find_Secondary_Unit
-                    (Get_Design_Unit (Entity), Get_Identifier (Arch_Name));
-                  if Arch_Unit /= Null_Iir then
-                     --  The architecture is known.
-                     if Get_Date_State (Arch_Unit) >= Date_Parse then
-                        --  And loaded!
-                        Arch_Unit := Get_Library_Unit (Arch_Unit);
-                     end if;
-                     Set_Named_Entity (Arch_Name, Arch_Unit);
-                     Xref_Ref (Arch_Name, Arch_Unit);
-                  end if;
-
-                  --  FIXME: may emit a warning if the architecture does not
-                  --  exist.
-                  --  Note: the design needs the architecture.
-                  Add_Dependence (Aspect);
-               end if;
-               return Entity;
-            end;
+            return Sem_Entity_Aspect_Entity (Aspect);
 
          when Iir_Kind_Entity_Aspect_Configuration =>
             declare
@@ -1818,11 +1833,8 @@ package body Vhdl.Sem_Specs is
         (Get_Library (Get_Design_File (Entity_Unit)),
          Get_Identifier (Get_Library_Unit (Entity_Unit)),
          Parent);
-      if Design_Unit = Null_Iir then
-         --  Found an entity which is not in the library.
-         raise Internal_Error;
-      end if;
-
+      --  Found an entity which is not in the library.
+      pragma Assert (Design_Unit /= Null_Iir);
       Entity := Get_Library_Unit (Design_Unit);
 
       Res := Create_Iir (Iir_Kind_Binding_Indication);
@@ -1929,7 +1941,7 @@ package body Vhdl.Sem_Specs is
             Assoc := Create_Iir (Iir_Kind_Association_Element_Open);
             Location_Copy (Assoc, Parent);
          else
-            if Are_Nodes_Compatible (Comp_El, Ent_El) = Not_Compatible then
+            if Are_Nodes_Compatible (Ent_El, Comp_El) = Not_Compatible then
                Report_Start_Group;
                Error_Header;
                Error_Msg_Sem
@@ -1973,7 +1985,10 @@ package body Vhdl.Sem_Specs is
          Set_Formal (Assoc, Name);
 
          if Get_Kind (Ent_El) in Iir_Kinds_Interface_Object_Declaration then
-            Set_Type (Name, Get_Type (Ent_El));
+            --  Do not set the type of the formal, as it can be a forward
+            --  reference.  This is a little bit unusual to not have type.
+            --  Set_Type (Name, Get_Type (Ent_El));
+            null;
          end if;
 
          if Kind = Map_Port
@@ -2009,25 +2024,29 @@ package body Vhdl.Sem_Specs is
       end if;
    end Create_Default_Map_Aspect;
 
-   --  LRM93 §5.2.2
+   --  LRM93 5.2.2
    function Get_Visible_Entity_Declaration (Comp: Iir_Component_Declaration)
      return Iir_Design_Unit
    is
       --  Return the design_unit if DECL is an entity declaration or the
       --  design unit of an entity declaration.  Otherwise return Null_Iir.
       --  This double check is needed as the interpretation may be both.
-      function Is_Entity_Declaration (Decl : Iir) return Iir is
+      function Is_Entity_Declaration (Decl : Iir) return Iir
+      is
+         Lib_Unit : Iir;
       begin
-         if Get_Kind (Decl) = Iir_Kind_Entity_Declaration then
-            return Get_Design_Unit (Decl);
-         elsif Get_Kind (Decl) = Iir_Kind_Design_Unit
-           and then
-           Get_Kind (Get_Library_Unit (Decl)) = Iir_Kind_Entity_Declaration
-         then
-            return Decl;
+         if Get_Kind (Decl) = Iir_Kind_Design_Unit then
+            Lib_Unit := Get_Library_Unit (Decl);
          else
-            return Null_Iir;
+            Lib_Unit := Decl;
          end if;
+         case Get_Kind (Lib_Unit) is
+            when Iir_Kind_Entity_Declaration
+              | Iir_Kind_Foreign_Module =>
+               return Get_Design_Unit (Lib_Unit);
+            when others =>
+               return Null_Iir;
+         end case;
       end Is_Entity_Declaration;
 
       Name : constant Name_Id := Get_Identifier (Comp);

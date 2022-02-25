@@ -1,36 +1,37 @@
 --  VHDL libraries handling.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
-with Interfaces.C_Streams;
+--  along with this program.  If not, see <gnu.org/licenses>.
 with System;
+with Interfaces.C_Streams;
 with GNAT.OS_Lib;
+
 with Logging; use Logging;
 with Tables;
 with Errorout; use Errorout;
 with Options; use Options;
+with Name_Table; use Name_Table;
+with Str_Table;
+with Files_Map;
+with Flags;
+with Std_Names;
+
+with Vhdl.Tokens;
+with Vhdl.Std_Package;
 with Vhdl.Errors; use Vhdl.Errors;
 with Vhdl.Scanner;
 with Vhdl.Utils; use Vhdl.Utils;
-with Name_Table; use Name_Table;
-with Str_Table;
-with Vhdl.Tokens;
-with Files_Map;
-with Flags;
-with Vhdl.Std_Package;
 
 package body Libraries is
    --  Chain of known libraries.  This is also the top node of all iir node.
@@ -69,17 +70,27 @@ package body Libraries is
 
    --  Initialize paths table.
    --  Set the local path.
-   procedure Init_Paths is
+   procedure Initialize is
    begin
       --  Always look in current directory first.
+      Paths.Init;
       Name_Nil := Get_Identifier ("");
       Paths.Append (Name_Nil);
 
       Local_Directory := Name_Nil;
       Work_Directory := Name_Nil;
 
+      Libraries_Chain := Null_Iir;
+      Std_Library := Null_Iir;
+      Work_Library_Name := Std_Names.Name_Work;
+
       Create_Virtual_Locations;
-   end Init_Paths;
+   end Initialize;
+
+   procedure Finalize is
+   begin
+      Paths.Free;
+   end Finalize;
 
    function Path_To_Id (Path : String) return Name_Id is
    begin
@@ -214,15 +225,20 @@ package body Libraries is
       Lib_Unit : Iir;
       Id : Name_Id;
    begin
-      Lib_Unit := Get_Library_Unit (Design_Unit);
-      case Iir_Kinds_Library_Unit (Get_Kind (Lib_Unit)) is
-         when Iir_Kinds_Primary_Unit
-           | Iir_Kind_Package_Body =>
-            Id := Get_Identifier (Lib_Unit);
-         when Iir_Kind_Architecture_Body =>
-            --  Architectures are put with the entity identifier.
-            Id := Get_Entity_Identifier_Of_Architecture (Lib_Unit);
-      end case;
+      if Get_Kind (Design_Unit) = Iir_Kind_Foreign_Module then
+         Id := Get_Identifier (Design_Unit);
+      else
+         Lib_Unit := Get_Library_Unit (Design_Unit);
+         case Iir_Kinds_Library_Unit (Get_Kind (Lib_Unit)) is
+            when Iir_Kinds_Primary_Unit
+               | Iir_Kind_Package_Body
+               | Iir_Kind_Foreign_Module =>
+               Id := Get_Identifier (Lib_Unit);
+            when Iir_Kind_Architecture_Body =>
+               --  Architectures are put with the entity identifier.
+               Id := Get_Entity_Identifier_Of_Architecture (Lib_Unit);
+         end case;
+      end if;
       return Id mod Unit_Hash_Length;
    end Get_Hash_Id_For_Unit;
 
@@ -630,15 +646,13 @@ package body Libraries is
    end Load_Library;
 
    -- Note: the scanner shouldn't be in use, since this procedure uses it.
-   procedure Load_Std_Library (Build_Standard : Boolean := True)
+   function Load_Std_Library (Build_Standard : Boolean := True) return Boolean
    is
       use Vhdl.Std_Package;
       Dir : Name_Id;
    begin
-      if Libraries_Chain /= Null_Iir then
-         --  This procedure must not be called twice.
-         raise Internal_Error;
-      end if;
+      --  This procedure must not be called twice.
+      pragma Assert (Libraries_Chain = Null_Iir);
 
       Flags.Create_Flag_String;
 
@@ -668,7 +682,7 @@ package body Libraries is
         and then not Flags.Bootstrap
       then
          Error_Msg_Option ("cannot find ""std"" library");
-         raise Option_Error;
+         return False;
       end if;
 
       if Build_Standard then
@@ -682,6 +696,7 @@ package body Libraries is
       end if;
 
       Set_Visible_Flag (Std_Library, True);
+      return True;
    end Load_Std_Library;
 
    procedure Load_Work_Library (Empty : Boolean := False)
@@ -842,7 +857,8 @@ package body Libraries is
             Lib_Unit := Get_Library_Unit (Unit);
             case Iir_Kinds_Library_Unit (Get_Kind (Lib_Unit)) is
                when Iir_Kinds_Primary_Unit
-                 | Iir_Kind_Package_Body =>
+                  | Iir_Kind_Package_Body
+                  | Iir_Kind_Foreign_Module =>
                   return Get_Identifier (Dep) = Get_Identifier (Lib_Unit);
                when Iir_Kind_Architecture_Body =>
                   return False;
@@ -872,7 +888,8 @@ package body Libraries is
    function Find_Design_Unit (Unit : Iir) return Iir_Design_Unit is
    begin
       case Get_Kind (Unit) is
-         when Iir_Kind_Design_Unit =>
+         when Iir_Kind_Design_Unit
+           | Iir_Kind_Foreign_Module =>
             return Unit;
          when Iir_Kind_Selected_Name =>
             declare
@@ -923,7 +940,11 @@ package body Libraries is
          while Is_Valid (File) loop
             Un := Get_First_Design_Unit (File);
             while Is_Valid (Un) loop
-               List := Get_Dependence_List (Un);
+               if Get_Kind (Un) /= Iir_Kind_Foreign_Module then
+                  List := Get_Dependence_List (Un);
+               else
+                  List := Null_Iir_List;
+               end if;
 
                if List /= Null_Iir_List
                  and then Get_Date (Un) /= Date_Obsolete
@@ -1043,7 +1064,14 @@ package body Libraries is
       pragma Assert (Get_Date_State (Unit) = Date_Extern);
 
       --  Mark this design unit as being loaded.
-      New_Library_Unit := Get_Library_Unit (Unit);
+      case Get_Kind (Unit) is
+         when Iir_Kind_Design_Unit =>
+            New_Library_Unit := Get_Library_Unit (Unit);
+         when Iir_Kind_Foreign_Module =>
+            New_Library_Unit := Unit;
+         when others =>
+            raise Internal_Error;
+      end case;
       Unit_Id := Get_Identifier (New_Library_Unit);
 
       --  Set the date of the design unit as the most recently analyzed
@@ -1092,7 +1120,14 @@ package body Libraries is
          while Design_Unit /= Null_Iir loop
             Next_Design_Unit := Get_Hash_Chain (Design_Unit);
             Design_File := Get_Design_File (Design_Unit);
-            Library_Unit := Get_Library_Unit (Design_Unit);
+            case Get_Kind (Design_Unit) is
+               when Iir_Kind_Foreign_Module =>
+                  Library_Unit := Design_Unit;
+               when Iir_Kind_Design_Unit =>
+                  Library_Unit := Get_Library_Unit (Design_Unit);
+               when others =>
+                  raise Internal_Error;
+            end case;
             if Get_Identifier (Design_Unit) = Unit_Id
               and then Get_Library (Design_File) = Work_Library
               and then Is_Same_Library_Unit (New_Library_Unit, Library_Unit)
@@ -1522,16 +1557,18 @@ package body Libraries is
       while Design_File /= Null_Iir loop
          Design_Unit := Get_First_Design_Unit (Design_File);
          while Design_Unit /= Null_Iir loop
-            Library_Unit := Get_Library_Unit (Design_Unit);
+            if Get_Kind (Design_Unit) = Iir_Kind_Design_Unit then
+               Library_Unit := Get_Library_Unit (Design_Unit);
 
-            if Get_Kind (Library_Unit) = Iir_Kind_Architecture_Body
-              and then
-              Get_Entity_Identifier_Of_Architecture (Library_Unit) = Entity_Id
-            then
-               if Res = Null_Iir then
-                  Res := Design_Unit;
-               elsif Get_Date (Design_Unit) > Get_Date (Res) then
-                  Res := Design_Unit;
+               if Get_Kind (Library_Unit) = Iir_Kind_Architecture_Body
+                 and then (Get_Entity_Identifier_Of_Architecture (Library_Unit)
+                             = Entity_Id)
+               then
+                  if Res = Null_Iir then
+                     Res := Design_Unit;
+                  elsif Get_Date (Design_Unit) > Get_Date (Res) then
+                     Res := Design_Unit;
+                  end if;
                end if;
             end if;
             Design_Unit := Get_Chain (Design_Unit);
@@ -1547,18 +1584,20 @@ package body Libraries is
 
    --  Return the declaration of primary unit NAME of LIBRARY.
    function Find_Primary_Unit
-     (Library: Iir_Library_Declaration; Name: Name_Id)
-      return Iir_Design_Unit
+     (Library: Iir_Library_Declaration; Name: Name_Id) return Iir_Design_Unit
    is
       Unit : Iir_Design_Unit;
+      Lib_Unit : Iir;
    begin
       Unit := Unit_Hash_Table (Name mod Unit_Hash_Length);
       while Unit /= Null_Iir loop
          if Get_Identifier (Unit) = Name
            and then Get_Library (Get_Design_File (Unit)) = Library
          then
-            case Iir_Kinds_Library_Unit (Get_Kind (Get_Library_Unit (Unit))) is
-               when Iir_Kinds_Primary_Unit =>
+            Lib_Unit := Get_Library_Unit (Unit);
+            case Iir_Kinds_Library_Unit (Get_Kind (Lib_Unit)) is
+               when Iir_Kinds_Primary_Unit
+                  | Iir_Kind_Foreign_Module =>
                   --  Only return a primary unit.
                   return Unit;
                when Iir_Kinds_Secondary_Unit =>
@@ -1585,10 +1624,12 @@ package body Libraries is
    begin
       Design_Unit := Unit_Hash_Table (Primary_Ident mod Unit_Hash_Length);
       while Design_Unit /= Null_Iir loop
-         Library_Unit := Get_Library_Unit (Design_Unit);
 
          --  The secondary is always in the same library as the primary.
-         if Get_Library (Get_Design_File (Design_Unit)) = Lib_Prim then
+         if Get_Kind (Design_Unit) /= Iir_Kind_Foreign_Module
+           and then Get_Library (Get_Design_File (Design_Unit)) = Lib_Prim
+         then
+            Library_Unit := Get_Library_Unit (Design_Unit);
             -- Set design_unit to null iff this is not the correct
             -- design unit.
             case Get_Kind (Library_Unit) is
@@ -1624,18 +1665,22 @@ package body Libraries is
       Res : Iir_Design_Unit := Null_Iir;
       Unit : Iir_Design_Unit;
    begin
+      Res := Null_Iir;
       Unit := Unit_Hash_Table (Name mod Unit_Hash_Length);
       while Unit /= Null_Iir loop
-         if Get_Identifier (Unit) = Name
-           and then (Get_Kind (Get_Library_Unit (Unit))
-                     = Iir_Kind_Entity_Declaration)
-         then
-            if Res = Null_Iir then
-               Res := Unit;
-            else
-               --  Many entities.
-               return Null_Iir;
-            end if;
+         if Get_Identifier (Unit) = Name then
+            case Get_Kind (Get_Library_Unit (Unit)) is
+               when Iir_Kind_Entity_Declaration
+                 | Iir_Kind_Foreign_Module =>
+                  if Res /= Null_Iir then
+                     --  Many entities.
+                     return Null_Iir;
+                  else
+                     Res := Unit;
+                  end if;
+               when others =>
+                  null;
+            end case;
          end if;
          Unit := Get_Hash_Chain (Unit);
       end loop;

@@ -3,9 +3,9 @@
 --
 --  This file is part of GHDL.
 --
---  This program is free software; you can redistribute it and/or modify
+--  This program is free software: you can redistribute it and/or modify
 --  it under the terms of the GNU General Public License as published by
---  the Free Software Foundation; either version 2 of the License, or
+--  the Free Software Foundation, either version 2 of the License, or
 --  (at your option) any later version.
 --
 --  This program is distributed in the hope that it will be useful,
@@ -14,15 +14,15 @@
 --  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with this program; if not, write to the Free Software
---  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
---  MA 02110-1301, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Netlists; use Netlists;
 with Netlists.Builders; use Netlists.Builders;
-with Synth.Source;
 
 package Netlists.Inference is
+   --  If True, latches are allowed.
+   Flag_Latches : Boolean := False;
+
    --  Walk the And-net N, and extract clock (posedge/negedge) if found.
    --  ENABLE is N without the clock.
    --  If not found, CLK and ENABLE are set to No_Net.
@@ -39,12 +39,12 @@ package Netlists.Inference is
                     Val : Net;
                     Off : Uns32;
                     Prev_Val : Net;
-                    Stmt : Synth.Source.Syn_Src;
+                    Loc : Location_Type;
                     Last_Use : Boolean) return Net;
 
    --  Called when there is an assignment to a enable gate.
    function Infere_Assert (Ctxt : Context_Acc;
                            Val : Net;
                            En_Gate : Net;
-                           Stmt : Synth.Source.Syn_Src) return Net;
+                           Loc : Location_Type) return Net;
 end Netlists.Inference;

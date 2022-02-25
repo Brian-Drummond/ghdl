@@ -2,20 +2,18 @@
 #
 # Configure script for GHDL (C) 2014-2018 Tristan Gingold
 #
-# GHDL is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free
-# Software Foundation; either version 2, or (at your option) any later
-# version.
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
 #
-# GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
-# WARRANTY; without even the implied warranty of MERCHANTABILITY or
-# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
-# for more details.
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with GHDL; see the file COPYING.  If not, write to the Free
-# Software Foundation, 59 Temple Place - Suite 330, Boston, MA
-# 02111-1307, USA.
+# along with this program.  If not, see <gnu.org/licenses>.
 
 
 # Current version.  This is the only place where the version is written.
@@ -23,15 +21,17 @@
 # place.
 # Note the absence of spaces and the quotes.
 # Suffix "-dev" is used during development.
-ghdl_version="1.0-dev"
+ghdl_version="2.0.0-dev"
 
 backend=mcode
 CC=${CC:-gcc}
 CXX=${CXX:-clang++}
 CFLAGS=${CFLAGS:--g}
+CXXFLAGS=${CXXFLAGS:--g}
 GNATMAKE=${GNATMAKE:-gnatmake}
+ADA_FLAGS=${ADA_FLAGS:-}
 MAKE=${MAKE:-make}
-LDFLAGS=
+LDFLAGS=${LDFLAGS:-}
 prefix=/usr/local
 libdirsuffix=lib/ghdl
 libdirreverse=../..
@@ -43,7 +43,7 @@ build=
 build_mode=
 enable_werror=true
 enable_checks=true
-enable_openieee=unknown
+enable_gplcompat=unknown
 enable_libghdl=true
 enable_synth=true
 default_pic=false
@@ -54,7 +54,7 @@ PIC_FLAGS=-fPIC
 show_help=no
 progname=$0
 
-subst_vars="CC CXX GNATMAKE MAKE CFLAGS LDFLAGS build srcdir abs_srcdir prefix backend libdirsuffix libdirreverse gcc_src_dir llvm_config llvm_be backtrace_lib build_mode EXEEXT SOEXT PIC_FLAGS default_pic enable_werror enable_checks enable_openieee enable_libghdl libghdl_version ghdl_version"
+subst_vars="CC CXX GNATMAKE ADA_FLAGS MAKE CFLAGS CXXFLAGS LDFLAGS build srcdir abs_srcdir prefix backend libdirsuffix libdirreverse gcc_src_dir llvm_config llvm_be backtrace_lib build_mode EXEEXT SOEXT PIC_FLAGS default_pic enable_werror enable_checks enable_gplcompat enable_libghdl libghdl_version ghdl_version"
 
 # Find srcdir
 srcdir=`dirname $progname`
@@ -104,8 +104,8 @@ for opt do
     --disable-werror)       enable_werror=false;;
     --enable-checks)        enable_checks=true;;
     --disable-checks)       enable_checks=false;;
-    --enable-openieee)      enable_openieee=true;;
-    --disable-openieee)     enable_openieee=false;;
+    --enable-gplcompat)     enable_gplcompat=true;;
+    --disable-gplcompat)    enable_gplcompat=false;;
     --enable-libghdl)       enable_libghdl=true;;
     --disable-libghdl)      enable_libghdl=false;;
     --enable-synth)         enable_synth=true;;
@@ -135,7 +135,7 @@ Options [defaults in brackets]:
   --disable-werror            warnings don't stop build
   --disable-checks            disable internal checks
   --disable-libghdl           do not build libghdl shared library
-  --enable-openieee           use gpl-compatible sources for ieee library
+  --enable-gplcompat          use GPL-compatible sources for ieee library
   --enable-libghdl            also build the libghdl shared library
   --disable-synth             do not build with synthesis feature
 EOF
@@ -190,9 +190,9 @@ fi
 
 # Check the version of libghdl is correct.
 if [ "$enable_libghdl" = true ]; then
-    libghdl_version="$srcdir/python/libghdl/version.py"
-    # Extract content between single quotes in version.py, to avoid false positives due to LF/CRLF mismatch.
-    if [ "$ghdl_version" != "`sed 's/.*"\(.*\)".*/\1/g' $libghdl_version`" ]; then
+    libghdl_version="$srcdir/pyGHDL/__init__.py"
+    # Extract content between double quotes in __init__.py, to avoid false positives due to LF/CRLF mismatch.
+    if [ "$ghdl_version" != "`sed -n 's/^__version__.*"\(.*\)".*/\1/gp' $libghdl_version`" ]; then
       echo "Sorry, the version of $libghdl_version is not correct"
       echo "update the version to: $ghdl_version"
       echo "or use --disable-libghdl"
@@ -200,19 +200,19 @@ if [ "$enable_libghdl" = true ]; then
     fi
 fi
 
-# Default for enable_openieee
-if [ "$enable_openieee" = "unknown" ]; then
-  if test -d $srcdir/libraries/ieee ; then
-    enable_openieee=false
+# Default for enable_gplcompat
+if [ "$enable_gplcompat" = "unknown" ]; then
+  if test -d $srcdir/libraries/vital95 && test -d $srcdir/libraries/vital2000; then
+    enable_gplcompat=false
     echo "Use full IEEE library"
   else
-    enable_openieee=true
-    echo "Use openieee source files for IEEE library (but partial)"
+    enable_gplcompat=true
+    echo "Use GPL-compatible source files for IEEE library (but partial)"
   fi
-elif [ "$enable_openieee" = false ]; then
-  if ! test -d $srcdir/libraries/ieee ; then
-    echo "Sorry, full ieee library source files not present"
-    echo "consider --enable-openieee"
+elif [ "$enable_gplcompat" = false ]; then
+  if ! test -d $srcdir/libraries/vital95 || ! test -d $srcdir/libraries/vital2000; then
+    echo "Sorry, full IEEE library source files not present"
+    echo "consider --enable-gplcompat"
     exit 1
   fi
 fi
@@ -228,6 +228,7 @@ if test $backend = mcode; then
   case "$build" in
     i[3-6]86*) mcode64="" ;;
     x86_64*) mcode64="64" ;;
+    amd64*)  mcode64="64" ;;
     *)
       mcode64=""
       echo "WARNING: GHDL for mcode is supported only on x86"
@@ -277,6 +278,9 @@ if test $backend = llvm; then
        check_version  9.0 $llvm_version ||
        check_version 10.0 $llvm_version ||
        check_version 11.0 $llvm_version ||
+       check_version 11.1 $llvm_version ||
+       check_version 12.0 $llvm_version ||
+       check_version 13.0 $llvm_version ||
        false; then
     echo "Debugging is enabled with llvm $llvm_version"
   else
@@ -294,7 +298,7 @@ fi
 # Define default file extensions for Windows or Linux-like systems and
 # use -fPIC or not.
 case "$build" in
-  *mingw* | *cygwin*) SOEXT=".dll";   EXEEXT=".exe"; PIC_FLAGS="";;
+  *mingw* | *cygwin* | *windows-gnu*) SOEXT=".dll";   EXEEXT=".exe"; PIC_FLAGS="";;
   *darwin*)           SOEXT=".dylib"; EXEEXT="";     PIC_FLAGS="";;
   *)                  SOEXT=".so";    EXEEXT="";     PIC_FLAGS="-fPIC";;
 esac
@@ -339,11 +343,14 @@ rm -f config.status
     eval vval=\$$v
     echo $v=\"$vval\"
   done
-  sed_opts=`echo $subst_vars | sed -e "s/\\([a-zA-Z_]*\\)/ -e \"s%@\1@%\$\1%g\"/g"`
   subst_files="ghdl.gpr Makefile"
   echo "for f in $subst_files; do"
   echo '  echo "Creating $f"'
-  echo "  sed $sed_opts" '< $srcdir/${f}.in > $f'
+  echo "  sed \\"
+  for v in $subst_vars; do
+      echo "    -e \"s%@$v@%\$$v%g\" \\"
+  done
+  echo '  < $srcdir/${f}.in > $f'
   echo "done"
 } > config.status || \
 {
@@ -368,9 +375,10 @@ fi
 # Generate ortho_code-x86-flags
 if test $backend = mcode; then
   case "$build" in
-    *darwin*) ortho_flags="Flags_Macosx${mcode64}" ;;
+    *darwin*)  ortho_flags="Flags_Macosx${mcode64}" ;;
     *mingw32*) ortho_flags="Flags_Windows${mcode64}" ;;
-    *linux*) ortho_flags="Flags_Linux${mcode64}" ;;
+    *linux*)   ortho_flags="Flags_Linux${mcode64}" ;;
+    *openbsd*) ortho_flags="Flags_Macosx${mcode64}" ;;
     *) echo "Unsupported $build build for mcode"; exit 1;;
   esac
   echo "Generate ortho_code-x86-flags.ads"
@@ -396,7 +404,7 @@ echo "with $pkg_synth;" > ghdlsynth_maybe.ads
 echo "package Ghdlsynth_Maybe renames $pkg_synth;" >> ghdlsynth_maybe.ads
 
 # Generate default_paths.ads
-# Also update dist/windows/mcode/default_paths.ads if you change this
+# Also update scripts/windows/mcode/default_paths.ads if you change this
 # template.
 echo "Generate default_paths.ads"
 sed -e "s%@COMPILER_GCC@%ghdl1-gcc$EXEEXT%" \

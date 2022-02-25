@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) -  Run Time Informations.
 --  Copyright (C) 2002 - 2020 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -219,6 +217,22 @@ package Grt.Rtis is
      (Source => Ghdl_Rti_Access, Target => Ghdl_Rtin_Object_Acc);
    function To_Ghdl_Rti_Access is new Ada.Unchecked_Conversion
      (Source => Ghdl_Rtin_Object_Acc, Target => Ghdl_Rti_Access);
+
+   type Ghdl_Rtin_Psl_Directive is record
+      Common : Ghdl_Rti_Common;
+      Name : Ghdl_C_String;
+      -- Location of the RTI data (count, state vector, state)
+      Loc : Ghdl_Rti_Loc;
+      Linecol : Ghdl_Index_Type;
+      -- Parent architecture containing the PSL directive
+      Parent : Ghdl_Rti_Access;
+   end record;
+   pragma Convention (C, Ghdl_Rtin_Psl_Directive);
+   type Ghdl_Rtin_Psl_Directive_Acc is access Ghdl_Rtin_Psl_Directive;
+   function To_Ghdl_Rtin_Psl_Directive_Acc is new Ada.Unchecked_Conversion
+     (Source => Ghdl_Rti_Access, Target => Ghdl_Rtin_Psl_Directive_Acc);
+   function To_Ghdl_Rti_Access is new Ada.Unchecked_Conversion
+     (Source => Ghdl_Rtin_Psl_Directive_Acc, Target => Ghdl_Rti_Access);
 
    type Ghdl_Rtin_Instance is record
       Common : Ghdl_Rti_Common;

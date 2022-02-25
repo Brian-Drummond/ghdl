@@ -1,20 +1,18 @@
 --  Type interning - set of unique objects.
 --  Copyright (C) 2019 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GHDL; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 with Ada.Unchecked_Deallocation;
 
@@ -68,16 +66,13 @@ package body Dyn_Maps is
       Deallocate (Old_Hash_Table);
    end Expand;
 
-   procedure Get_Index
-     (Inst : in out Instance; Params : Params_Type; Idx : out Index_Type)
+   function Get_Index_With_Hash
+     (Inst : Instance; Params : Params_Type; Hash_Value : Hash_Value_Type)
+     return Index_Type
    is
-      Hash_Value : Hash_Value_Type;
       Hash_Index : Hash_Value_Type;
+      Idx : Index_Type;
    begin
-      --  Check if the package was initialized.
-      pragma Assert (Inst.Hash_Table /= null);
-
-      Hash_Value := Hash (Params);
       Hash_Index := Hash_Value and (Inst.Size - 1);
 
       Idx := Inst.Hash_Table (Hash_Index);
@@ -86,19 +81,47 @@ package body Dyn_Maps is
             E : Element_Wrapper renames Inst.Els.Table (Idx);
          begin
             if E.Hash = Hash_Value and then Equal (E.Obj, Params) then
-               return;
+               return Idx;
             end if;
             Idx := E.Next;
          end;
       end loop;
 
+      return No_Index;
+   end Get_Index_With_Hash;
+
+   function Get_Index_Soft (Inst : Instance; Params : Params_Type)
+                           return Index_Type is
+   begin
+      --  Check if the package was initialized.
+      pragma Assert (Inst.Hash_Table /= null);
+
+      return Get_Index_With_Hash (Inst, Params, Hash (Params));
+   end Get_Index_Soft;
+
+   procedure Get_Index
+     (Inst : in out Instance; Params : Params_Type; Idx : out Index_Type)
+   is
+      Hash_Value : constant Hash_Value_Type := Hash (Params);
+      Hash_Index : Hash_Value_Type;
+   begin
+      --  Check if the package was initialized.
+      pragma Assert (Inst.Hash_Table /= null);
+
+      Idx := Get_Index_With_Hash (Inst, Params, Hash_Value);
+      if Idx /= No_Index then
+         return;
+      end if;
+
+      --  Insert.
+
       --  Maybe expand the table.
       if Hash_Value_Type (Wrapper_Tables.Last (Inst.Els)) > 2 * Inst.Size then
          Expand (Inst);
-
-         --  Recompute hash index.
-         Hash_Index := Hash_Value and (Inst.Size - 1);
       end if;
+
+      --  Compute hash index.
+      Hash_Index := Hash_Value and (Inst.Size - 1);
 
       declare
          Res : Object_Type;

@@ -1,20 +1,18 @@
 --  Iir to ortho translator.
 --  Copyright (C) 2002 - 2014 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 
 package Trans.Chap3 is
    --  Translate the subtype of an object, since an object can define
@@ -145,8 +143,10 @@ package Trans.Chap3 is
    --  Index array BASE of type ATYPE with INDEX.
    --  INDEX must be of type ghdl_index_type, thus no bounds checks are
    --  performed.
-   function Index_Base (Base : Mnode; Atype : Iir; Index : O_Enode)
-                       return Mnode;
+   function Index_Base (Base : Mnode;
+                        Atype : Iir;
+                        Index : O_Enode;
+                        Stride : O_Enode := O_Enode_Null) return Mnode;
 
    --  Index array ARR of type ATYPE with INDEX.
    --  Return the base.
@@ -308,6 +308,12 @@ package Trans.Chap3 is
    --  aliases), they have a longer life.
    procedure Translate_Array_Subtype (Arr_Type : Iir);
    procedure Elab_Array_Subtype (Arr_Type : Iir);
+
+   --  Return the element subtype to be used for getting type info.
+   --  Follow the translation for array subtypes, as a type for the element is
+   --  not created if the array is not also constrained with locally static
+   --  indexes.
+   function Get_Element_Subtype_For_Info (Arr_Def : Iir) return Iir;
 
    --  Create the bounds for SUB_TYPE.
    --  SUB_TYPE is expected to be a non-static, anonymous array or record

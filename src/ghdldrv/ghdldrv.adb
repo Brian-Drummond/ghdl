@@ -1,20 +1,18 @@
 --  GHDL driver - commands invoking gcc.
 --  Copyright (C) 2002, 2003, 2004, 2005 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 with System;
 with Ada.Command_Line; use Ada.Command_Line;
 with Interfaces.C_Streams;
@@ -173,6 +171,47 @@ package body Ghdldrv is
       Obj_File : String_Access;
       Asm_File : String_Access;
       Post_File : String_Access;
+
+      --  Add backend specific options.
+      procedure Add_Backend_Options
+        (P : in out Natural; Args : in out Argument_List) is
+      begin
+         --  Add -fpic for gcc/llvm.
+         if Default_Paths.Default_Pie then
+            case Backend is
+               when Backend_Gcc
+                 | Backend_Llvm =>
+                  P := P + 1;
+                  Args (P) := Dash_Fpic;
+               when Backend_Mcode =>
+                  null;
+            end case;
+         end if;
+
+         --  Add -quiet for gcc, add -c for llvm
+         case Backend is
+            when Backend_Gcc =>
+               if not Cmd.Flag_Not_Quiet then
+                  P := P + 1;
+                  Args (P) := Dash_Quiet;
+               end if;
+            when Backend_Llvm =>
+               P := P + 1;
+               Args (P) := Dash_c;
+            when Backend_Mcode =>
+               null;
+         end case;
+
+         Args (P + 1) := Dash_o;
+         case Backend is
+            when Backend_Gcc =>
+               Args (P + 2) := Asm_File;
+            when Backend_Llvm
+              | Backend_Mcode =>
+               Args (P + 2) := Obj_File;
+         end case;
+      end Add_Backend_Options;
+
       Success : Boolean;
    begin
       --  Create post file.
@@ -180,7 +219,7 @@ package body Ghdldrv is
          Post_File := Append_Suffix (File, Post_Suffix, In_Work);
       end if;
 
-      --  Create asm file.
+      --  Create asm file and aux file for gcc.
       case Backend is
          when Backend_Gcc =>
             Asm_File := Append_Suffix (File, Asm_Suffix, In_Work);
@@ -196,7 +235,7 @@ package body Ghdldrv is
       declare
          P : Natural;
          Nbr_Args : constant Natural :=
-           Last (Cmd.Compiler_Args) + Options'Length + 5;
+           Last (Cmd.Compiler_Args) + Options'Length + 7;
          Args : Argument_List (1 .. Nbr_Args);
       begin
          P := 0;
@@ -209,49 +248,16 @@ package body Ghdldrv is
             Args (P) := Options (I);
          end loop;
 
-         --  Add -quiet for gcc, add -c for llvm
          if not Flag_Postprocess then
-            case Backend is
-               when Backend_Gcc =>
-                  if not Cmd.Flag_Not_Quiet then
-                     P := P + 1;
-                     Args (P) := Dash_Quiet;
-                  end if;
-               when Backend_Llvm =>
-                  P := P + 1;
-                  Args (P) := Dash_c;
-               when Backend_Mcode =>
-                  null;
-            end case;
-         end if;
-
-         --  Add -fpic for gcc/llvm.
-         if not Flag_Postprocess
-           and then Default_Paths.Default_Pie
-         then
-            case Backend is
-               when Backend_Gcc
-                 | Backend_Llvm =>
-                  P := P + 1;
-                  Args (P) := Dash_Fpic;
-               when Backend_Mcode =>
-                  null;
-            end case;
-         end if;
-
-         --  Object file (or assembly file).
-         Args (P + 1) := Dash_o;
-         if Flag_Postprocess then
-            Args (P + 2) := Post_File;
+            --  Backend options and output
+            Add_Backend_Options (P, Args);
          else
-            case Backend is
-               when Backend_Gcc =>
-                  Args (P + 2) := Asm_File;
-               when Backend_Mcode
-                 | Backend_Llvm =>
-                  Args (P + 2) := Obj_File;
-            end case;
+            --  Postprocessor output.
+            Args (P + 1) := Dash_o;
+            Args (P + 2) := Post_File;
          end if;
+
+         --  Input file.
          Args (P + 3) := new String'(File);
 
          My_Spawn (Cmd, Cmd.Compiler_Path.all, Args (1 .. P + 3));
@@ -277,27 +283,11 @@ package body Ghdldrv is
                Args (P) := Cmd.Postproc_Args.Table (I);
             end loop;
 
-            case Backend is
-               when Backend_Gcc =>
-                  if not Cmd.Flag_Not_Quiet then
-                     P := P + 1;
-                     Args (P) := Dash_Quiet;
-                  end if;
-               when Backend_Llvm =>
-                  null;
-               when Backend_Mcode =>
-                  null;
-            end case;
+            Add_Backend_Options (P, Args);
 
-            Args (P + 1) := Dash_o;
-            case Backend is
-               when Backend_Gcc =>
-                  Args (P + 2) := Asm_File;
-               when Backend_Llvm
-                 | Backend_Mcode =>
-                  Args (P + 2) := Obj_File;
-            end case;
+            --  Input file.
             Args (P + 3) := Post_File;
+
             My_Spawn (Cmd, Cmd.Post_Processor_Path.all, Args (1 .. P + 3));
          end;
 
@@ -485,7 +475,10 @@ package body Ghdldrv is
          Cmd.Assembler_Cmd := new String'("as");
       end if;
       if Cmd.Linker_Cmd = null then
-         Cmd.Linker_Cmd := new String'("gcc");
+         Cmd.Linker_Cmd := GNAT.OS_Lib.Getenv ("CC");
+         if Cmd.Linker_Cmd = null or else Cmd.Linker_Cmd.all = "" then
+            Cmd.Linker_Cmd := new String'("cc");
+         end if;
       end if;
    end Set_Tools_Name;
 
@@ -584,7 +577,9 @@ package body Ghdldrv is
       use Libraries;
    begin
       Set_Tools_Name (Cmd);
-      Setup_Libraries (Load);
+      if not Setup_Libraries (Load) then
+         raise Option_Error;
+      end if;
       Locate_Tools (Cmd);
       for I in 2 .. Get_Nbr_Paths loop
          Add_Argument (Cmd.Compiler_Args,
@@ -823,13 +818,13 @@ package body Ghdldrv is
       end if;
       case Backend is
          when Backend_Gcc =>
-            Put ("assembler command: ");
+            Put ("assembler command (--AS= or as): ");
             Put_Line (Cmd.Assembler_Cmd.all);
          when Backend_Llvm
            | Backend_Mcode =>
             null;
       end case;
-      Put ("linker command: ");
+      Put ("linker command (--LINKER=, CC, or cc): ");
       Put_Line (Cmd.Linker_Cmd.all);
       Put_Line ("default lib prefix: " & Default_Paths.Lib_Prefix);
 
@@ -954,6 +949,7 @@ package body Ghdldrv is
 
    --  Elaboration.
 
+   Library_Id : Name_Id;
    Primary_Id : Name_Id;
    Secondary_Id : Name_Id;
    Base_Name : String_Access;
@@ -964,19 +960,39 @@ package body Ghdldrv is
    procedure Set_Elab_Units (Cmd : in out Command_Comp'Class;
                              Cmd_Name : String;
                              Args : Argument_List;
-                             Run_Arg : out Natural) is
+                             Run_Arg : out Natural)
+   is
+      function Library_Prefix_Image (Id : Name_Id) return String is
+      begin
+         if Id = Null_Identifier then
+            return "";
+         else
+            return Image (Id) & '.';
+         end if;
+      end Library_Prefix_Image;
+
+      function Arch_Suffix_Image (Id : Name_Id) return String is
+      begin
+         if Id = Null_Identifier then
+            return "";
+         else
+            return '(' & Image (Id) & ')';
+         end if;
+      end Arch_Suffix_Image;
    begin
-      Extract_Elab_Unit (Cmd_Name, Args, Run_Arg, Primary_Id, Secondary_Id);
+      Library_Id := Null_Identifier;
+      Extract_Elab_Unit (Cmd_Name, False, Args, Run_Arg,
+                         Library_Id, Primary_Id, Secondary_Id);
       if Secondary_Id = Null_Identifier then
          Base_Name := new String'(Image (Primary_Id));
-         Unit_Name := new String'(Image (Primary_Id));
       else
-         Base_Name :=
-           new String'(Image (Primary_Id) & '-' & Image (Secondary_Id));
-         Unit_Name :=
-           new String'(Image (Primary_Id) & '(' & Image (Secondary_Id) & ')');
+         Base_Name := new String'(Image (Primary_Id)
+                                    & '-' & Image (Secondary_Id));
       end if;
 
+      Unit_Name := new String'(Library_Prefix_Image (Library_Id)
+                                 & Image (Primary_Id)
+                                 & Arch_Suffix_Image (Secondary_Id));
       Filelist_Name := null;
 
       --  Choose a default name for the executable.
@@ -1231,11 +1247,12 @@ package body Ghdldrv is
    procedure Perform_Action (Cmd : in out Command_Run; Args : Argument_List)
    is
       Suffix : constant String_Access := Get_Executable_Suffix;
+      Lib_Id : Name_Id;
       Prim_Id : Name_Id;
       Sec_Id : Name_Id;
       Opt_Arg : Natural;
    begin
-      Extract_Elab_Unit ("-r", Args, Opt_Arg, Prim_Id, Sec_Id);
+      Extract_Elab_Unit ("-r", False, Args, Opt_Arg, Lib_Id, Prim_Id, Sec_Id);
       if Sec_Id = Null_Identifier then
          Base_Name := new String'
            (Image (Prim_Id) & Suffix.all);
@@ -1614,7 +1631,7 @@ package body Ghdldrv is
       Setup_Compiler (Cmd, True);
 
       --  Create list of files.
-      Files_List := Build_Dependence (Primary_Id, Secondary_Id);
+      Files_List := Build_Dependence (Library_Id, Primary_Id, Secondary_Id);
 
       if Errorout.Nbr_Errors /= 0 then
          raise Errorout.Compilation_Error;
@@ -1882,8 +1899,10 @@ package body Ghdldrv is
          Set_Elab_Units (Cmd, "--gen-makefile", Args);
       end if;
 
-      Setup_Libraries (True);
-      Files_List := Build_Dependence (Primary_Id, Secondary_Id);
+      if not Setup_Libraries (True) then
+         raise Option_Error;
+      end if;
+      Files_List := Build_Dependence (Library_Id, Primary_Id, Secondary_Id);
 
       Ghdllocal.Gen_Makefile_Disp_Header;
 

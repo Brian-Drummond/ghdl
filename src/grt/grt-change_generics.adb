@@ -1,20 +1,18 @@
 --  GHDL Run Time (GRT) - Override top entity generics
 --  Copyright (C) 2015 Tristan Gingold
 --
---  GHDL is free software; you can redistribute it and/or modify it under
---  the terms of the GNU General Public License as published by the Free
---  Software Foundation; either version 2, or (at your option) any later
---  version.
+--  This program is free software: you can redistribute it and/or modify
+--  it under the terms of the GNU General Public License as published by
+--  the Free Software Foundation, either version 2 of the License, or
+--  (at your option) any later version.
 --
---  GHDL is distributed in the hope that it will be useful, but WITHOUT ANY
---  WARRANTY; without even the implied warranty of MERCHANTABILITY or
---  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
---  for more details.
+--  This program is distributed in the hope that it will be useful,
+--  but WITHOUT ANY WARRANTY; without even the implied warranty of
+--  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+--  GNU General Public License for more details.
 --
 --  You should have received a copy of the GNU General Public License
---  along with GCC; see the file COPYING.  If not, write to the Free
---  Software Foundation, 59 Temple Place - Suite 330, Boston, MA
---  02111-1307, USA.
+--  along with this program.  If not, see <gnu.org/licenses>.
 --
 --  As a special exception, if other files instantiate generics from this
 --  unit, or you link this unit with other files to produce an executable,
@@ -72,13 +70,13 @@ package body Grt.Change_Generics is
 
    --  Override for unconstrained array generic.
    procedure Override_Generic_Array (Obj_Rti : Ghdl_Rtin_Object_Acc;
+                                     Arr_Rti : Ghdl_Rtin_Type_Array_Acc;
                                      Ctxt : Rti_Context;
                                      Over : Generic_Override_Acc)
    is
-      Type_Rti : constant Ghdl_Rtin_Type_Array_Acc :=
-        To_Ghdl_Rtin_Type_Array_Acc (Obj_Rti.Obj_Type);
-      El_Rti : constant Ghdl_Rti_Access := Type_Rti.Element;
-      Idx_Rti : constant Ghdl_Rti_Access := Type_Rti.Indexes (0);
+      El_Rti : constant Ghdl_Rti_Access := Arr_Rti.Element;
+      Idx_Rti : constant Ghdl_Rti_Access := Arr_Rti.Indexes (0);
+      El_Base_Rti : Ghdl_Rti_Access;
       Idx_Base_Rti : Ghdl_Rti_Access;
       St_Rng, Rng : Ghdl_Range_Ptr;
       Arr : Ghdl_E8_Array_Base_Ptr;
@@ -88,7 +86,7 @@ package body Grt.Change_Generics is
    begin
       --  Check array type:
       --  - Must be one dimension
-      if Type_Rti.Nbr_Dim /= 1 then
+      if Arr_Rti.Nbr_Dim /= 1 then
          Error_Override ("multi-dimension array not supported for "
                            & "override of generic", Over);
          return;
@@ -104,7 +102,12 @@ package body Grt.Change_Generics is
          return;
       end if;
       --  - Element must be E8 enum.
-      if El_Rti.Kind /= Ghdl_Rtik_Type_E8 then
+      if El_Rti.Kind = Ghdl_Rtik_Subtype_Scalar then
+         El_Base_Rti := To_Ghdl_Rtin_Subtype_Scalar_Acc (El_Rti).Basetype;
+      else
+         El_Base_Rti := El_Rti;
+      end if;
+      if El_Base_Rti.Kind /= Ghdl_Rtik_Type_E8 then
          Error_Override ("non enumerated element type not supported for "
                            & "override of generic", Over);
          return;
@@ -121,7 +124,7 @@ package body Grt.Change_Generics is
       Arr := To_Ghdl_E8_Array_Base_Ptr (Ghdl_Malloc (Len));
       for I in Over.Value'range loop
          Ghdl_Value_E8_Char (Arr (Ghdl_Index_Type (I - Over.Value'First)), Err,
-                             Over.Value (I), El_Rti);
+                             Over.Value (I), El_Base_Rti);
          if Err then
             Error_Override ("invalid character for override of generic", Over);
             return;
@@ -254,7 +257,22 @@ package body Grt.Change_Generics is
       pragma Assert (Rti.Kind = Ghdl_Rtik_Generic);
       case Type_Rti.Kind is
          when Ghdl_Rtik_Type_Array =>
-            Override_Generic_Array (Obj_Rti, Ctxt, Over);
+            Override_Generic_Array
+              (Obj_Rti, To_Ghdl_Rtin_Type_Array_Acc (Type_Rti), Ctxt, Over);
+         when Ghdl_Rtik_Subtype_Unbounded_Array =>
+            declare
+               St : constant Ghdl_Rtin_Subtype_Composite_Acc :=
+                 To_Ghdl_Rtin_Subtype_Composite_Acc (Type_Rti);
+               Bt : constant Ghdl_Rtin_Type_Array_Acc :=
+                 To_Ghdl_Rtin_Type_Array_Acc (St.Basetype);
+            begin
+               if Bt.Common.Kind /= Ghdl_Rtik_Type_Array then
+                  Error_Override
+                    ("unhandled array subtype for generic override of", Over);
+               else
+                  Override_Generic_Array (Obj_Rti, Bt, Ctxt, Over);
+               end if;
+            end;
          when Ghdl_Rtik_Type_B1
            | Ghdl_Rtik_Type_E8 =>
             Override_Generic_Enum (Obj_Rti, Ctxt, Over, Type_Rti);
